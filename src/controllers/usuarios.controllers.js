@@ -1,4 +1,10 @@
-const { selectAllUsuarios } = require("../models/usuarios.models");
+const {
+  selectAllUsuarios,
+  insertUsuario,
+  selectUsuarioById,
+  updateUsuarioById,
+  deleteUsuario,
+} = require("../models/usuarios.models");
 
 const getAllUsuarios = async (req, res, next) => {
   try {
@@ -9,4 +15,58 @@ const getAllUsuarios = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllUsuarios };
+const getUsuarioById = async (req, res, next) => {
+  const { usuarioId } = req.params;
+  try {
+    const usuario = await selectUsuarioById(usuarioId);
+    if (!usuario) {
+      return res.status(404).json({ message: "El id  de usuario no existe" });
+    }
+    res.json(usuario);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createUsuario = async (req, res, next) => {
+  try {
+    //Inserta el nuevo cliente
+    const [result] = await insertUsuario(req.body);
+    //Recupera el clienete insertado
+    const usuario = await selectUsuarioById(result.insertId);
+    res.json(usuario);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateUsuario = async (req, res, next) => {
+  const { usuarioId } = req.params;
+  try {
+    await updateUsuarioById(usuarioId, req.body);
+    const usuario = await selectUsuarioById(usuarioId);
+    res.json(usuario);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteByID = async (req, res, next) => {
+  const { usuarioId } = req.params;
+  const usuario = await selectUsuarioById(usuarioId);
+  res.json(usuario);
+  await deleteUsuario(usuarioId);
+  try {
+  } catch (error) {
+    next(error);
+  }
+};
+
+//
+module.exports = {
+  getAllUsuarios,
+  getUsuarioById,
+  createUsuario,
+  updateUsuario,
+  deleteByID,
+};

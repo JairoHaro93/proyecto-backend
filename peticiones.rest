@@ -1,3 +1,48 @@
 @url = http://localhost:3000/api
+
 // API CLIENTES
+//OBTENER TODOS LOS USUARIOS
 GET {{url}}/usuarios
+
+//OBTENER USUARIO POR ID
+###
+GET {{url}}/usuarios/3
+
+//CREAR USUARIO
+###
+POST {{url}}/usuarios
+Content-Type: application/json
+
+{
+"nombre": "Edison Mauricio",
+"apellido": "Haro Velasco",
+"ci": "1003638972",
+"usuario": "eharo",
+"password": "1234567",
+"fecha_nac": "1986-03-02",
+"fecha_cont": "2015-01-07",
+"genero": "M",
+"rol": "T"
+}
+
+
+
+###
+PUT {{url}}/usuarios/3
+Content-Type: application/json
+
+{
+
+  "nombre": "Edison Paul",
+  "apellido": "Haro Yepez",
+  "ci": "1003638970",
+  "usuario": "pharo",
+  "password": "1234567",
+  "fecha_nac": "1995-05-03",
+  "fecha_cont": "2019-01-07",
+  "genero": "M",
+  "rol": "T"
+}
+
+###
+DELETE {{url}}/usuarios/3
