@@ -6,7 +6,7 @@ GET {{url}}/usuarios
 
 //OBTENER USUARIO POR ID
 ###
-GET {{url}}/usuarios/3
+GET {{url}}/usuarios/5
 
 //CREAR USUARIO
 ###
@@ -14,15 +14,15 @@ POST {{url}}/usuarios
 Content-Type: application/json
 
 {
-"nombre": "Edison Mauricio",
+"nombre": "Jairo Mauricio",
 "apellido": "Haro Velasco",
-"ci": "1003638972",
-"usuario": "eharo",
+"ci": "1003638978",
+"usuario": "jharo",
 "password": "1234567",
 "fecha_nac": "1986-03-02",
 "fecha_cont": "2015-01-07",
 "genero": "M",
-"rol": "T"
+"rol": "A"
 }
 
 
@@ -46,3 +46,18 @@ Content-Type: application/json
 
 ###
 DELETE {{url}}/usuarios/3
+
+
+
+////////////////////////////////////////////////////////////////
+//////////// LOGIN     ////////////////////////////////////////
+
+//LOGIN 
+###
+POST {{url}}/login
+Content-Type: application/json
+
+{
+"usuario": "jharo",
+"password": "1234567"
+}
