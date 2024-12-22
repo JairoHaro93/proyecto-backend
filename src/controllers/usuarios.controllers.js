@@ -1,3 +1,4 @@
+const bcrypt = require("bcryptjs");
 const {
   selectAllUsuarios,
   insertUsuario,
@@ -29,6 +30,8 @@ const getUsuarioById = async (req, res, next) => {
 };
 
 const createUsuario = async (req, res, next) => {
+  req.body.password = await bcrypt.hash(req.body.password, 8);
+
   try {
     //Inserta el nuevo cliente
     const [result] = await insertUsuario(req.body);
