@@ -22,7 +22,7 @@ const login = async (req, res, next) => {
   }
 
   //Login Correcto
-  res.json({ message: "Login Correcto" , token: createToken(usuario)});
+  res.json({ message: "Login Correcto" , token: createToken(result)});
 };
 
 module.exports = { login };
