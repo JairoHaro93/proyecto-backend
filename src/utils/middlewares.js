@@ -42,10 +42,6 @@ const usuario = await selectUsuarioById(data.usuario_id)
 if(!usuario){
   return res.status(403).json({message:'El usuario no existe'})
 }
-if(data.usuario_rol!="A"){
-
-  return res.status(403).json({message:'Usuario no autorizado'})
-}
 
 next()
 }
