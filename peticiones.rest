@@ -1,4 +1,6 @@
+//@url = http://192.168.0.180/api
 @url = http://localhost:3000/api
+
 
 // API CLIENTES
 //OBTENER TODOS LOS USUARIOS
