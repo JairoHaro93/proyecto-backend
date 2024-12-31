@@ -7,7 +7,7 @@ function selectAllUsuarios() {
 
 // SELECT * FROM usuarios by Ida
 async function selectUsuarioById(usuarioId) {
-  const [usuarios] = await pool.query("SELECT * FROM Usuarios WHERE id = ?", [
+  const [usuarios] = await pool.query("SELECT * FROM usuarios WHERE id = ?", [
     usuarioId,
   ]);
 
