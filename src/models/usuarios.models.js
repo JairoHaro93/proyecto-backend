@@ -7,10 +7,9 @@ function selectAllUsuarios() {
 
 // SELECT * FROM usuarios by Ida
 async function selectUsuarioById(usuarioId) {
-  const [usuarios] = await pool.query(
-    "SELECT * FROM Usuarios WHERE idUsuarios = ?",
-    [usuarioId]
-  );
+  const [usuarios] = await pool.query("SELECT * FROM Usuarios WHERE id = ?", [
+    usuarioId,
+  ]);
 
   if (usuarios.length === 0) {
     return null;
@@ -96,7 +95,7 @@ function updateUsuarioById(
     genero = ?,
     rol = ?
 
-    WHERE idUsuarios=?
+    WHERE id=?
 
     `,
     [
@@ -116,7 +115,7 @@ function updateUsuarioById(
 
 //
 function deleteUsuario(usuarioId) {
-  return pool.query(`DELETE FROM  usuarios WHERE idusuarios = ?`, [usuarioId]);
+  return pool.query(`DELETE FROM  usuarios WHERE id = ?`, [usuarioId]);
 }
 
 module.exports = {
