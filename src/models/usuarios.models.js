@@ -2,7 +2,7 @@ const pool = require("../config/db");
 
 // SELECT * FROM usuarios
 function selectAllUsuarios() {
-  return pool.query("SELECT * FROM Usuarios");
+  return pool.query("SELECT * FROM usuarios");
 }
 
 // SELECT * FROM usuarios by Ida

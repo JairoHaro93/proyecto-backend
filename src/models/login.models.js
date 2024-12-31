@@ -3,7 +3,7 @@ const pool = require("../config/db");
 async function selectByUsuario(usuario) {
   const [result] = await pool.query(
     `
-        SELECT * FROM Usuarios WHERE usuario = ?
+        SELECT * FROM usuarios WHERE usuario = ?
         
         `,
     [usuario]
