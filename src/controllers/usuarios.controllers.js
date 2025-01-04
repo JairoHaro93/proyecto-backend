@@ -46,6 +46,8 @@ const createUsuario = async (req, res, next) => {
 const updateUsuario = async (req, res, next) => {
   const { usuarioId } = req.params;
   try {
+    req.body.password = await bcrypt.hash(req.body.password, 8);
+
     await updateUsuarioById(usuarioId, req.body);
     const usuario = await selectUsuarioById(usuarioId);
     res.json(usuario);
