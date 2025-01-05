@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
-const { selectByUsuario } = require("../models/login.models");
-const { createToken } = require("../utils/helpers");
+const { selectByUsuario } = require("../../models/sistema/login.models");
+const { createToken } = require("../../utils/helpers");
 
 const login = async (req, res, next) => {
   //Existe el usuairo en la BD?
@@ -22,7 +22,7 @@ const login = async (req, res, next) => {
   }
 
   //Login Correcto
-  res.json({ message: "Login Correcto" , token: createToken(result)});
+  res.json({ message: "Login Correcto", token: createToken(result) });
 };
 
 module.exports = { login };

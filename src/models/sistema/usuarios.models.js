@@ -1,15 +1,16 @@
-const pool = require("../config/db");
+const pool = require("../../config/db");
 
 // SELECT * FROM usuarios
 function selectAllUsuarios() {
-  return pool.query("SELECT * FROM usuarios");
+  return pool.query("SELECT * FROM sisUsuarios");
 }
 
 // SELECT * FROM usuarios by Ida
 async function selectUsuarioById(usuarioId) {
-  const [usuarios] = await pool.query("SELECT * FROM usuarios WHERE id = ?", [
-    usuarioId,
-  ]);
+  const [usuarios] = await pool.query(
+    "SELECT * FROM sisUsuarios WHERE id = ?",
+    [usuarioId]
+  );
 
   if (usuarios.length === 0) {
     return null;
@@ -27,10 +28,9 @@ function insertUsuario({
   fecha_nac,
   fecha_cont,
   genero,
-  rol,
 }) {
   return pool.query(
-    ` INSERT INTO usuarios (
+    ` INSERT INTO sisUsuarios (
   
     nombre,
     apellido,
@@ -39,8 +39,8 @@ function insertUsuario({
     password,
     fecha_nac,
     fecha_cont,
-    genero,
-    rol
+    genero
+ 
 ) VALUES (
   
    ?,
@@ -50,20 +50,9 @@ function insertUsuario({
    ?,
    ?,
    ?,
-   ?,
    ?
 );`,
-    [
-      nombre,
-      apellido,
-      ci,
-      usuario,
-      password,
-      fecha_nac,
-      fecha_cont,
-      genero,
-      rol,
-    ]
+    [nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero]
   );
 }
 
@@ -84,7 +73,7 @@ function updateUsuarioById(
 ) {
   return pool.query(
     `
-    UPDATE usuarios SET 
+    UPDATE sisUsuarios SET 
     nombre = ? ,
     apellido = ?,
     ci = ?,
@@ -115,7 +104,7 @@ function updateUsuarioById(
 
 //
 function deleteUsuario(usuarioId) {
-  return pool.query(`DELETE FROM  usuarios WHERE id = ?`, [usuarioId]);
+  return pool.query(`DELETE FROM  sisUsuarios WHERE id = ?`, [usuarioId]);
 }
 
 module.exports = {
