@@ -6,11 +6,7 @@ const {
   updateUsuarioById,
   deleteUsuario,
 } = require("../../models/sistema/usuarios.models");
-const {
-  insertFuncionesAdmin,
-  insertFuncionesBod,
-  insertFuncionesNoc,
-} = require("../../models/sistema/funciones.models");
+const { insertFunciones } = require("../../models/sistema/funciones.models");
 
 const getAllUsuarios = async (req, res, next) => {
   try {
@@ -41,34 +37,7 @@ const createUsuario = async (req, res, next) => {
     //Inserta el nuevo cliente
     const [result] = await insertUsuario(req.body);
 
-    //Insertar las funciones permitidas
-    if (req.body.rol) {
-      const groupByRol = (items) => {
-        return items.reduce((acc, item) => {
-          // Si el rol no existe en el acumulador, inicialízalo como un array vacío
-          if (!acc[item.rol]) {
-            acc[item.rol] = [];
-          }
-          // Agrega la función al array correspondiente al rol
-          acc[item.rol].push(item.funcion);
-          return acc;
-        }, {});
-      };
-
-      const resulta = groupByRol(req.body.rol);
-
-      //insercion en cada tabla
-      if (resulta.Administrador) {
-        insertFuncionesAdmin(result.insertId, resulta.Administrador);
-      }
-      if (resulta.Bodega) {
-        insertFuncionesBod(result.insertId, resulta.Bodega);
-      }
-
-      if (resulta.Noc) {
-        insertFuncionesNoc(result.insertId, resulta.Noc);
-      }
-    }
+    insertFunciones(result.insertId, req.body.rol);
 
     //Recupera el clienete insertado
     const usuario = await selectUsuarioById(result.insertId);
@@ -97,6 +66,7 @@ const deleteByID = async (req, res, next) => {
   const { usuarioId } = req.params;
   const usuario = await selectUsuarioById(usuarioId);
   res.json(usuario);
+  console.log(`Usuario ${usuario.nombre} Eliminado!!`);
   await deleteUsuario(usuarioId);
   try {
   } catch (error) {

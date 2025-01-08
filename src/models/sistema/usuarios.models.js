@@ -2,13 +2,14 @@ const pool = require("../../config/db");
 
 // SELECT * FROM usuarios
 function selectAllUsuarios() {
-  return pool.query("SELECT * FROM sisUsuarios");
+  return pool.query("SELECT * FROM sisusuarios");
 }
 
 // SELECT * FROM usuarios by Ida
 async function selectUsuarioById(usuarioId) {
   const [usuarios] = await pool.query(
-    "SELECT * FROM sisUsuarios WHERE id = ?",
+    `
+SELECT * FROM sisusuarios WHERE  id = ?`,
     [usuarioId]
   );
 
@@ -30,7 +31,7 @@ function insertUsuario({
   genero,
 }) {
   return pool.query(
-    ` INSERT INTO sisUsuarios (
+    ` INSERT INTO sisusuarios (
   
     nombre,
     apellido,
@@ -73,7 +74,7 @@ function updateUsuarioById(
 ) {
   return pool.query(
     `
-    UPDATE sisUsuarios SET 
+    UPDATE sissuarios SET 
     nombre = ? ,
     apellido = ?,
     ci = ?,
@@ -104,7 +105,7 @@ function updateUsuarioById(
 
 //
 function deleteUsuario(usuarioId) {
-  return pool.query(`DELETE FROM  sisUsuarios WHERE id = ?`, [usuarioId]);
+  return pool.query(`DELETE FROM  sisusuarios WHERE id = ?`, [usuarioId]);
 }
 
 module.exports = {
