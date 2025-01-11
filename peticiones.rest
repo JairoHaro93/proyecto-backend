@@ -1,5 +1,5 @@
-@url = http://192.168.0.180/api
-//@url = http://localhost:3000/api
+//@url = http://192.168.0.180/api
+@url = http://localhost:3000/api
 
 
 // API CLIENTES
@@ -18,15 +18,30 @@ POST {{url}}/usuarios
 Content-Type: application/json
 
 {
-"nombre": "Jairo Mauricio",
-"apellido": "Haro Velasco",
-"ci": "1003638978",
-"usuario": "jharo",
+"nombre": "Monica del Carmen",
+"apellido": "Yepez Montedeoca",
+"ci": "1003638973",
+"usuario": "myepez",
 "password": "1234567",
-"fecha_nac": "1986-03-02",
+"fecha_nac": "1993-06-03",
 "fecha_cont": "2015-01-07",
 "genero": "M",
-"rol": "A"
+"rol":[
+        {
+            "rol": "Bodega",
+            "funcion": 1
+        },
+        {
+            "rol": "Bodega",
+            "funcion": 2
+        },
+        {
+            "rol": "Administrador",
+            "funcion": 1
+        }
+    ]
+
+
 }
 
 
@@ -65,3 +80,10 @@ Content-Type: application/json
 "usuario": "jharo",
 "password": "1234567"
 }
+
+
+//////////////////////////////////////////////////////////////
+///////////////////// roles //////////////////////////////////
+//OBTENER LOS ROLES
+###
+GET {{url}}/funciones

@@ -1,9 +1,9 @@
-const pool = require("../config/db");
+const pool = require("../../config/db");
 
 async function selectByUsuario(usuario) {
   const [result] = await pool.query(
     `
-        SELECT * FROM usuarios WHERE usuario = ?
+        SELECT * FROM sisusuarios WHERE usuario = ?
         
         `,
     [usuario]
