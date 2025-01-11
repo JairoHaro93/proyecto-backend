@@ -6,8 +6,8 @@ const {
   getUsuarioById,
   updateUsuario,
   deleteByID,
-} = require("../../controllers/usuarios.controllers");
-const { checkUsuarioId } = require("../../utils/middlewares");
+} = require("../../../controllers//sistema/usuarios.controllers");
+const { checkUsuarioId } = require("../../../utils/middlewares");
 
 //Obtener todos los usuarios
 router.get("/", getAllUsuarios);

@@ -1,4 +1,4 @@
-const pool = require("../config/db");
+const pool = require("../../config/db");
 
 // SELECT * FROM usuarios
 function selectAllUsuarios() {
@@ -8,7 +8,12 @@ function selectAllUsuarios() {
 // SELECT * FROM usuarios by Ida
 async function selectUsuarioById(usuarioId) {
   const [usuarios] = await pool.query(
+<<<<<<< HEAD:src/models/sistema/usuarios.models.js
+    `
+SELECT * FROM sisusuarios WHERE  id = ?`,
+=======
     "SELECT * FROM sisusuarios WHERE id = ?",
+>>>>>>> main:src/models/usuarios.models.js
     [usuarioId]
   );
 
@@ -28,7 +33,6 @@ function insertUsuario({
   fecha_nac,
   fecha_cont,
   genero,
-  rol,
 }) {
   return pool.query(
     ` INSERT INTO sisusuarios (
@@ -40,8 +44,8 @@ function insertUsuario({
     password,
     fecha_nac,
     fecha_cont,
-    genero,
-    rol
+    genero
+ 
 ) VALUES (
   
    ?,
@@ -51,20 +55,9 @@ function insertUsuario({
    ?,
    ?,
    ?,
-   ?,
    ?
 );`,
-    [
-      nombre,
-      apellido,
-      ci,
-      usuario,
-      password,
-      fecha_nac,
-      fecha_cont,
-      genero,
-      rol,
-    ]
+    [nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero]
   );
 }
 
@@ -85,7 +78,11 @@ function updateUsuarioById(
 ) {
   return pool.query(
     `
+<<<<<<< HEAD:src/models/sistema/usuarios.models.js
+    UPDATE sissuarios SET 
+=======
     UPDATE sisusuarios SET 
+>>>>>>> main:src/models/usuarios.models.js
     nombre = ? ,
     apellido = ?,
     ci = ?,

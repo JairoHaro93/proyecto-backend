@@ -5,7 +5,8 @@ const {
   selectUsuarioById,
   updateUsuarioById,
   deleteUsuario,
-} = require("../models/usuarios.models");
+} = require("../../models/sistema/usuarios.models");
+const { insertFunciones } = require("../../models/sistema/funciones.models");
 
 const getAllUsuarios = async (req, res, next) => {
   try {
@@ -35,9 +36,14 @@ const createUsuario = async (req, res, next) => {
   try {
     //Inserta el nuevo cliente
     const [result] = await insertUsuario(req.body);
+
+    insertFunciones(result.insertId, req.body.rol);
+
     //Recupera el clienete insertado
     const usuario = await selectUsuarioById(result.insertId);
+
     res.json(usuario);
+    console.log(`Usuario ${usuario.nombre} Creado!!`);
   } catch (error) {
     next(error);
   }
@@ -60,6 +66,7 @@ const deleteByID = async (req, res, next) => {
   const { usuarioId } = req.params;
   const usuario = await selectUsuarioById(usuarioId);
   res.json(usuario);
+  console.log(`Usuario ${usuario.nombre} Eliminado!!`);
   await deleteUsuario(usuarioId);
   try {
   } catch (error) {
