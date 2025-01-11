@@ -11,8 +11,6 @@ async function selectUsuarioById(usuarioId) {
     `
 SELECT * FROM sisusuarios WHERE  id = ?`,
 
-    "SELECT * FROM sisusuarios WHERE id = ?",
-
     [usuarioId]
   );
 
