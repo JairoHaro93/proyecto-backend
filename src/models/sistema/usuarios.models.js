@@ -8,8 +8,12 @@ function selectAllUsuarios() {
 // SELECT * FROM usuarios by Ida
 async function selectUsuarioById(usuarioId) {
   const [usuarios] = await pool.query(
+<<<<<<< HEAD:src/models/sistema/usuarios.models.js
     `
 SELECT * FROM sisusuarios WHERE  id = ?`,
+=======
+    "SELECT * FROM sisusuarios WHERE id = ?",
+>>>>>>> main:src/models/usuarios.models.js
     [usuarioId]
   );
 
@@ -74,7 +78,11 @@ function updateUsuarioById(
 ) {
   return pool.query(
     `
+<<<<<<< HEAD:src/models/sistema/usuarios.models.js
     UPDATE sissuarios SET 
+=======
+    UPDATE sisusuarios SET 
+>>>>>>> main:src/models/usuarios.models.js
     nombre = ? ,
     apellido = ?,
     ci = ?,
