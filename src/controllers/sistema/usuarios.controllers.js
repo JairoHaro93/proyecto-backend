@@ -25,7 +25,7 @@ const getUsuarioById = async (req, res, next) => {
   try {
     const usuario = await selectUsuarioById(usuarioId);
     if (!usuario) {
-      return res.status(404).json({ message: "El id  de usuario no existe" });
+      return res.status(404).json({ message: "El ID de usuario no existe." });
     }
     res.json(usuario);
   } catch (error) {
@@ -34,20 +34,21 @@ const getUsuarioById = async (req, res, next) => {
 };
 
 const createUsuario = async (req, res, next) => {
-  req.body.password = await bcrypt.hash(req.body.password, 8);
-
   try {
-    //Inserta el nuevo cliente
+    req.body.password = await bcrypt.hash(req.body.password, 8);
+
+    // Inserta el nuevo usuario
     const [result] = await insertUsuario(req.body);
 
-    await insertFunciones(result.insertId, req.body.rol);
+    if (Array.isArray(req.body.rol) && req.body.rol.length > 0) {
+      await insertFunciones(result.insertId, req.body.rol);
+    }
 
-    //Recupera el clienete insertado
+    // Recupera el usuario insertado
     const usuario = await selectUsuarioById(result.insertId);
 
+    console.log(`Usuario ${usuario.nombre} creado con éxito.`);
     res.json(usuario);
-
-    console.log(`Usuario ${usuario.nombre} Creado!!`);
   } catch (error) {
     next(error);
   }
@@ -57,17 +58,23 @@ const updateUsuario = async (req, res, next) => {
   const { usuarioId } = req.params;
 
   try {
-    req.body.password = await bcrypt.hash(req.body.password, 8);
+    if (req.body.password) {
+      req.body.password = await bcrypt.hash(req.body.password, 8);
+    }
 
     await updateUsuarioById(usuarioId, req.body);
 
-    await deleteFunciones(usuarioId);
-
-    await insertFunciones(usuarioId, req.body.rol);
+    if (Array.isArray(req.body.rol) && req.body.rol.length > 0) {
+      console.log("Actualizando funciones...");
+      await deleteFunciones(usuarioId);
+      await insertFunciones(usuarioId, req.body.rol);
+    }
 
     const usuario = await selectUsuarioById(usuarioId);
 
-    console.log(`Usuario ${usuario.nombre} ${usuario.apellido}  Actualizado!!`);
+    console.log(
+      `Usuario ${usuario.nombre} ${usuario.apellido} actualizado con éxito.`
+    );
     res.json(usuario);
   } catch (error) {
     next(error);
@@ -76,17 +83,22 @@ const updateUsuario = async (req, res, next) => {
 
 const deleteByID = async (req, res, next) => {
   const { usuarioId } = req.params;
-  const usuario = await selectUsuarioById(usuarioId);
-  res.json(usuario);
-  console.log(`Usuario ${usuario.nombre} Eliminado!!`);
-  await deleteUsuario(usuarioId);
   try {
+    const usuario = await selectUsuarioById(usuarioId);
+
+    if (!usuario) {
+      return res.status(404).json({ message: "El ID de usuario no existe." });
+    }
+
+    await deleteUsuario(usuarioId);
+
+    console.log(`Usuario ${usuario.nombre} eliminado con éxito.`);
+    res.json({ message: `Usuario ${usuario.nombre} eliminado con éxito.` });
   } catch (error) {
     next(error);
   }
 };
 
-//
 module.exports = {
   getAllUsuarios,
   getUsuarioById,

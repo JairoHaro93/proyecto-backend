@@ -29,6 +29,5 @@ function deleteFunciones(usuarioId) {
 module.exports = {
   selectAllFunciones,
   insertFunciones,
-
   deleteFunciones,
 };
