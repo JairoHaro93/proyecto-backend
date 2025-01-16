@@ -15,4 +15,20 @@ function insertFunciones(usuarioId, funcionesId) {
   });
 }
 
-module.exports = { selectAllFunciones, insertFunciones };
+function deleteFunciones(usuarioId) {
+  return pool.query(
+    ` 
+     DELETE FROM sisusuarios_has_sisfunciones
+     WHERE sisusuarios_id = ?;
+
+    `,
+    [usuarioId]
+  );
+}
+
+module.exports = {
+  selectAllFunciones,
+  insertFunciones,
+
+  deleteFunciones,
+};
