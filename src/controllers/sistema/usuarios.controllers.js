@@ -84,17 +84,25 @@ const updateUsuario = async (req, res, next) => {
 const deleteByID = async (req, res, next) => {
   const { usuarioId } = req.params;
   try {
+    // Verificar si el usuario existe
     const usuario = await selectUsuarioById(usuarioId);
 
     if (!usuario) {
       return res.status(404).json({ message: "El ID de usuario no existe." });
     }
 
+    // Eliminar el usuario
     await deleteUsuario(usuarioId);
 
     console.log(`Usuario ${usuario.nombre} eliminado con éxito.`);
-    res.json({ message: `Usuario ${usuario.nombre} eliminado con éxito.` });
+
+    // Responder con éxito, incluyendo un identificador para el frontend
+    res.json({
+      id: usuarioId,
+      message: `Usuario ${usuario.nombre} eliminado con éxito.`,
+    });
   } catch (error) {
+    // Pasar cualquier error al middleware de manejo de errores
     next(error);
   }
 };
