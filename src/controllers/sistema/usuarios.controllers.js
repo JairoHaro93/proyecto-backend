@@ -34,9 +34,8 @@ const getUsuarioById = async (req, res, next) => {
 };
 
 const createUsuario = async (req, res, next) => {
+  req.body.password = await bcrypt.hash(req.body.password, 8);
   try {
-    req.body.password = await bcrypt.hash(req.body.password, 8);
-
     // Inserta el nuevo usuario
     const [result] = await insertUsuario(req.body);
 

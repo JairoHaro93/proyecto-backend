@@ -3,7 +3,30 @@ const pool = require("../../config/db");
 async function selectByUsuario(usuario) {
   const [result] = await pool.query(
     `
-        SELECT * FROM sisusuarios WHERE usuario = ?
+          SELECT 
+    U.id,
+    U.nombre,
+    U.apellido,
+    U.ci,
+    U.usuario,
+    U.password,
+    U.fecha_nac,
+    U.fecha_cont,
+    U.genero,
+    JSON_ARRAYAGG(F.nombre) AS rol
+FROM
+    sisusuarios AS U
+
+INNER JOIN
+    sisusuarios_has_sisfunciones AS UHF
+ON  
+    UHF.sisusuarios_id = U.id
+INNER JOIN
+    sisfunciones AS F
+ON 
+    UHF.sisfunciones_id = F.id
+WHERE  
+U.usuario = ?
         
         `,
     [usuario]
