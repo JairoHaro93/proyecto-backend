@@ -1,22 +1,24 @@
-// Server creation and configuration
 const http = require("http");
 const app = require("./src/app");
-
-// Config .env
+const { connectDB } = require("./src/config/db");
 require("dotenv").config();
-const NODE_ENV = process.env.NODE_ENV;
-// Server creation
-const server = http.createServer(app);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT);
+const NODE_ENV = process.env.NODE_ENV;
 
-// Listeners
-server.on("listening", () => {
-  console.log(`SERVIDOR ESCUCHANDO POR EL PUERTO ${PORT}`);
-  console.log(`ENTORNO: ${NODE_ENV}`);
-});
+connectDB()
+  .then(() => {
+    const server = http.createServer(app);
+    server.listen(PORT, () => {
+      console.log(`🚀 Servidor corriendo en http://localhost:${PORT}/`);
+      console.log(`🌎 Entorno: ${NODE_ENV}`);
+    });
 
-server.on("error", (error) => {
-  console.log(error);
-});
+    server.on("error", (error) => {
+      console.error("❌ Error del servidor:", error.message);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ Error al iniciar la base de datos:", err.message);
+    process.exit(1);
+  });

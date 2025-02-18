@@ -1,9 +1,9 @@
-const pool = require("../../config/db");
+const { poolmysql } = require("../../config/db");
 
 // SELECT * FROM usuarios
 
 function selectAllUsuarios() {
-  return pool.query(`
+  return poolmysql.query(`
     SELECT * FROM sisusuarios`);
 }
 
@@ -26,7 +26,7 @@ SELECT * FROM sisusuarios WHERE  id = ?`,
 
 // SELECT * FROM usuarios by Id
 async function selectUsuarioById(usuarioId) {
-  const [usuarios] = await pool.query(
+  const [usuarios] = await poolmysql.query(
     `
     SELECT 
     U.id,
@@ -72,7 +72,7 @@ function insertUsuario({
   fecha_cont,
   genero,
 }) {
-  return pool.query(
+  return poolmysql.query(
     ` INSERT INTO sisusuarios (
   
     nombre,
@@ -104,7 +104,7 @@ function updateUsuarioById(
   usuarioId,
   { nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero }
 ) {
-  return pool.query(
+  return poolmysql.query(
     `
     UPDATE sisusuarios SET 
 
@@ -137,7 +137,7 @@ function updateUsuarioById(
 
 //
 function deleteUsuario(usuarioId) {
-  return pool.query(`DELETE FROM  sisusuarios WHERE id = ?`, [usuarioId]);
+  return poolmysql.query(`DELETE FROM  sisusuarios WHERE id = ?`, [usuarioId]);
 }
 
 module.exports = {

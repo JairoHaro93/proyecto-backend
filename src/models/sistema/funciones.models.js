@@ -1,11 +1,11 @@
-const pool = require("../../config/db");
+const { poolmysql } = require("../../config/db");
 
 async function selectAllFunciones() {
-  return pool.query("SELECT * FROM sisfunciones");
+  return poolmysql.query("SELECT * FROM sisfunciones");
 }
 
 async function selectFuncionesById(usuarioId) {
-  return pool.query(
+  return poolmysql.query(
     `SELECT f.nombre AS funcion
 FROM sisusuarios_has_sisfunciones uf
 INNER JOIN sisfunciones f ON uf.sisfunciones_id = f.id
@@ -18,7 +18,7 @@ WHERE uf.sisusuarios_id = ?;`,
 
 async function insertFunciones(usuarioId, funcionesId) {
   funcionesId.forEach((element) => {
-    return pool.query(
+    return poolmysql.query(
       ` INSERT INTO sisusuarios_has_sisfunciones ( sisusuarios_id, sisfunciones_id) VALUES ( ?, ?);`,
       [usuarioId, element]
     );
@@ -26,7 +26,7 @@ async function insertFunciones(usuarioId, funcionesId) {
 }
 
 async function deleteFunciones(usuarioId) {
-  return pool.query(
+  return poolmysql.query(
     ` 
      DELETE FROM sisusuarios_has_sisfunciones
      WHERE sisusuarios_id = ?;

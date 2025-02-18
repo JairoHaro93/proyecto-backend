@@ -1,7 +1,7 @@
-const pool = require("../../config/db");
+const { poolmysql } = require("../../config/db");
 
 async function selectByUsuario(usuario) {
-  const [result] = await pool.query(
+  const [result] = await poolmysql.query(
     `
           SELECT 
     U.id,
