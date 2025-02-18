@@ -25,7 +25,7 @@ const configSQL = {
   user: process.env.SQL_USER || "sa",
   password: process.env.SQL_PASSWORD || "sqlserverjairo",
   port: process.env.SQL_PORT || 1433,
-  server: process.env.SQL_SERVER || "localhost",
+  server: process.env.SQL_SERVER || `192.168.0.160`,
   database: process.env.SQL_DATABASE || "REDECOM_BDD",
   options: {
     encrypt: false,
