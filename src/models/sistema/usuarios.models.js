@@ -1,30 +1,12 @@
 const { poolmysql } = require("../../config/db");
 
-// SELECT * FROM usuarios
-
+// OBTENER TODOS LOS USUARIOS
 function selectAllUsuarios() {
   return poolmysql.query(`
     SELECT * FROM sisusuarios`);
 }
 
-/*
-// SELECT * FROM usuarios by Ida
-async function selectUsuarioById(usuarioId) {
-  const [usuarios] = await pool.query(
-    `
-SELECT * FROM sisusuarios WHERE  id = ?`,
-
-    [usuarioId]
-  );
-
-  if (usuarios.length === 0) {
-    return null;
-  }
-  return usuarios[0];
-}
-*/
-
-// SELECT * FROM usuarios by Id
+// OBTENER USUARIO POR ID
 async function selectUsuarioById(usuarioId) {
   const [usuarios] = await poolmysql.query(
     `
@@ -61,7 +43,24 @@ U.id = ?`,
   return usuarios[0];
 }
 
-// INSERT usuario en Usuarios
+// OBTENER TODOS LOS USUARIOS CON AGENDA-TECNICOS
+function selectAllAgendaTecnicos() {
+  const query = `
+    SELECT u.id, u.nombre, u.apellido
+    FROM sisusuarios_has_sisfunciones uhf
+    JOIN sisusuarios u ON uhf.sisusuarios_id = u.id
+    WHERE uhf.sisfunciones_id = 7;
+  `;
+  return poolmysql
+    .query(query)
+    .then(([rows]) => rows)
+    .catch((error) => {
+      console.error("Error en la consulta SQL:", error);
+      throw error;
+    });
+}
+
+// CREAR USUARIO
 function insertUsuario({
   nombre,
   apellido,
@@ -99,7 +98,7 @@ function insertUsuario({
   );
 }
 
-//
+// ACTUALIZAR USUARIOS
 function updateUsuarioById(
   usuarioId,
   { nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero }
@@ -135,7 +134,7 @@ function updateUsuarioById(
   );
 }
 
-//
+//BORRAR USUARIO
 function deleteUsuario(usuarioId) {
   return poolmysql.query(`DELETE FROM  sisusuarios WHERE id = ?`, [usuarioId]);
 }
@@ -143,6 +142,7 @@ function deleteUsuario(usuarioId) {
 module.exports = {
   selectAllUsuarios,
   selectUsuarioById,
+  selectAllAgendaTecnicos,
   insertUsuario,
   updateUsuarioById,
   deleteUsuario,

@@ -1,21 +1,59 @@
 const jwt = require("jsonwebtoken");
 const { selectUsuarioById } = require("../models/sistema/usuarios.models");
+const {
+  selectSoporteById,
+  selectSoporteByOrdIns,
+} = require("../models/negocio_lat/soportes.models");
 
 const checkUsuarioId = async (req, res, next) => {
   const { usuarioId } = req.params;
-
   // si el usuarioId es un numero
   if (isNaN(usuarioId)) {
     return res.status(400).json({ message: "El id del usuario es incorrecto" });
   }
-
   // si existe en la bbdd
   const usuario = await selectUsuarioById(usuarioId);
-
   if (!usuario) {
     return res.status(404).json({ message: "El id del usuario no existe" });
   }
+  next();
+};
 
+const checkSoporteOrdIns = async (req, res, next) => {
+  const { soporteOrdIns } = req.params;
+  console.log(soporteOrdIns);
+  // si el usuarioId es un numero
+  if (isNaN(soporteOrdIns)) {
+    return res
+      .status(400)
+      .json({ message: "La Ord_Ins del soporte es incorrecto" });
+  }
+  // si existe en la bbdd
+  const soporte = await selectSoporteByOrdIns(soporteOrdIns);
+  if (!soporte) {
+    console.log("NO pasa por midelwafre");
+    return res.status(404).json({ message: "El id del soporte no existe" });
+  }
+  console.log("pasa por midelwafre");
+  next();
+};
+
+const checkSoportesNocId = async (req, res, next) => {
+  const { noc_id } = req.params;
+  console.log(noc_id);
+  // si el usuarioId es un numero
+  if (isNaN(soporteOrdIns)) {
+    return res
+      .status(400)
+      .json({ message: "El noc_id del soporte es incorrecto" });
+  }
+  // si existe en la bbdd
+  const soporte = await selectSoporteByOrdIns(noc_id);
+  if (!soporte) {
+    console.log("NO pasa por midelwafre");
+    return res.status(404).json({ message: "El noc_id del soporte no existe" });
+  }
+  console.log("pasa por midelwafre");
   next();
 };
 
@@ -24,7 +62,7 @@ const checkToken = async (req, res, next) => {
   if (!req.headers["authorization"]) {
     return res.status(403).json({ message: "Authorization no incluida" });
   }
-  const token = req.headers["authorization"];
+  const token = req.headers["authorization"]; // aqui saca el token
   //El token es correcto?
   let data;
   try {
@@ -32,14 +70,18 @@ const checkToken = async (req, res, next) => {
   } catch (error) {
     return res.status(403).json({ message: "Token incorrecto" });
   }
-
   //El usuario codificado en el token existe?
   const usuario = await selectUsuarioById(data.usuario_id);
-
   if (!usuario) {
     return res.status(403).json({ message: "El usuario no existe" });
   }
 
+  req.user = usuario;
   next();
 };
-module.exports = { checkUsuarioId, checkToken };
+module.exports = {
+  checkUsuarioId,
+  checkSoportesNocId,
+  checkSoporteOrdIns,
+  checkToken,
+};

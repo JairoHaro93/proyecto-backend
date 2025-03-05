@@ -1,0 +1,28 @@
+//@url = http://192.168.0.160/api
+@url = http://localhost:3000/api
+
+
+
+//////////////////////////////////////////////////////////////
+///////////////////// CLIENTES //////////////////////////////////
+//OBTENER LOS Datos DE CLIENTES para mapas
+###
+GET {{url}}/clientes
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+
+
+//OBTENER LOS Datos BASICOS de los Clientes
+###
+GET {{url}}/clientes/mapas
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+
+
+//OBTENER LOS Datos BASICOS de los Clientes
+###
+GET {{url}}/clientes/101177
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+
+
+
+
+

@@ -5,6 +5,7 @@ const {
   selectUsuarioById,
   updateUsuarioById,
   deleteUsuario,
+  selectAllAgendaTecnicos,
 } = require("../../models/sistema/usuarios.models");
 const {
   insertFunciones,
@@ -29,6 +30,21 @@ const getUsuarioById = async (req, res, next) => {
     }
     res.json(usuario);
   } catch (error) {
+    next(error);
+  }
+};
+
+const getAllAgendaTecnicos = async (req, res, next) => {
+  try {
+    const result = await selectAllAgendaTecnicos();
+    if (result.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No hay técnicos con acceso a la agenda" });
+    }
+    res.json(result);
+  } catch (error) {
+    console.error("Error al obtener la agenda de técnicos:", error);
     next(error);
   }
 };
@@ -109,6 +125,7 @@ const deleteByID = async (req, res, next) => {
 module.exports = {
   getAllUsuarios,
   getUsuarioById,
+  getAllAgendaTecnicos,
   createUsuario,
   updateUsuario,
   deleteByID,
