@@ -22,11 +22,11 @@ poolmysql.query("SELECT 1", (err, results) => {
 
 // CONFIGURACIÓN DE LA CONEXIÓN SQL SERVER
 const configSQL = {
-  user: process.env.DB_SQL_USER,
-  password: process.env.DB_SQL_PASSWORD,
-  port: Number(process.env.DB_SQL_PORT),
-  server: process.env.DB_SQL_SERVER,
-  database: process.env.DB_SQL_DATABASE,
+  user: process.env.DB_SQL_USER || "sa",
+  password: process.env.DB_SQL_PASSWORD || "sqlserverjairo",
+  port: Number(process.env.DB_SQL_PORT) || 1433,
+  server: process.env.DB_SQL_SERVER || `192.168.0.160`,
+  database: process.env.DB_SQL_DATABASE || "REDECOM_BDD",
   options: {
     encrypt: false,
     trustServerCertificate: true,
@@ -34,7 +34,7 @@ const configSQL = {
 };
 
 const MAX_RETRIES = 5;
-const RETRY_DELAY = 5000; // 5 segundos
+const RETRY_DELAY = 3000; // 5 segundos
 
 async function connectDB(retries = 0) {
   try {
