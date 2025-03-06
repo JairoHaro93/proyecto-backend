@@ -12,8 +12,17 @@ connectDB().then(() => {
   const server = http.createServer(app);
   const io = new Server(server, { cors: { origin: "*" } });
 
+  console.log("🚀 Servidor HTTP y WebSockets inicializándose...");
+
+  // Mostrar información sobre la configuración del servidor y Socket.IO
+  console.log("🌐 Configuración del servidor:");
+  console.log(` - Modo: ${NODE_ENV}`);
+  console.log(` - Puerto: ${PORT}`);
+
   io.on("connection", (socket) => {
-    console.log("Cliente conectado:", socket.id);
+    console.log(
+      `✅ Cliente conectado: ${socket.id} desde ${socket.handshake.address}`
+    );
 
     // Escuchar evento de actualización de soportes desde el cliente
     socket.on("soporteActualizado", () => {
@@ -40,13 +49,14 @@ connectDB().then(() => {
     });
 
     socket.on("disconnect", () => {
-      console.log("Cliente desconectado:", socket.id);
+      console.log(`❌ Cliente desconectado: ${socket.id}`);
     });
   });
 
-  server.listen(PORT, () => {
-    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}/`);
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Servidor corriendo en http://192.168.0.180:${PORT}/`);
     console.log(`🌎 Entorno: ${NODE_ENV}`);
+    console.log(`📡 WebSocket activo en ws://192.168.0.180:${PORT}`);
   });
 
   server.on("error", (error) => {
