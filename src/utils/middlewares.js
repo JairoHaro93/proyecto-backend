@@ -21,7 +21,7 @@ const checkUsuarioId = async (req, res, next) => {
 
 const checkSoporteOrdIns = async (req, res, next) => {
   const { soporteOrdIns } = req.params;
-  console.log(soporteOrdIns);
+
   // si el usuarioId es un numero
   if (isNaN(soporteOrdIns)) {
     return res
@@ -31,16 +31,15 @@ const checkSoporteOrdIns = async (req, res, next) => {
   // si existe en la bbdd
   const soporte = await selectSoporteByOrdIns(soporteOrdIns);
   if (!soporte) {
-    console.log("NO pasa por midelwafre");
     return res.status(404).json({ message: "El id del soporte no existe" });
   }
-  console.log("pasa por midelwafre");
+
   next();
 };
 
 const checkSoportesNocId = async (req, res, next) => {
   const { noc_id } = req.params;
-  console.log(noc_id);
+
   // si el usuarioId es un numero
   if (isNaN(soporteOrdIns)) {
     return res
@@ -50,10 +49,9 @@ const checkSoportesNocId = async (req, res, next) => {
   // si existe en la bbdd
   const soporte = await selectSoporteByOrdIns(noc_id);
   if (!soporte) {
-    console.log("NO pasa por midelwafre");
     return res.status(404).json({ message: "El noc_id del soporte no existe" });
   }
-  console.log("pasa por midelwafre");
+
   next();
 };
 

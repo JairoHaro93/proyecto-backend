@@ -6,7 +6,7 @@ const login = async (req, res, next) => {
   //Existe el usuairo en la BD?
   const { usuario, password } = req.body;
   const result = await selectByUsuario(usuario);
-  console.log(result);
+
   if (!result) {
     return res
       .status(401)
