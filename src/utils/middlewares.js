@@ -20,16 +20,16 @@ const checkUsuarioId = async (req, res, next) => {
 };
 
 const checkSoporteOrdIns = async (req, res, next) => {
-  const { soporteOrdIns } = req.params;
+  const { soporteId } = req.params;
 
   // si el usuarioId es un numero
-  if (isNaN(soporteOrdIns)) {
+  if (isNaN(soporteId)) {
     return res
       .status(400)
       .json({ message: "La Ord_Ins del soporte es incorrecto" });
   }
   // si existe en la bbdd
-  const soporte = await selectSoporteByOrdIns(soporteOrdIns);
+  const soporte = await selectSoporteByOrdIns(soporteId);
   if (!soporte) {
     return res.status(404).json({ message: "El id del soporte no existe" });
   }

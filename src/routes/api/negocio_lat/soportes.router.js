@@ -29,7 +29,7 @@ router.get("/pendientes", checkToken, getAllSoportesPendientes);
 router.get("/listar-tecnico", getAllSoportesParaTec);
 
 //OBTIENE UN SOPORTE POR ORDEN DE INSTALACION
-router.get("/:soporteOrdIns", checkSoporteOrdIns, getSoporteByOrdIns);
+router.get("/:soporteId", checkSoporteOrdIns, getSoporteById);
 
 //NOC RECIBE LA INFORMACION DE LOS SOPORTES ACEPTADOS
 router.get("/mis-soportes/:noc_id", getAllSoportesByNoc);
@@ -38,10 +38,10 @@ router.get("/mis-soportes/:noc_id", getAllSoportesByNoc);
 router.post("/", createSoporte);
 
 //NOC ACTUALIZA LA TABLA CON SU USUARIO Y HORA DE ACEPTACION
-router.put("/:soporteOrdIns", aceptarSoporte);
+router.put("/:soporteId", aceptarSoporte);
 
 //NOC ACTUALIZA LA TABLA SOLUCION
-router.put("/mis-soportes/solucion/:soporteOrdIns", asignarSolucion);
+router.put("/mis-soportes/solucion/:soporteId", asignarSolucion);
 
 //NOC ASIGNA UN TECNICO PARA SOPORTE
 router.put("/asignar-tecnico/:soporteOrdIns", asignarTecnico);

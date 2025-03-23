@@ -69,7 +69,8 @@ async function selectSoporteById(soporteId) {
       Sop.reg_sop_observaciones,
       Sop.reg_sop_fecha,
       Sop.reg_sop_estado,
-      Sop.reg_sop_nombre
+      Sop.reg_sop_nombre,
+      Sop.reg_sop_fecha_acepta
   FROM
       neg_t_soportes AS Sop
   LEFT JOIN sisusuarios AS U ON Sop.reg_sop_registrado_por_id = U.id
@@ -117,7 +118,7 @@ async function selectSoporteByOrdIns(soporteOrdIns) {
 }
 
 // QUERY PARA ACTUALIZAR LA SOLUCION  --PAGINA INFO-SOP  /home/noc/info-sop/99847
-async function updateAsignarSolucion(soporteOrdIns, { reg_sop_estado }) {
+async function updateAsignarSolucion(soporteId, { reg_sop_estado }) {
   try {
     // Desactiva "Safe Updates" temporalmente
     await poolmysql.query(`SET SQL_SAFE_UPDATES = 0;`);
@@ -128,9 +129,9 @@ async function updateAsignarSolucion(soporteOrdIns, { reg_sop_estado }) {
         UPDATE neg_t_soportes 
         SET 
             reg_sop_estado = ?
-        WHERE ord_ins = ?
+        WHERE id = ?
       ;`,
-      [reg_sop_estado, soporteOrdIns]
+      [reg_sop_estado, soporteId]
     );
 
     // Reactiva "Safe Updates"
@@ -202,10 +203,7 @@ function insertSoporte({
 }
 
 // QUERY PARA QUE NOC ACEPTE EL SOPORTE
-async function aceptarSoporteByOrdIns(
-  soporteOrdIns,
-  { reg_sop_noc_id_acepta }
-) {
+async function aceptarSoporteById(soporteId, { reg_sop_noc_id_acepta }) {
   try {
     // Desactiva "Safe Updates" temporalmente
     await poolmysql.query(`SET SQL_SAFE_UPDATES = 0;`);
@@ -218,9 +216,9 @@ async function aceptarSoporteByOrdIns(
             reg_sop_estado = 'REVISION',
             reg_sop_fecha_acepta = COALESCE(reg_sop_fecha_acepta, NOW()), 
             reg_sop_noc_id_acepta = ?
-        WHERE ord_ins = ?;
+        WHERE id = ?;
       `,
-      [reg_sop_noc_id_acepta, soporteOrdIns]
+      [reg_sop_noc_id_acepta, soporteId]
     );
 
     // Reactiva "Safe Updates"
@@ -283,7 +281,7 @@ module.exports = {
   updateAsignarTecnico,
   updateAsignarSolucion,
   insertSoporte,
-  aceptarSoporteByOrdIns,
+  aceptarSoporteById,
   selectSoportesByNoc,
   deleteUsuario,
 };

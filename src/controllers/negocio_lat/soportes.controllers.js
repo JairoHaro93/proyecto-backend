@@ -4,7 +4,7 @@ const {
   insertSoporte,
   selectAllSoportesPendientes,
   selectSoporteByOrdIns,
-  aceptarSoporteByOrdIns,
+  aceptarSoporteById,
   selectSoportesByNoc,
   updateAsignarSolucion,
   updateAsignarTecnico,
@@ -113,11 +113,11 @@ const createSoporte = async (req, res, next) => {
 
 //CONTROLADOR PARA QUE NOC ACPETE EL SOPORTE
 const aceptarSoporte = async (req, res, next) => {
-  const { soporteOrdIns } = req.params;
+  const { soporteId } = req.params;
 
   try {
-    await aceptarSoporteByOrdIns(soporteOrdIns, req.body);
-    const soporte = await selectSoporteByOrdIns(soporteOrdIns);
+    await aceptarSoporteById(soporteId, req.body);
+    const soporte = await selectSoporteById(soporteId);
     res.json(soporte);
   } catch (error) {
     next(error);
@@ -126,11 +126,11 @@ const aceptarSoporte = async (req, res, next) => {
 
 //CONTROLADOR PARA QUE NOC ASIGNE UNA SOLUCION
 const asignarSolucion = async (req, res, next) => {
-  const { soporteOrdIns } = req.params;
+  const { soporteId } = req.params;
 
   try {
-    await updateAsignarSolucion(soporteOrdIns, req.body);
-    const soporte = await selectSoporteByOrdIns(soporteOrdIns);
+    await updateAsignarSolucion(soporteId, req.body);
+    const soporte = await selectSoporteById(soporteId);
     res.json(soporte);
   } catch (error) {
     next(error);
