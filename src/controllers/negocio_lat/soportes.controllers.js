@@ -87,10 +87,22 @@ const getAllSoportesParaTec = async (req, res, next) => {
 //CONTROLADOR PARA CREAR UN SOPORTE
 const createSoporte = async (req, res, next) => {
   try {
-    // Inserta el nuevo usuario
-    const [result] = await insertSoporte(req.body);
+    const { ord_ins } = req.body;
 
-    // Recupera el soporte insertado
+    // Verifica si ya existe un soporte para esta orden
+    const soportes = await selectSoporteByOrdIns(ord_ins);
+
+    // Si alguno no está resuelto, no se permite crear uno nuevo
+    const soporteActivo = soportes.find((s) => s.reg_sop_estado !== "RESUELTO");
+
+    if (soporteActivo) {
+      return res.status(400).json({
+        message: "Ya existe un soporte activo para esta orden de instalación.",
+      });
+    }
+
+    // Inserta el nuevo soporte
+    const [result] = await insertSoporte(req.body);
     const soporte = await selectSoporteById(result.insertId);
 
     res.json(soporte);
