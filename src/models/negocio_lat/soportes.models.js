@@ -65,7 +65,7 @@ async function selectSoporteById(soporteId) {
       Sop.reg_sop_opc,
       Sop.cli_tel,
       Sop.reg_sop_registrado_por_id,
-      CONCAT(U.nombre, ' ', U.apellido) AS registrado_por_nombre,
+      CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
       Sop.reg_sop_observaciones,
       Sop.reg_sop_fecha,
       Sop.reg_sop_estado,
@@ -145,7 +145,7 @@ async function updateAsignarSolucion(soporteId, { reg_sop_estado }) {
 }
 
 // QUERY PARA ACTUALIZAR Y ASIGNAR UN TECNICO  --PAGINA ASIGNAR-TRABAJOS  /home/noc/asignar-trabajos
-async function updateAsignarTecnico(soporteOrdIns, { reg_sop_tec_asignado }) {
+async function updateAsignarTecnico(soporteId, { reg_sop_tec_asignado }) {
   try {
     // Desactiva "Safe Updates" temporalmente
     await poolmysql.query(`SET SQL_SAFE_UPDATES = 0;`);
@@ -156,9 +156,9 @@ async function updateAsignarTecnico(soporteOrdIns, { reg_sop_tec_asignado }) {
         UPDATE neg_t_soportes 
         SET 
             reg_sop_tec_asignado = ?
-        WHERE ord_ins = ?
+        WHERE id = ?
       ;`,
-      [reg_sop_tec_asignado, soporteOrdIns]
+      [reg_sop_tec_asignado, soporteId]
     );
 
     // Reactiva "Safe Updates"

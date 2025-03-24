@@ -44,6 +44,6 @@ router.put("/:soporteId", aceptarSoporte);
 router.put("/mis-soportes/solucion/:soporteId", asignarSolucion);
 
 //NOC ASIGNA UN TECNICO PARA SOPORTE
-router.put("/asignar-tecnico/:soporteOrdIns", asignarTecnico);
+router.put("/asignar-tecnico/:soporteId", asignarTecnico);
 
 module.exports = router;

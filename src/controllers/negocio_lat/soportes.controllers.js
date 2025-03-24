@@ -139,11 +139,11 @@ const asignarSolucion = async (req, res, next) => {
 
 //CONTROLADOR PARA QUE NOC ASIGNE UNA SOLUCION
 const asignarTecnico = async (req, res, next) => {
-  const { soporteOrdIns } = req.params;
+  const { soporteId } = req.params;
 
   try {
-    await updateAsignarTecnico(soporteOrdIns, req.body);
-    const soporte = await selectSoporteByOrdIns(soporteOrdIns);
+    await updateAsignarTecnico(soporteId, req.body);
+    const soporte = await selectSoporteById(soporteId);
     res.json(soporte);
   } catch (error) {
     next(error);
