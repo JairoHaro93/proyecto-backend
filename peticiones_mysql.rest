@@ -183,3 +183,33 @@ Content-Type: application/json
 { 
     "reg_sop_tec_asignado":78
 }
+
+
+
+//////////////////////////////////////////////////////////////
+///////////////////// AGENDA //////////////////////////////////
+
+//OBTENER TODOS LA AGENDA DE UNA FECHA ESPECIFICA
+###
+GET {{url}}/agenda/2025-03-26
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+
+
+
+
+
+//OBTENER TODOS LA AGENDA DE UNA FECHA ESPECIFICA
+###
+POST {{url}}/agenda/crear
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Content-Type: application/json
+
+{
+  "age_nombre": "Cliente X",
+  "age_coordenadas": "10.12345,-64.56789",
+  "age_hora_inicio": "09:00:00",
+  "age_hora_fin": "10:00:00",
+  "age_fecha": "2025-03-27",
+  "age_vehiculo": "Camioneta A",
+  "age_tecnico": "Tecnico 1"
+}

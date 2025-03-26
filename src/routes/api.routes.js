@@ -7,4 +7,5 @@ router.use("/login", require("./api/sistema/login.routes"));
 router.use("/funciones", checkToken, require("./api/sistema/funciones.routes"));
 router.use("/clientes", require("./api/negocio/clientes.router"));
 router.use("/soportes", require("./api/negocio_lat/soportes.router"));
+router.use("/agenda", require("./api/negocio_lat/agenda.router"));
 module.exports = router;

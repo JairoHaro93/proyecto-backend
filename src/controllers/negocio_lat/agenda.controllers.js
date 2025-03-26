@@ -1,22 +1,33 @@
 const {
   selectAgendByFecha,
+  insertAgenda,
 } = require("../../models/negocio_lat/agenda.models");
 
-//CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
-const getAgendaById = async (req, res, next) => {
+// CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
+const getAgendaByFecha = async (req, res, next) => {
   try {
-    const [result] = await selectAgendByFecha();
+    const { fecha } = req.params;
 
-    if (!result || result.length === 0) {
-      return res.json([]); // Devuelve un array vacío en lugar de 404
-    }
+    const result = await selectAgendByFecha(fecha);
 
-    res.json(result);
+    res.json(result); // Si está vacío, devuelve []
+  } catch (error) {
+    next(error);
+  }
+};
+
+// CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
+
+const postAgenda = async (req, res, next) => {
+  try {
+    const newAgenda = req.body;
+    const insertId = await insertAgenda(newAgenda);
+    res.status(201).json({ message: "Agenda registrada", id: insertId });
   } catch (error) {
     next(error);
   }
 };
 
 module.exports = {
-  getAgendaById,
+  getAgendaByFecha,postAgenda,
 };
