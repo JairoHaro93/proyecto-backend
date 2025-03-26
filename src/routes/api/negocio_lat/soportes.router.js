@@ -26,24 +26,24 @@ router.get("/", checkToken, getAllDataSoportes);
 router.get("/pendientes", checkToken, getAllSoportesPendientes);
 
 //NOC RECIBE LA INFORMACION DE LOS SOPORTES POSIBLES PARA ASIGNAR A UN TECNICO, (VISITA Y LOS)
-router.get("/listar-tecnico", getAllSoportesParaTec);
+router.get("/listar-tecnico", checkToken, getAllSoportesParaTec);
 
 //OBTIENE UN SOPORTE POR ORDEN DE INSTALACION
-router.get("/:soporteId", checkSoporteOrdIns, getSoporteById);
+router.get("/:soporteId", checkToken, checkSoporteOrdIns, getSoporteById);
 
 //NOC RECIBE LA INFORMACION DE LOS SOPORTES ACEPTADOS
-router.get("/mis-soportes/:noc_id", getAllSoportesByNoc);
+router.get("/mis-soportes/:noc_id", checkToken, getAllSoportesByNoc);
 
 //CREA UN SOPORTE
-router.post("/", createSoporte);
+router.post("/", checkToken, createSoporte);
 
 //NOC ACTUALIZA LA TABLA CON SU USUARIO Y HORA DE ACEPTACION
-router.put("/:soporteId", aceptarSoporte);
+router.put("/:soporteId", checkToken, aceptarSoporte);
 
 //NOC ACTUALIZA LA TABLA SOLUCION
-router.put("/mis-soportes/solucion/:soporteId", asignarSolucion);
+router.put("/mis-soportes/solucion/:soporteId", checkToken, asignarSolucion);
 
 //NOC ASIGNA UN TECNICO PARA SOPORTE
-router.put("/asignar-tecnico/:soporteId", asignarTecnico);
+router.put("/asignar-tecnico/:soporteId", checkToken, asignarTecnico);
 
 module.exports = router;

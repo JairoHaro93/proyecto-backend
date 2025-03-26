@@ -9,7 +9,7 @@ function selectAllSoportes() {
 // QUERY PARA OBTENER LOS SOPORTES PENDIENTES  --PAGINA SOPORTES PENDIENTES /home/noc/soporte-tecnico
 function selectAllSoportesPendientes() {
   return poolmysql.query(`
-     SELECT 
+ SELECT 
     Sop.id,
     Sop.ord_ins,
     Sop.reg_sop_opc,
@@ -24,7 +24,8 @@ FROM
     neg_t_soportes AS Sop
 LEFT JOIN sisusuarios AS U ON Sop.reg_sop_registrado_por_id = U.id
 WHERE  
-    Sop.reg_sop_estado = 'ABIERTO';
+    Sop.reg_sop_fecha_acepta IS NULL;
+
 
       `);
 }
@@ -44,6 +45,7 @@ function selectAllSoportesParaTec() {
     Sop.reg_sop_estado,
     Sop.reg_sop_nombre,
     Sop.reg_sop_tec_asignado,
+           Sop.reg_sop_coordenadas,
     CONCAT(Tec.nombre, ' ', Tec.apellido) AS nombre_tecnico
 FROM
     neg_t_soportes AS Sop
@@ -70,7 +72,9 @@ async function selectSoporteById(soporteId) {
       Sop.reg_sop_fecha,
       Sop.reg_sop_estado,
       Sop.reg_sop_nombre,
-      Sop.reg_sop_fecha_acepta
+      Sop.reg_sop_fecha_acepta,
+       Sop.reg_sop_coordenadas,
+       Sop.reg_sop_sol_det
   FROM
       neg_t_soportes AS Sop
   LEFT JOIN sisusuarios AS U ON Sop.reg_sop_registrado_por_id = U.id
@@ -103,7 +107,8 @@ async function selectSoporteByOrdIns(soporteOrdIns) {
         Sop.reg_sop_fecha,
         Sop.reg_sop_estado,
         Sop.reg_sop_nombre,
-        Sop.reg_sop_fecha_acepta
+        Sop.reg_sop_fecha_acepta,
+        Sop.reg_sop_sol_det
     FROM
         neg_t_soportes AS Sop
     LEFT JOIN sisusuarios AS U ON Sop.reg_sop_registrado_por_id = U.id
@@ -118,7 +123,10 @@ async function selectSoporteByOrdIns(soporteOrdIns) {
 }
 
 // QUERY PARA ACTUALIZAR LA SOLUCION  --PAGINA INFO-SOP  /home/noc/info-sop/99847
-async function updateAsignarSolucion(soporteId, { reg_sop_estado }) {
+async function updateAsignarSolucion(
+  soporteId,
+  { reg_sop_estado, reg_sop_sol_det }
+) {
   try {
     // Desactiva "Safe Updates" temporalmente
     await poolmysql.query(`SET SQL_SAFE_UPDATES = 0;`);
@@ -128,10 +136,11 @@ async function updateAsignarSolucion(soporteId, { reg_sop_estado }) {
       `
         UPDATE neg_t_soportes 
         SET 
-            reg_sop_estado = ?
+            reg_sop_estado = ?,
+            reg_sop_sol_det = ?
         WHERE id = ?
       ;`,
-      [reg_sop_estado, soporteId]
+      [reg_sop_estado, reg_sop_sol_det, soporteId]
     );
 
     // Reactiva "Safe Updates"
@@ -179,6 +188,7 @@ function insertSoporte({
   reg_sop_registrado_por_id,
   reg_sop_observaciones,
   reg_sop_nombre,
+  reg_sop_coordenadas,
 }) {
   return poolmysql.query(
     `INSERT INTO neg_t_soportes (
@@ -188,9 +198,11 @@ function insertSoporte({
         reg_sop_registrado_por_id,
         reg_sop_observaciones,
         reg_sop_nombre,
+         reg_sop_coordenadas,
         reg_sop_fecha
+       
       
-      ) VALUES (?, ?, ?, ?, ?, ?, NOW());`, // NOW() insertará la fecha y hora actuales
+      ) VALUES (?, ?, ?, ?, ?, ?, ? , NOW());`, // NOW() insertará la fecha y hora actuales
     [
       ord_ins,
       reg_sop_opc,
@@ -198,6 +210,7 @@ function insertSoporte({
       reg_sop_registrado_por_id,
       reg_sop_observaciones,
       reg_sop_nombre,
+      reg_sop_coordenadas,
     ]
   );
 }
@@ -213,7 +226,7 @@ async function aceptarSoporteById(soporteId, { reg_sop_noc_id_acepta }) {
       `
         UPDATE neg_t_soportes 
         SET 
-            reg_sop_estado = 'REVISION',
+           
             reg_sop_fecha_acepta = COALESCE(reg_sop_fecha_acepta, NOW()), 
             reg_sop_noc_id_acepta = ?
         WHERE id = ?;
