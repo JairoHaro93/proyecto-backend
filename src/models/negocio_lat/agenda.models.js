@@ -4,8 +4,15 @@ const { poolmysql } = require("../../config/db");
 async function selectAgendByFecha(fecha) {
   const [agendas] = await poolmysql.query(
     `
-    SELECT * 
-    FROM neg_t_agenda 
+   SELECT 
+  a.*, 
+  s.cli_tel, 
+  s.reg_sop_coordenadas,
+  s.reg_sop_tec_asignado
+FROM 
+  neg_t_agenda a
+JOIN 
+  neg_t_soportes s ON a.age_id_sop = s.id
     WHERE age_fecha = ?
     `,
     [fecha]
@@ -13,7 +20,6 @@ async function selectAgendByFecha(fecha) {
 
   return agendas; // Devuelve directamente el array (aunque esté vacío)
 }
-
 
 // QUERY PARA OBTENER TODOS LOS DATOS PREAGENDA
 async function selectPreAgenda() {
@@ -23,7 +29,8 @@ async function selectPreAgenda() {
 SELECT 
   a.*, 
   s.cli_tel, 
-  s.reg_sop_coordenadas
+  s.reg_sop_coordenadas,
+  s.reg_sop_tec_asignado
 FROM 
   neg_t_agenda a
 JOIN 
@@ -32,13 +39,11 @@ WHERE
   a.age_fecha IS NULL;
 
 
-    `,
-    
+    `
   );
 
   return preagendas; // Devuelve directamente el array (aunque esté vacío)
 }
-
 
 // QUERY PARA OBTENER TODOS LOS DATOS AGENDADOS
 async function selectAgenda() {
@@ -47,8 +52,7 @@ async function selectAgenda() {
     SELECT * 
     FROM neg_t_agenda 
    
-    `,
-    
+    `
   );
 
   return agendas; // Devuelve directamente el array (aunque esté vacío)
@@ -56,12 +60,11 @@ async function selectAgenda() {
 
 // QUERY PARA CREAR UN CASO EN LA AGENDA
 async function insertAgenda({
- 
   age_hora_inicio,
   age_hora_fin,
   age_fecha,
   age_vehiculo,
-  age_tecnico
+  age_tecnico,
 }) {
   const [result] = await poolmysql.query(
     `
@@ -75,15 +78,7 @@ async function insertAgenda({
       age_tecnico
     ) VALUES (  ?, ?, ?, ?, ?)
     `,
-    [
-     
-     
-      age_hora_inicio,
-      age_hora_fin,
-      age_fecha,
-      age_vehiculo,
-      age_tecnico
-    ]
+    [age_hora_inicio, age_hora_fin, age_fecha, age_vehiculo, age_tecnico]
   );
 
   return result.insertId; // Puedes devolver el ID generado
@@ -99,17 +94,17 @@ async function insertAgendaSop({ age_ord_ins, age_id_sop }) {
       age_id_sop
     ) VALUES (?, ?, ?)
     `,
-    ['S', age_ord_ins, age_id_sop]
+    ["S", age_ord_ins, age_id_sop]
   );
 
   return result.insertId;
 }
 
-
-
-
 // QUERY PARA ACTUALIZAR LOS CAMPOS DE HORARIO EN LA AGENDA
-async function updateHorario(age_id, { age_hora_inicio, age_hora_fin, age_fecha }) {
+async function updateHorario(
+  age_id,
+  { age_hora_inicio, age_hora_fin, age_fecha }
+) {
   try {
     // Desactiva "Safe Updates" temporalmente
     await poolmysql.query(`SET SQL_SAFE_UPDATES = 0;`);
@@ -137,6 +132,10 @@ async function updateHorario(age_id, { age_hora_inicio, age_hora_fin, age_fecha 
   }
 }
 
-
-
-module.exports = { selectAgendByFecha,selectPreAgenda ,insertAgenda ,updateHorario,insertAgendaSop};
+module.exports = {
+  selectAgendByFecha,
+  selectPreAgenda,
+  insertAgenda,
+  updateHorario,
+  insertAgendaSop,
+};
