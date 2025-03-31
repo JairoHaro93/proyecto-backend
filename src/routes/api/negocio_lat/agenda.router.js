@@ -25,14 +25,14 @@ router.get("/:fecha", checkToken, getAgendaByFecha);
 // CREA UN TRABAJO EN LA AGENDA
 router.post("/crear", checkToken, postAgenda);
 
-// CREA UN TRABAJO EN LA AGENDA
+// CREA UN SOPORTE EN LA AGENDA
 router.post("/agenda-sop", checkToken, postAgendaSop);
 
 //NOC ASIGNA UN TECNICO EN AGENDA
 router.put("/asignar-tecnico/:soporteId", checkToken, asignarTecnicoAge);
 
 // INSERTA UNA FECHA Y HORA PARA EL TRABAJO
-router.put("/crear/:age_id", checkToken, putAgenda);
+router.put("/edita/:age_id", checkToken, putAgenda);
 
 
 

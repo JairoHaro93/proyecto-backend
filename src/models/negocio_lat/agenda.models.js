@@ -69,8 +69,6 @@ async function insertAgenda({
   const [result] = await poolmysql.query(
     `
     INSERT INTO neg_t_agenda (
-      
-      
       age_hora_inicio,
       age_hora_fin,
       age_fecha,
@@ -85,7 +83,7 @@ async function insertAgenda({
 }
 
 // QUERY PARA CREAR UN CASO EN LA AGENDA
-async function insertAgendaSop({ age_ord_ins, age_id_sop }) {
+async function insertAgendaSop({ age_tipo,age_ord_ins, age_id_sop }) {
   const [result] = await poolmysql.query(
     `
     INSERT INTO neg_t_agenda (
@@ -94,7 +92,7 @@ async function insertAgendaSop({ age_ord_ins, age_id_sop }) {
       age_id_sop
     ) VALUES (?, ?, ?)
     `,
-    ["S", age_ord_ins, age_id_sop]
+    [age_tipo, age_ord_ins, age_id_sop]
   );
 
   return result.insertId;
@@ -103,7 +101,7 @@ async function insertAgendaSop({ age_ord_ins, age_id_sop }) {
 // QUERY PARA ACTUALIZAR LOS CAMPOS DE HORARIO EN LA AGENDA
 async function updateHorario(
   age_id,
-  { age_hora_inicio, age_hora_fin, age_fecha }
+  { age_hora_inicio, age_hora_fin, age_fecha , age_vehiculo}
 ) {
   try {
     // Desactiva "Safe Updates" temporalmente
@@ -114,12 +112,13 @@ async function updateHorario(
       `
       UPDATE neg_t_agenda 
       SET 
+        age_vehiculo = ?,
         age_hora_inicio = ?,
         age_hora_fin = ?,
         age_fecha = ?
       WHERE id = ?
       `,
-      [age_hora_inicio, age_hora_fin, age_fecha, age_id]
+      [age_vehiculo,age_hora_inicio, age_hora_fin, age_fecha, age_id]
     );
 
     // Reactiva "Safe Updates"
