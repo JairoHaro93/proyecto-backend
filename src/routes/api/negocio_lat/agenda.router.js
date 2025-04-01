@@ -1,5 +1,4 @@
 const {
-
   getAgendaByFecha,
   postAgenda,
   asignarTecnicoAge,
@@ -10,8 +9,6 @@ const {
 const { checkToken } = require("../../../utils/middlewares");
 
 const router = require("express").Router();
-
-
 
 // OBTIENE TODOS LOS TRABAJOS PRE AGENDA
 router.get("/", checkToken, getPreAgenda);
@@ -28,12 +25,10 @@ router.post("/crear", checkToken, postAgenda);
 // CREA UN SOPORTE EN LA AGENDA
 router.post("/agenda-sop", checkToken, postAgendaSop);
 
-//NOC ASIGNA UN TECNICO EN AGENDA
-router.put("/asignar-tecnico/:soporteId", checkToken, asignarTecnicoAge);
+//NOC ACTUALIZA UN TECNICO DEL TRABAJO DE LA AGENDA
+router.put("/asignar-tecnico/:id_sop", checkToken, asignarTecnicoAge);
 
 // INSERTA UNA FECHA Y HORA PARA EL TRABAJO
 router.put("/edita/:age_id", checkToken, putAgenda);
-
-
 
 module.exports = router;

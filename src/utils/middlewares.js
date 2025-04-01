@@ -20,16 +20,16 @@ const checkUsuarioId = async (req, res, next) => {
 };
 
 const checkSoporteOrdIns = async (req, res, next) => {
-  const { soporteId } = req.params;
+  const { id_sop } = req.params;
 
   // si el usuarioId es un numero
-  if (isNaN(soporteId)) {
+  if (isNaN(id_sop)) {
     return res
       .status(400)
       .json({ message: "La Ord_Ins del soporte es incorrecto" });
   }
   // si existe en la bbdd
-  const soporte = await selectSoporteByOrdIns(soporteId);
+  const soporte = await selectSoporteByOrdIns(id_sop);
   if (!soporte) {
     return res.status(404).json({ message: "El id del soporte no existe" });
   }
@@ -38,16 +38,16 @@ const checkSoporteOrdIns = async (req, res, next) => {
 };
 
 const checkSoportesNocId = async (req, res, next) => {
-  const { noc_id } = req.params;
+  const { id_noc } = req.params;
 
   // si el usuarioId es un numero
-  if (isNaN(soporteOrdIns)) {
+  if (isNaN(id_noc)) {
     return res
       .status(400)
       .json({ message: "El noc_id del soporte es incorrecto" });
   }
   // si existe en la bbdd
-  const soporte = await selectSoporteByOrdIns(noc_id);
+  const soporte = await selectSoporteByOrdIns(id_noc);
   if (!soporte) {
     return res.status(404).json({ message: "El noc_id del soporte no existe" });
   }

@@ -8,7 +8,6 @@ const {
   selectSoportesByNoc,
   updateAsignarSolucion,
   updateAsignarTecnico,
-  selectAllSoportesParaTec,
 } = require("../../models/negocio_lat/soportes.models");
 
 //CONTROLADOR PARA OBTENER TODOS LOS SOPORTES
@@ -28,9 +27,9 @@ const getAllDataSoportes = async (req, res, next) => {
 
 //CONTROLADOR PARA OBTENER UN SOPORTE POR ID
 const getSoporteById = async (req, res, next) => {
-  const { soporteId } = req.params;
+  const { id_sop } = req.params;
   try {
-    const soporte = await selectSoporteById(soporteId);
+    const soporte = await selectSoporteById(id_sop);
     if (!soporte) {
       return res.status(404).json({ message: "El ID de soporte no existe." });
     }
@@ -69,21 +68,6 @@ const getAllSoportesPendientes = async (req, res, next) => {
   }
 };
 
-//CONTROLADOR PARA OBTENER TODOS LOS SOPORTES VISITA Y LOS
-const getAllSoportesParaTec = async (req, res, next) => {
-  try {
-    const [result] = await selectAllSoportesParaTec();
-    // Verificamos si el array está vacío
-
-    if (!result || result.length === 0) {
-      return res.json([]); // Devuelve un array vacío en lugar de 404
-    }
-    res.json(result); // Enviar la respuesta con el JSON estructurado
-  } catch (error) {
-    next(error);
-  }
-};
-
 //CONTROLADOR PARA CREAR UN SOPORTE
 const createSoporte = async (req, res, next) => {
   try {
@@ -93,7 +77,12 @@ const createSoporte = async (req, res, next) => {
     const soportes = await selectSoporteByOrdIns(ord_ins);
 
     // Si alguno no está resuelto, no se permite crear uno nuevo
-    const soporteActivo = soportes.find((s) => s.reg_sop_estado !== "RESUELTO");
+    const soporteActivo = soportes.find(
+      (s) =>
+        s.reg_sop_estado !== "RESUELTO" ||
+        s.reg_sop_estado !== "LOS" ||
+        s.reg_sop_estado !== "VISITA"
+    );
 
     if (soporteActivo) {
       return res.status(400).json({
@@ -113,11 +102,11 @@ const createSoporte = async (req, res, next) => {
 
 //CONTROLADOR PARA QUE NOC ACPETE EL SOPORTE
 const aceptarSoporte = async (req, res, next) => {
-  const { soporteId } = req.params;
+  const { id_sop } = req.params;
 
   try {
-    await aceptarSoporteById(soporteId, req.body);
-    const soporte = await selectSoporteById(soporteId);
+    await aceptarSoporteById(id_sop, req.body);
+    const soporte = await selectSoporteById(id_sop);
     res.json(soporte);
   } catch (error) {
     next(error);
@@ -126,11 +115,11 @@ const aceptarSoporte = async (req, res, next) => {
 
 //CONTROLADOR PARA QUE NOC ASIGNE UNA SOLUCION
 const asignarSolucion = async (req, res, next) => {
-  const { soporteId } = req.params;
+  const { id_sop } = req.params;
 
   try {
-    await updateAsignarSolucion(soporteId, req.body);
-    const soporte = await selectSoporteById(soporteId);
+    await updateAsignarSolucion(id_sop, req.body);
+    const soporte = await selectSoporteById(id_sop);
     res.json(soporte);
   } catch (error) {
     next(error);
@@ -139,11 +128,11 @@ const asignarSolucion = async (req, res, next) => {
 
 //CONTROLADOR PARA QUE NOC ASIGNE UNA SOLUCION
 const asignarTecnico = async (req, res, next) => {
-  const { soporteId } = req.params;
+  const { id_sop } = req.params;
 
   try {
-    await updateAsignarTecnico(soporteId, req.body);
-    const soporte = await selectSoporteById(soporteId);
+    await updateAsignarTecnico(id_sop, req.body);
+    const soporte = await selectSoporteById(id_sop);
     res.json(soporte);
   } catch (error) {
     next(error);
@@ -152,9 +141,9 @@ const asignarTecnico = async (req, res, next) => {
 
 // CONTROLADOR PARA OBTENER TODOS LOS SOPORTES DE NOC
 const getAllSoportesByNoc = async (req, res, next) => {
-  const { noc_id } = req.params;
+  const { id_noc } = req.params;
   try {
-    const soporte = await selectSoportesByNoc(noc_id);
+    const soporte = await selectSoportesByNoc(id_noc);
 
     if (!soporte || soporte.length === 0) {
       return res.json([]); // Devuelve un array vacío en lugar de 404
@@ -171,7 +160,6 @@ module.exports = {
   getSoporteById,
   getSoporteByOrdIns,
   asignarSolucion,
-  getAllSoportesParaTec,
   asignarTecnico,
   getAllSoportesPendientes,
   createSoporte,

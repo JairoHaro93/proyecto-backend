@@ -4,15 +4,12 @@ const {
   getSoporteById,
   getAllSoportesPendientes,
   aceptarSoporte,
-  getSoporteByOrdIns,
   getAllSoportesByNoc,
   asignarSolucion,
   asignarTecnico,
-  getAllSoportesParaTec,
 } = require("../../../controllers/negocio_lat/soportes.controllers");
 const {
   checkToken,
-  checkSoporteId,
   checkSoporteOrdIns,
   checkSoportesNocId,
 } = require("../../../utils/middlewares");
@@ -25,25 +22,27 @@ router.get("/", checkToken, getAllDataSoportes);
 // OBTIENE LOS SOPORTES PENDIENTES
 router.get("/pendientes", checkToken, getAllSoportesPendientes);
 
-//NOC RECIBE LA INFORMACION DE LOS SOPORTES POSIBLES PARA ASIGNAR A UN TECNICO, (VISITA Y LOS)
-router.get("/listar-tecnico", checkToken, getAllSoportesParaTec);
-
 //OBTIENE UN SOPORTE POR ORDEN DE INSTALACION
-router.get("/:soporteId", checkToken, checkSoporteOrdIns, getSoporteById);
+router.get("/:id_sop", checkToken, checkSoporteOrdIns, getSoporteById);
 
 //NOC RECIBE LA INFORMACION DE LOS SOPORTES ACEPTADOS
-router.get("/mis-soportes/:noc_id", checkToken, getAllSoportesByNoc);
+router.get(
+  "/mis-soportes/:id_noc",
+  checkSoportesNocId,
+  checkToken,
+  getAllSoportesByNoc
+);
 
 //CREA UN SOPORTE
 router.post("/", checkToken, createSoporte);
 
-//NOC ACTUALIZA LA TABLA CON SU USUARIO Y HORA DE ACEPTACION
-router.put("/:soporteId", checkToken, aceptarSoporte);
+//NOC ACEPTA Y ACTUALIZA LA TABLA CON SU USUARIO Y HORA DE ACEPTACION
+router.put("/:id_sop", checkToken, aceptarSoporte);
 
 //NOC ACTUALIZA LA TABLA SOLUCION
-router.put("/mis-soportes/solucion/:soporteId", checkToken, asignarSolucion);
+router.put("/mis-soportes/solucion/:id_sop", checkToken, asignarSolucion);
 
 //NOC ASIGNA UN TECNICO PARA SOPORTE
-router.put("/asignar-tecnico/:soporteId", checkToken, asignarTecnico);
+router.put("/asignar-tecnico/:id_sop", checkToken, asignarTecnico);
 
 module.exports = router;
