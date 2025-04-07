@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const createToken = (usuario) => {
   const data = {
-    usuario_id: usuario.id,
+    usuario_id: `${usuario.id}` ,
     usuario_usuario: usuario.usuario,
     usuario_rol: usuario.rol,
     usuario_nombre: usuario.nombre,
