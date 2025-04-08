@@ -5,6 +5,7 @@ const {
   getPreAgenda,
   postAgendaSop,
   putAgenda,
+  getAllTrabajosByTec,
 } = require("../../../controllers/negocio_lat/agenda.controllers");
 const { checkToken } = require("../../../utils/middlewares");
 
@@ -18,6 +19,9 @@ router.get("/preagenda", checkToken, getPreAgenda);
 
 // OBTIENE LOS TRABAJOS CON RESPECTO A UNA FECHA INDICADA
 router.get("/:fecha", checkToken, getAgendaByFecha);
+
+//TECNICO RECIBE LA INFORMACION DE LOS TRABAJOS ASIGANDOS
+router.get("/mis-trabajos-tec/:id_tec",checkToken, getAllTrabajosByTec);
 
 // CREA UN TRABAJO EN LA AGENDA
 router.post("/crear", checkToken, postAgenda);

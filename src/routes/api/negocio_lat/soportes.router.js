@@ -7,6 +7,7 @@ const {
   getAllSoportesByNoc,
   asignarSolucion,
   asignarTecnico,
+  getAllSoportesByTec,
 } = require("../../../controllers/negocio_lat/soportes.controllers");
 const {
   checkToken,
@@ -32,6 +33,14 @@ router.get(
   checkToken,
   getAllSoportesByNoc
 );
+
+//TECNICO RECIBE LA INFORMACION DE LOS SOPORTES ASIGANDOS
+router.get(
+  "/mis-soportes-tec/:id_tec",
+  checkToken,
+  getAllSoportesByTec
+);
+
 
 //CREA UN SOPORTE
 router.post("/", checkToken, createSoporte);

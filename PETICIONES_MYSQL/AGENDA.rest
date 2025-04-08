@@ -1,0 +1,50 @@
+//@url = http://192.168.0.160/api
+@url = http://localhost:3000/api
+
+
+//////////////////////////////////////////////////////////////
+///////////////////// AGENDA //////////////////////////////////
+
+//OBTENER TODOS LA AGENDA
+###
+GET {{url}}/agenda/preagenda
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+
+
+//OBTENER TODOS LA AGENDA DE UNA FECHA ESPECIFICA
+###
+GET {{url}}/agenda/2025-03-26
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+
+
+//OBTENER TODOS LOS TRABAJOS AGEDADOS A UN TECNICO
+###
+GET {{url}}/agenda/mis-trabajos-tec/54
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+
+
+//CREAR TRABAJO EN AGENDA
+###
+PUT {{url}}/agenda/crear/34
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Content-Type: application/json
+
+{
+  "age_vehiculo":"F17",
+  "age_hora_inicio": "08:00",
+  "age_hora_fin": "10:00",
+  "age_fecha": "2025-03-28"
+}
+
+
+//CREAR TRABAJO EN AGENDA
+###
+POST {{url}}/agenda/agenda-sop
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Content-Type: application/json
+
+{
+    "age_tipo": "SOPORTE",
+    "age_ord_ins": "109681",
+    "age_id_sop": "315"
+}

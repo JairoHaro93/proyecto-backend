@@ -44,7 +44,7 @@ U.id = ?`,
 }
 
 // OBTENER TODOS LOS USUARIOS CON AGENDA-TECNICOS
-function selectAllAgendaTecnicos() {
+async function selectAllAgendaTecnicos() {
   const query = `
     SELECT u.id, u.nombre, u.apellido
     FROM sisusuarios_has_sisfunciones uhf
@@ -61,7 +61,7 @@ function selectAllAgendaTecnicos() {
 }
 
 // CREAR USUARIO
-function insertUsuario({
+async function insertUsuario({
   nombre,
   apellido,
   ci,
@@ -99,7 +99,7 @@ function insertUsuario({
 }
 
 // ACTUALIZAR USUARIOS
-function updateUsuarioById(
+async function updateUsuarioById(
   usuarioId,
   { nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero }
 ) {
@@ -135,7 +135,7 @@ function updateUsuarioById(
 }
 
 //BORRAR USUARIO
-function deleteUsuario(usuarioId) {
+async function deleteUsuario(usuarioId) {
   return poolmysql.query(`DELETE FROM  sisusuarios WHERE id = ?`, [usuarioId]);
 }
 

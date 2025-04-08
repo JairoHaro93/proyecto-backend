@@ -27,14 +27,11 @@ async function selectPreAgenda() {
     `
 
 SELECT 
-  a.*, 
-  s.cli_tel, 
-  s.reg_sop_coordenadas,
-  s.reg_sop_tec_asignado
+  a.*
+
 FROM 
   neg_t_agenda a
-JOIN 
-  neg_t_soportes s ON a.age_id_sop = s.id
+
 WHERE 
   a.age_fecha IS NULL;
 
@@ -57,6 +54,29 @@ async function selectAgenda() {
 
   return agendas; // Devuelve directamente el array (aunque esté vacío)
 }
+
+// QUERY PARA OBTENER TODOS LOS TRABAJOS ASIGNADOS AL TECNICO
+async function selectTrabajosByTec(id_tec) {
+  const [soportes] = await poolmysql.query(
+    `
+ SELECT 
+  *
+FROM 
+  neg_t_agenda 
+    WHERE age_tecnico = ?
+
+  `,
+    [id_tec]
+  );
+
+  if (soportes.length === 0) {
+    return null; // O podrías devolver un array vacío [] si prefieres.
+  }
+  return soportes; // DEVOLVER TODOS LOS REGISTROS, NO SOLO EL PRIMERO
+}
+
+
+
 
 // QUERY PARA CREAR UN CASO EN LA AGENDA
 async function insertAgenda({
@@ -82,6 +102,7 @@ async function insertAgenda({
   return result.insertId; // Puedes devolver el ID generado
 }
 
+
 // QUERY PARA CREAR UN CASO EN LA AGENDA
 async function insertAgendaSop({ age_tipo,age_ord_ins, age_id_sop }) {
   const [result] = await poolmysql.query(
@@ -101,7 +122,7 @@ async function insertAgendaSop({ age_tipo,age_ord_ins, age_id_sop }) {
 // QUERY PARA ACTUALIZAR LOS CAMPOS DE HORARIO EN LA AGENDA
 async function updateHorario(
   age_id,
-  { age_hora_inicio, age_hora_fin, age_fecha , age_vehiculo}
+  { age_hora_inicio, age_hora_fin, age_fecha , age_vehiculo,age_tecnico }
 ) {
   try {
     // Desactiva "Safe Updates" temporalmente
@@ -115,10 +136,11 @@ async function updateHorario(
         age_vehiculo = ?,
         age_hora_inicio = ?,
         age_hora_fin = ?,
-        age_fecha = ?
+        age_fecha = ?,
+        age_tecnico =?
       WHERE id = ?
       `,
-      [age_vehiculo,age_hora_inicio, age_hora_fin, age_fecha, age_id]
+      [age_vehiculo,age_hora_inicio, age_hora_fin, age_fecha, age_tecnico , age_id]
     );
 
     // Reactiva "Safe Updates"
@@ -137,4 +159,5 @@ module.exports = {
   insertAgenda,
   updateHorario,
   insertAgendaSop,
+  selectTrabajosByTec,
 };

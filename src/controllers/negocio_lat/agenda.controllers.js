@@ -5,6 +5,7 @@ const {
   selectPreAgenda,
   insertAgendaSop,
   updateHorario,
+  selectTrabajosByTec,
 } = require("../../models/negocio_lat/agenda.models");
 
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
@@ -20,7 +21,6 @@ const getAgendaByFecha = async (req, res, next) => {
   }
 };
 
-
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
 const getPreAgenda = async (req, res, next) => {
   try {
@@ -34,12 +34,7 @@ const getPreAgenda = async (req, res, next) => {
   }
 };
 
-
-
-
-
 // CONTROLADOR PARA CREAR UN HORARIO
-
 const postAgenda = async (req, res, next) => {
   try {
     const newAgenda = req.body;
@@ -50,9 +45,7 @@ const postAgenda = async (req, res, next) => {
   }
 };
 
-
 // CONTROLADOR PARA CREAR UN HORARIO
-
 const putAgenda = async (req, res, next) => {
 
   const { age_id } = req.params;
@@ -67,12 +60,7 @@ const putAgenda = async (req, res, next) => {
   }
 };
 
-
-
-
-
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
-
 const postAgendaSop = async (req, res, next) => {
 
   const { soporteId } = req.params;
@@ -85,8 +73,6 @@ const postAgendaSop = async (req, res, next) => {
     next(error);
   }
 };
-
-
 
 //CONTROLADOR PARA QUE NOC ASIGNE UN TECNCIO EN AGENDA
 const asignarTecnicoAge = async (req, res, next) => {
@@ -101,6 +87,28 @@ const asignarTecnicoAge = async (req, res, next) => {
   }
 };
 
+// CONTROLADOR PARA OBTENER TODOS LOS TRABAJOS DE TECNICO
+const getAllTrabajosByTec = async (req, res, next) => {
+  const { id_tec } = req.params;
+  try {
+    const soporte = await selectTrabajosByTec(id_tec);
+
+    if (!soporte || soporte.length === 0) {
+      return res.json([]); // Devuelve un array vacío en lugar de 404
+    }
+
+    res.json(soporte);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
-  getAgendaByFecha,putAgenda,postAgenda,asignarTecnicoAge,getPreAgenda,postAgendaSop
+  getAgendaByFecha,
+  putAgenda,
+  postAgenda,
+  asignarTecnicoAge,
+  getPreAgenda,
+  postAgendaSop,
+  getAllTrabajosByTec,
 };
