@@ -76,9 +76,7 @@ FROM
 }
 
 
-
-
-// QUERY PARA CREAR UN CASO EN LA AGENDA
+// QUERY PARA FIJAR FECHA HORA VEHICULO Y TECNICO
 async function insertAgenda({
   age_hora_inicio,
   age_hora_fin,
@@ -104,16 +102,19 @@ async function insertAgenda({
 
 
 // QUERY PARA CREAR UN CASO EN LA AGENDA
-async function insertAgendaSop({ age_tipo,age_ord_ins, age_id_sop }) {
+async function insertAgendaSop({ age_tipo, age_subtipo,age_ord_ins, age_id_sop,age_observaciones, age_coordenadas }) {
   const [result] = await poolmysql.query(
     `
     INSERT INTO neg_t_agenda (
       age_tipo,
+      age_subtipo,
       age_ord_ins,
-      age_id_sop
-    ) VALUES (?, ?, ?)
+      age_id_sop,
+      age_observaciones,
+      age_coordenadas
+    ) VALUES (?, ?, ?, ?, ?, ?)
     `,
-    [age_tipo, age_ord_ins, age_id_sop]
+    [age_tipo,age_subtipo, age_ord_ins, age_id_sop,age_observaciones,age_coordenadas]
   );
 
   return result.insertId;
