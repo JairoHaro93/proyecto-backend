@@ -5,14 +5,11 @@ async function selectAgendByFecha(fecha) {
   const [agendas] = await poolmysql.query(
     `
    SELECT 
-  a.*, 
-  s.cli_tel, 
-  s.reg_sop_coordenadas,
-  s.reg_sop_tec_asignado
+  a.*
+
 FROM 
   neg_t_agenda a
-JOIN 
-  neg_t_soportes s ON a.age_id_sop = s.id
+
     WHERE age_fecha = ?
     `,
     [fecha]
@@ -75,7 +72,6 @@ FROM
   return soportes; // DEVOLVER TODOS LOS REGISTROS, NO SOLO EL PRIMERO
 }
 
-
 // QUERY PARA FIJAR FECHA HORA VEHICULO Y TECNICO
 async function insertAgenda({
   age_hora_inicio,
@@ -100,9 +96,16 @@ async function insertAgenda({
   return result.insertId; // Puedes devolver el ID generado
 }
 
-
 // QUERY PARA CREAR UN CASO EN LA AGENDA
-async function insertAgendaSop({ age_tipo, age_subtipo,age_ord_ins, age_id_sop,age_observaciones, age_coordenadas }) {
+async function insertAgendaSop({
+  age_tipo,
+  age_subtipo,
+  age_ord_ins,
+  age_id_sop,
+  age_observaciones,
+  age_coordenadas,
+  age_telefono,
+}) {
   const [result] = await poolmysql.query(
     `
     INSERT INTO neg_t_agenda (
@@ -111,10 +114,19 @@ async function insertAgendaSop({ age_tipo, age_subtipo,age_ord_ins, age_id_sop,a
       age_ord_ins,
       age_id_sop,
       age_observaciones,
-      age_coordenadas
-    ) VALUES (?, ?, ?, ?, ?, ?)
+      age_coordenadas,
+      age_telefono
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
-    [age_tipo,age_subtipo, age_ord_ins, age_id_sop,age_observaciones,age_coordenadas]
+    [
+      age_tipo,
+      age_subtipo,
+      age_ord_ins,
+      age_id_sop,
+      age_observaciones,
+      age_coordenadas,
+      age_telefono,
+    ]
   );
 
   return result.insertId;
@@ -123,7 +135,7 @@ async function insertAgendaSop({ age_tipo, age_subtipo,age_ord_ins, age_id_sop,a
 // QUERY PARA ACTUALIZAR LOS CAMPOS DE HORARIO EN LA AGENDA
 async function updateHorario(
   age_id,
-  { age_hora_inicio, age_hora_fin, age_fecha , age_vehiculo,age_tecnico }
+  { age_hora_inicio, age_hora_fin, age_fecha, age_vehiculo, age_tecnico }
 ) {
   try {
     // Desactiva "Safe Updates" temporalmente
@@ -141,7 +153,14 @@ async function updateHorario(
         age_tecnico =?
       WHERE id = ?
       `,
-      [age_vehiculo,age_hora_inicio, age_hora_fin, age_fecha, age_tecnico , age_id]
+      [
+        age_vehiculo,
+        age_hora_inicio,
+        age_hora_fin,
+        age_fecha,
+        age_tecnico,
+        age_id,
+      ]
     );
 
     // Reactiva "Safe Updates"
