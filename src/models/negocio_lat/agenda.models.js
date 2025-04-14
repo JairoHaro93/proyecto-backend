@@ -61,6 +61,7 @@ async function selectTrabajosByTec(id_tec) {
 FROM 
   neg_t_agenda 
     WHERE age_tecnico = ?
+    AND age_estado <> 'RESUELTO'
 
   `,
     [id_tec]
@@ -109,6 +110,7 @@ async function insertAgendaSop({
   const [result] = await poolmysql.query(
     `
     INSERT INTO neg_t_agenda (
+      age_estado,
       age_tipo,
       age_subtipo,
       age_ord_ins,
@@ -116,9 +118,10 @@ async function insertAgendaSop({
       age_observaciones,
       age_coordenadas,
       age_telefono
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
+      'PENDIENTE',             // valor para age_estado
       age_tipo,
       age_subtipo,
       age_ord_ins,
