@@ -29,7 +29,7 @@ Content-Type: application/json
 
     "ord_ins": 103801,
     "reg_sop_opc": 2,
-    "cli_tel": "55555555555",
+    "reg_sop_tel": "55555555555",
     "reg_sop_registrado_por_id": "54",
     "reg_sop_observaciones": "Sin servicio desde las 10am",
     "reg_sop_nombre": "Butters",
