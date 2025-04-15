@@ -1,7 +1,6 @@
 const jwt = require("jsonwebtoken");
 const { selectUsuarioById } = require("../models/sistema/usuarios.models");
 const {
-  selectSoporteById,
   selectSoporteByOrdIns,
 } = require("../models/negocio_lat/soportes.models");
 

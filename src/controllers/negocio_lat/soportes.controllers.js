@@ -8,7 +8,7 @@ const {
   selectSoportesByNoc,
   updateAsignarSolucion,
   updateAsignarTecnico,
-  selectSoportesByTec,
+ 
 } = require("../../models/negocio_lat/soportes.models");
 
 //CONTROLADOR PARA OBTENER TODOS LOS SOPORTES
@@ -157,21 +157,7 @@ const getAllSoportesByNoc = async (req, res, next) => {
 };
 
 
-// CONTROLADOR PARA OBTENER TODOS LOS SOPORTES DE TECNICO
-const getAllSoportesByTec = async (req, res, next) => {
-  const { id_tec } = req.params;
-  try {
-    const soporte = await selectSoportesByTec(id_tec);
 
-    if (!soporte || soporte.length === 0) {
-      return res.json([]); // Devuelve un array vacío en lugar de 404
-    }
-
-    res.json(soporte);
-  } catch (error) {
-    next(error);
-  }
-};
 
 module.exports = {
   getAllDataSoportes,
@@ -183,5 +169,5 @@ module.exports = {
   createSoporte,
   aceptarSoporte,
   getAllSoportesByNoc,
-  getAllSoportesByTec,
+ 
 };

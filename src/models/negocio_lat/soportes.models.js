@@ -132,41 +132,6 @@ WHERE
 }
 
 
-// QUERY PARA OBTENER TODOS LOS SOPORTES ASIGNADOS POR TECNICO
-async function selectSoportesByTec(id_tec) {
-  const [soportes] = await poolmysql.query(
-    `
-SELECT 
-    Sop.id,
-    Sop.ord_ins,
-    Sop.reg_sop_opc,
-    Sop.cli_tel,
-    Sop.reg_sop_registrado_por_id,
-    CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
-    Sop.reg_sop_observaciones,
-    Sop.reg_sop_fecha,
-    Sop.reg_sop_fecha_acepta,
-    Sop.reg_sop_estado,
-    Sop.reg_sop_nombre,
-    Sop.reg_sop_noc_id_acepta
-FROM
-    neg_t_soportes AS Sop
-LEFT JOIN 
-    sisusuarios AS U 
-    ON Sop.reg_sop_registrado_por_id = U.id
-WHERE  
-    Sop.reg_sop_tec_asignado = ? 
-    AND Sop.reg_sop_estado <> 'RESUELTO';
-
-  `,
-    [id_tec]
-  );
-
-  if (soportes.length === 0) {
-    return null; // O podrías devolver un array vacío [] si prefieres.
-  }
-  return soportes; // DEVOLVER TODOS LOS REGISTROS, NO SOLO EL PRIMERO
-}
 
 // QUERY PARA CREAR UN SOPORTE NUEVO        --PAGINA REGISTRAR SOPORTE /home/tecnico/registrosop
 function insertSoporte({
@@ -300,5 +265,5 @@ module.exports = {
   insertSoporte,
   aceptarSoporteById,
   selectSoportesByNoc,
-  selectSoportesByTec
+
 };

@@ -7,7 +7,7 @@ const {
   getAllSoportesByNoc,
   asignarSolucion,
   asignarTecnico,
-  getAllSoportesByTec,
+ // getAllSoportesByTec,
 } = require("../../../controllers/negocio_lat/soportes.controllers");
 const {
   checkToken,
@@ -27,20 +27,7 @@ router.get("/pendientes", checkToken, getAllSoportesPendientes);
 router.get("/:id_sop", checkToken, checkSoporteOrdIns, getSoporteById);
 
 //NOC RECIBE LA INFORMACION DE LOS SOPORTES ACEPTADOS
-router.get(
-  "/mis-soportes/:id_noc",
-  checkSoportesNocId,
-  checkToken,
-  getAllSoportesByNoc
-);
-
-//TECNICO RECIBE LA INFORMACION DE LOS SOPORTES ASIGANDOS
-router.get(
-  "/mis-soportes-tec/:id_tec",
-  checkToken,
-  getAllSoportesByTec
-);
-
+router.get(  "/mis-soportes/:id_noc",  checkSoportesNocId,  checkToken,  getAllSoportesByNoc);
 
 //CREA UN SOPORTE
 router.post("/", checkToken, createSoporte);
