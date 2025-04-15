@@ -7,7 +7,6 @@ const {
   getAllSoportesByNoc,
   asignarSolucion,
   asignarTecnico,
- // getAllSoportesByTec,
 } = require("../../../controllers/negocio_lat/soportes.controllers");
 const {
   checkToken,

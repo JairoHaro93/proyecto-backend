@@ -46,8 +46,7 @@ async function selectSoporteById(id_sop) {
       Sop.reg_sop_estado,
       Sop.reg_sop_nombre,
       Sop.reg_sop_fecha_acepta,
-       Sop.reg_sop_coordenadas,
-       Sop.reg_sop_sol_det
+      Sop.reg_sop_sol_det
   FROM
       neg_t_soportes AS Sop
   LEFT JOIN sisusuarios AS U ON Sop.reg_sop_registrado_por_id = U.id
@@ -141,7 +140,7 @@ function insertSoporte({
   reg_sop_registrado_por_id,
   reg_sop_observaciones,
   reg_sop_nombre,
-  reg_sop_coordenadas,
+ 
 }) {
   return poolmysql.query(
     `INSERT INTO neg_t_soportes (
@@ -151,11 +150,11 @@ function insertSoporte({
         reg_sop_registrado_por_id,
         reg_sop_observaciones,
         reg_sop_nombre,
-         reg_sop_coordenadas,
+      
         reg_sop_fecha
        
       
-      ) VALUES (?, ?, ?, ?, ?, ?, ? , NOW());`, // NOW() insertará la fecha y hora actuales
+      ) VALUES (?, ?, ?, ?, ?, ? , NOW());`, // NOW() insertará la fecha y hora actuales
     [
       ord_ins,
       reg_sop_opc,
@@ -163,7 +162,7 @@ function insertSoporte({
       reg_sop_registrado_por_id,
       reg_sop_observaciones,
       reg_sop_nombre,
-      reg_sop_coordenadas,
+      
     ]
   );
 }
