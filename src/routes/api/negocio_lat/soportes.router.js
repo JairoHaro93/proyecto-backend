@@ -37,7 +37,6 @@ router.put("/:id_sop", checkToken, aceptarSoporte);
 //NOC ACTUALIZA LA TABLA SOLUCION
 router.put("/mis-soportes/solucion/:id_sop", checkToken, asignarSolucion);
 
-//NOC ASIGNA UN TECNICO PARA SOPORTE
-router.put("/asignar-tecnico/:id_sop", checkToken, asignarTecnico);
+
 
 module.exports = router;

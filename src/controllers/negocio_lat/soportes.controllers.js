@@ -7,7 +7,6 @@ const {
   aceptarSoporteById,
   selectSoportesByNoc,
   updateAsignarSolucion,
-  updateAsignarTecnico,
  
 } = require("../../models/negocio_lat/soportes.models");
 
@@ -127,18 +126,6 @@ const asignarSolucion = async (req, res, next) => {
   }
 };
 
-//CONTROLADOR PARA QUE NOC ASIGNE UNA SOLUCION
-const asignarTecnico = async (req, res, next) => {
-  const { id_sop } = req.params;
-
-  try {
-    await updateAsignarTecnico(id_sop, req.body);
-    const soporte = await selectSoporteById(id_sop);
-    res.json(soporte);
-  } catch (error) {
-    next(error);
-  }
-};
 
 // CONTROLADOR PARA OBTENER TODOS LOS SOPORTES DE NOC
 const getAllSoportesByNoc = async (req, res, next) => {
@@ -164,7 +151,7 @@ module.exports = {
   getSoporteById,
   getSoporteByOrdIns,
   asignarSolucion,
-  asignarTecnico,
+
   getAllSoportesPendientes,
   createSoporte,
   aceptarSoporte,

@@ -130,8 +130,6 @@ WHERE
   return soportes; // DEVOLVER TODOS LOS REGISTROS, NO SOLO EL PRIMERO
 }
 
-
-
 // QUERY PARA CREAR UN SOPORTE NUEVO        --PAGINA REGISTRAR SOPORTE /home/tecnico/registrosop
 function insertSoporte({
   ord_ins,
@@ -150,10 +148,7 @@ function insertSoporte({
         reg_sop_registrado_por_id,
         reg_sop_observaciones,
         reg_sop_nombre,
-      
         reg_sop_fecha
-       
-      
       ) VALUES (?, ?, ?, ?, ?, ? , NOW());`, // NOW() insertará la fecha y hora actuales
     [
       ord_ins,
@@ -198,32 +193,7 @@ async function updateAsignarSolucion(
   }
 }
 
-// QUERY PARA ACTUALIZAR Y ASIGNAR UN TECNICO  --PAGINA ASIGNAR-TRABAJOS  /home/noc/asignar-trabajos
-async function updateAsignarTecnico(id_sop, { reg_sop_tec_asignado }) {
-  try {
-    // Desactiva "Safe Updates" temporalmente
-    await poolmysql.query(`SET SQL_SAFE_UPDATES = 0;`);
 
-    // Ejecuta la consulta UPDATE
-    const result = await poolmysql.query(
-      `
-        UPDATE neg_t_soportes 
-        SET 
-            reg_sop_tec_asignado = ?
-        WHERE id = ?
-      ;`,
-      [reg_sop_tec_asignado, id_sop]
-    );
-
-    // Reactiva "Safe Updates"
-    await poolmysql.query(`SET SQL_SAFE_UPDATES = 1;`);
-
-    return result;
-  } catch (error) {
-    console.error("Error actualizando el tecnico al soporte:", error);
-    throw error;
-  }
-}
 
 // QUERY PARA QUE NOC ACEPTE EL SOPORTE
 async function aceptarSoporteById(id_sop, { reg_sop_noc_id_acepta }) {
@@ -259,7 +229,6 @@ module.exports = {
   selectAllSoportesPendientes,
   selectSoporteById,
   selectSoporteByOrdIns,
-  updateAsignarTecnico,
   updateAsignarSolucion,
   insertSoporte,
   aceptarSoporteById,
