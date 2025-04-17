@@ -1,15 +1,64 @@
 const {
-  selectAllBasicInfoClientes,
   selectAllDataMapa,
   selectServiceByOrdIns,
+  selectAllDataBasicos,
+  selectAllDataArrayByCed,
+  selectDataArrayActivosByCed,
+  selectDataBasicosActivos,
 } = require("../../models/negocio/info_clientes.models");
 
-//CONTROLADOR PARA OBTENER LOS DATOS BASICOS DE TODOS LOS CLIENTES
-const getAllDataClientes = async (req, res, next) => {
+//CONTROLADOR PARA OBTENER LOS NOMBRES Y CEDULA
+const getAllDataBasicos = async (req, res, next) => {
   try {
-    const result = await selectAllBasicInfoClientes();
+    const result = await selectAllDataBasicos();
     res.json(result); // Enviar la respuesta con el JSON estructurado
   } catch (error) {
+    next(error);
+  }
+};
+
+//CONTROLADOR PARA OBTENER LOS NOMBRES Y CEDULA CON SERVICIOS ACTIVOS
+const getDataBasicosActivos = async (req, res, next) => {
+  try {
+    const result = await selectDataBasicosActivos();
+    res.json(result); // Enviar la respuesta con el JSON estructurado
+  } catch (error) {
+    next(error);
+  }
+};
+
+// CONTROLADOR PARA OBTENER todos los datos en array
+const getAllDataArray = async (req, res, next) => {
+  const { cedula } = req.params; // ✅ primero declaras
+
+  try {
+    const result = await selectAllDataArrayByCed(cedula); // luego usas
+
+    if (!result) {
+      return res.status(404).json({ message: "Cliente no encontrado." });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error("❌ Error en getAllDataArray:", error.message);
+    next(error);
+  }
+};
+
+// CONTROLADOR PARA OBTENER los clientes con servicios activos
+const getDataArrayActivos = async (req, res, next) => {
+  const { cedula } = req.params; // ✅ primero declaras
+
+  try {
+    const result = await selectDataArrayActivosByCed(cedula); // luego usas
+
+    if (!result) {
+      return res.status(404).json({ message: "Cliente no encontrado." });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error("❌ Error en getAllDataArray:", error.message);
     next(error);
   }
 };
@@ -40,4 +89,11 @@ const getServicioByOrdIns = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllDataClientes, getAllDataMapa, getServicioByOrdIns };
+module.exports = {
+  getAllDataBasicos,
+  getDataBasicosActivos,
+  getAllDataArray,
+  getDataArrayActivos,
+  getAllDataMapa,
+  getServicioByOrdIns,
+};
