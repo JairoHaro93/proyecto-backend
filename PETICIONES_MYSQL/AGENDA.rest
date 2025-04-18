@@ -41,15 +41,26 @@ Content-Type: application/json
 
 //ATUALIZA CON FECHA HORA VEHICULO Y TECNICO
 ###
-PUT {{url}}/agenda/crear/34
+PUT {{url}}/agenda/edita-hora/75
 Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
 Content-Type: application/json
 
 {
   "age_vehiculo":"F17",
-  "age_hora_inicio": "08:00",
-  "age_hora_fin": "10:00",
+  "age_hora_inicio": "14:00",
+  "age_hora_fin": "16:00",
   "age_fecha": "2025-03-28"
+}
+
+//ATUALIZA LA SOLUCION Y ESTADO
+###
+PUT {{url}}/agenda/edita-sol/75
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Content-Type: application/json
+
+{
+  "age_estado":"CONCLUIDO",
+ "age_solucion":"Se arregla "
 }
 
 

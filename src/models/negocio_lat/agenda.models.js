@@ -61,7 +61,7 @@ async function selectTrabajosByTec(id_tec) {
 FROM 
   neg_t_agenda 
     WHERE age_tecnico = ?
-    AND age_estado <> 'RESUELTO'
+    AND age_estado <> 'CONCLUIDO'
 
   `,
     [id_tec]
@@ -121,7 +121,7 @@ async function insertAgendaSop({
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
-      'PENDIENTE',             // valor para age_estado
+      "PENDIENTE", // valor para age_estado
       age_tipo,
       age_subtipo,
       age_ord_ins,
@@ -176,11 +176,40 @@ async function updateHorario(
   }
 }
 
+// QUERY PARA ACTUALIZAR LOS CAMPOS DE HORARIO EN LA AGENDA
+async function updateSolucion(age_id, { age_estado, age_solucion }) {
+  try {
+    // Desactiva "Safe Updates" temporalmente
+    await poolmysql.query(`SET SQL_SAFE_UPDATES = 0;`);
+
+    // Ejecuta la consulta UPDATE en la tabla correcta
+    const [result] = await poolmysql.query(
+      `
+      UPDATE neg_t_agenda 
+      SET 
+        age_estado = ?,
+        age_solucion = ?
+      WHERE id = ?
+      `,
+      [age_estado, age_solucion, age_id]
+    );
+
+    // Reactiva "Safe Updates"
+    await poolmysql.query(`SET SQL_SAFE_UPDATES = 1;`);
+
+    return result;
+  } catch (error) {
+    console.error("Error actualizando la solucion:", error);
+    throw error;
+  }
+}
+
 module.exports = {
   selectAgendByFecha,
   selectPreAgenda,
   insertAgenda,
   updateHorario,
+  updateSolucion,
   insertAgendaSop,
   selectTrabajosByTec,
 };

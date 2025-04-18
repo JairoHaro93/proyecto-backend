@@ -1,11 +1,11 @@
 const {
   selectAgendByFecha,
   insertAgenda,
-  updateAsignarTecnicoAge,
   selectPreAgenda,
   insertAgendaSop,
   updateHorario,
   selectTrabajosByTec,
+  updateSolucion,
 } = require("../../models/negocio_lat/agenda.models");
 
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
@@ -45,15 +45,24 @@ const postAgenda = async (req, res, next) => {
   }
 };
 
-// CONTROLADOR PARA CREAR UN HORARIO
-const putAgenda = async (req, res, next) => {
-
+// CONTROLADOR PARA asignar o actualizar el horariio
+const putAgendaHorario = async (req, res, next) => {
   const { age_id } = req.params;
-
-
   try {
     const newHorario = req.body;
-    const insertId = await updateHorario(age_id,newHorario);
+    const insertId = await updateHorario(age_id, newHorario);
+    res.status(201).json({ message: "Agenda registrada", id: insertId });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// CONTROLADOR PARA asignar o actualizar la Solucion y el estado
+const putAgendaSolucion = async (req, res, next) => {
+  const { age_id } = req.params;
+  try {
+    const newHorario = req.body;
+    const insertId = await updateSolucion(age_id, newHorario);
     res.status(201).json({ message: "Agenda registrada", id: insertId });
   } catch (error) {
     next(error);
@@ -62,9 +71,8 @@ const putAgenda = async (req, res, next) => {
 
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
 const postAgendaSop = async (req, res, next) => {
-
   const { soporteId } = req.params;
-  
+
   try {
     const newAgenda = req.body;
     const insertId = await insertAgendaSop(newAgenda);
@@ -105,8 +113,9 @@ const getAllTrabajosByTec = async (req, res, next) => {
 
 module.exports = {
   getAgendaByFecha,
-  putAgenda,
+  putAgendaHorario,
   postAgenda,
+  putAgendaSolucion,
   asignarTecnicoAge,
   getPreAgenda,
   postAgendaSop,

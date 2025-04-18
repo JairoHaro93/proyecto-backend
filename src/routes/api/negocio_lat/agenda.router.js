@@ -4,8 +4,9 @@ const {
   asignarTecnicoAge,
   getPreAgenda,
   postAgendaSop,
-  putAgenda,
+  putAgendaHorario,
   getAllTrabajosByTec,
+  putAgendaSolucion,
 } = require("../../../controllers/negocio_lat/agenda.controllers");
 const { checkToken } = require("../../../utils/middlewares");
 
@@ -21,7 +22,7 @@ router.get("/preagenda", checkToken, getPreAgenda);
 router.get("/:fecha", checkToken, getAgendaByFecha);
 
 //TECNICO RECIBE LA INFORMACION DE LOS TRABAJOS ASIGANDOS
-router.get("/mis-trabajos-tec/:id_tec",checkToken, getAllTrabajosByTec);
+router.get("/mis-trabajos-tec/:id_tec", checkToken, getAllTrabajosByTec);
 
 // CREA UN TRABAJO EN LA AGENDA
 router.post("/crear", checkToken, postAgenda);
@@ -33,6 +34,9 @@ router.post("/agenda-sop", checkToken, postAgendaSop);
 router.put("/asignar-tecnico/:id_sop", checkToken, asignarTecnicoAge);
 
 // INSERTA UNA FECHA Y HORA PARA EL TRABAJO
-router.put("/edita/:age_id", checkToken, putAgenda);
+router.put("/edita-hora/:age_id", checkToken, putAgendaHorario);
+
+// INSERTA UNA SOLUCION Y CAMBIA EL ESTADO PARA EL TRABAJO
+router.put("/edita-sol/:age_id", checkToken, putAgendaSolucion);
 
 module.exports = router;

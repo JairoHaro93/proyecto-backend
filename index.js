@@ -26,6 +26,11 @@ io.on("connection", (socket) => {
     io.emit("actualizarSoportes");
   });
 
+  socket.on("trabajoAgendado", () => {
+    console.log("✅ Trabajo Agendado. Notificando a todos.");
+    io.emit("trabajoAgendado");
+  });
+
   socket.on("soporteResuelto", () => {
     console.log("✅ Soporte resuelto. Notificando a todos.");
     io.emit("actualizarSoportes");
