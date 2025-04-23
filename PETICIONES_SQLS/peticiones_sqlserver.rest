@@ -8,54 +8,40 @@
 //OBTENER LA INFORMACION PARA NOMBRES Y APELLIDOS
 ###
 GET {{url}}/clientes
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //OBTENER LA INFORMACION PARA NOMBRES Y APELLIDOS de clientes con servicios activos
 ###
 GET {{url}}/clientes/activos
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //OBTENER TODOS LOS CLIENTES CON LOS SERVICIOS EN ARRAY ORDENADOS POR ESTADO
 ###
 GET {{url}}/clientes/data-act/0501093827
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //OBTENER TODOS LOS CLIENTES CON LOS SERVICIOS ATIVOS EN ARRAY ORDENADOS POR FECHA
 ###
 GET {{url}}/clientes/data/0501093827
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
-
-
-
-
-
-
-
+Authorization: {{TOKEN_AUX}}
 
 
 //OBTENER LA INFORMACION PARA MOSTRAR EN DATOS CLIENTES
 ###
 GET {{url}}/clientes/datos
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 
 
 //OBTENER LOS Datos BASICOS PARA PINTAR EN EL MAPA
 ###
 GET {{url}}/clientes/mapas
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //OBTENER LOS Datos BASICOS BASICOS DEL  MEDIANTE LA ORDEN DE INSTALACION
 ###
 GET {{url}}/clientes/101177
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 
 

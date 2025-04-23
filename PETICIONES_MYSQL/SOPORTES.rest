@@ -7,22 +7,19 @@
 //OBTENER TODOS LOS SOPORTES DE LA BASE DE DATOS
 ###
 GET {{url}}/soportes
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 //OBTENER SOPORTES PENDIENTES POR REVISAR
 ###
 GET {{url}}/soportes/pendientes
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 //OBTENER SOPORTE POR ORDINS
 ###
 GET {{url}}/soportes/349
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 //CREAR SOPORTE
 ###
 POST {{url}}/soportes
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 {
@@ -40,7 +37,7 @@ Content-Type: application/json
 //ACEPTAR EL SOPORTE POR NOC
 ###
 PUT {{url}}/soportes/286
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 { 
@@ -51,23 +48,19 @@ Content-Type: application/json
 //OBTENER MIS SOPORTES DE NOC
 ###
 GET {{url}}/soportes/mis-soportes/54
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 
 
 //OBTENER MIS SOPORTES DE TECNICO
 ###
 GET {{url}}/soportes/mis-soportes-tec/81
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
-
-
+Authorization: {{TOKEN_AUX}}
 
 //ACTUALIZAR ESTADO UN SOPORTE
 ###
 PUT {{url}}/soportes/mis-soportes/solucion/287
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 { 
@@ -79,13 +72,12 @@ Content-Type: application/json
 //OBTENER LOS SOPORTES VISITA Y LOS
 ###
 GET {{url}}/soportes/listar-tecnico
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //ACTUALIZAR TECNICO PARA  UN SOPORTE
 ###
 PUT {{url}}/soportes/asignar-tecnico/119531
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 { 

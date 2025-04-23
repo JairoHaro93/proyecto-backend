@@ -5,25 +5,22 @@
 //OBTENER TODOS LOS USUARIOS
 ###
 GET {{url}}/usuarios
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //OBTENER USUARIO POR ID
 ###
 GET {{url}}/usuarios/54
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //OBTENER TODOS LOS USUARIOS AGENDA-TECNICOS
 ###
 GET {{url}}/usuarios/agenda-tecnicos
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //CREAR USUARIO
 ###
 POST {{url}}/usuarios
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 {
@@ -42,7 +39,7 @@ Content-Type: application/json
 //EDITAR USUARIO POR ID
 ###
 PUT {{url}}/usuarios/92
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
+Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 {
@@ -60,8 +57,7 @@ Content-Type: application/json
 //ELIMINAR UN USUARIO POR ID
 ###
 DELETE {{url}}/usuarios/10
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 ////////////////////////////////////////////////////////////////
 //////////// LOGIN ////////////////////////////////////////
@@ -72,7 +68,7 @@ POST {{url}}/login
 Content-Type: application/json
 
 {
-"usuario": "eharo",
+"usuario": "jharo",
 "password": "1234567"
 }
 
@@ -82,13 +78,11 @@ Content-Type: application/json
 //OBTENER TODAS LAS FUNCIONES DE LA BASE DE DATOS
 ###
 GET {{url}}/funciones
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 //OBTIENE LAS FUNCIONES ASIGANADAS POR ID
 ###
 GET {{url}}/funciones/54
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjoxMSwidXN1YXJpb19yb2wiOiJBIiwiaWF0IjoxNzM0OTk3OTM5fQ.nsTjYmIITRS3ihmUshYMyVGt743lSEuV42IN9CGajz4
-
+Authorization: {{TOKEN_AUX}}
 
 

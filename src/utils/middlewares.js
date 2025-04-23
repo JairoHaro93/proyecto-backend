@@ -63,7 +63,7 @@ const checkToken = async (req, res, next) => {
   //El token es correcto?
   let data;
   try {
-    data = jwt.verify(token, "clavetoken");
+    data = jwt.verify(token, "claveparatoken");
   } catch (error) {
     return res.status(403).json({ message: "Token incorrecto" });
   }

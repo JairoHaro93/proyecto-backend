@@ -6,7 +6,7 @@ const createToken = (usuario) => {
     usuario_rol: usuario.rol,
     usuario_nombre: usuario.nombre,
   };
-  return jwt.sign(data, "clavetoken");
+  return jwt.sign(data, "claveparatoken");
   // return jwt.sign(data, "clavetoken", { expiresIn: "5 minutes" });
 };
 
