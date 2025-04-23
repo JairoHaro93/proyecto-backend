@@ -13,6 +13,8 @@ async function selectByUsuario(usuario) {
     U.fecha_nac,
     U.fecha_cont,
     U.genero,
+    U.is_auth,
+    U.is_logged,
     JSON_ARRAYAGG(F.nombre) AS rol
 FROM
     sisusuarios AS U
@@ -35,5 +37,7 @@ U.usuario = ?
   if (result.length === 0) return null;
   return result[0];
 }
+
+
 
 module.exports = { selectByUsuario };

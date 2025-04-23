@@ -73,6 +73,18 @@ Content-Type: application/json
 }
 
 
+//LOGOUT
+###
+POST {{url}}/login/not
+Content-Type: application/json
+
+{
+"usuario_id": 54
+}
+
+
+
+
 //////////////////////////////////////////////////////////////
 ///////////////////// FUNCIONES DEL PERSONAL //////////////////////////////////
 //OBTENER TODAS LAS FUNCIONES DE LA BASE DE DATOS
