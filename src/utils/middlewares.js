@@ -63,8 +63,9 @@ const checkToken = async (req, res, next) => {
   //El token es correcto?
   let data;
   try {
-    data = jwt.verify(token, "claveparatoken");
+    data = jwt.verify(token, process.env.JWT_SECRET);
   } catch (error) {
+    console.error("❌ Error al verificar el token:", error.message);
     return res.status(403).json({ message: "Token incorrecto" });
   }
   //El usuario codificado en el token existe?

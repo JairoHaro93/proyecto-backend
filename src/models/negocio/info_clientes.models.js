@@ -4,7 +4,12 @@ const sql = require("mssql");
 // ✅ QUERY PARA OBTENER LOS DATOS NOMBRES Y APELLIDOS DE TODOS LOS CLIENTES REGISTRADOS EN LATACUNGA
 async function selectAllDataBasicos() {
   try {
-    const pool = await poolsql;
+ 
+    const pool = await poolsql.catch(err => {
+      console.error('❌ Error al conectar al pool:', err.message);
+      throw new Error('Error de base de datos');
+    });
+    
 
     const result = await pool.request().query(`
       SELECT 
@@ -33,7 +38,11 @@ async function selectAllDataBasicos() {
 // ✅ QUERY PARA OBTENER LOS DATOS NOMBRES Y APELLIDOS DE TODOS LOS CLIENTES REGISTRADOS EN LATACUNGA CON SERVICIOS ACTIVOS
 async function selectDataBasicosActivos() {
   try {
-    const pool = await poolsql;
+    const pool = await poolsql.catch(err => {
+      console.error('❌ Error al conectar al pool:', err.message);
+      throw new Error('Error de base de datos');
+    });
+    
 
     const result = await pool.request().query(`
       SELECT 
@@ -62,7 +71,11 @@ async function selectDataBasicosActivos() {
 //OBTIENE TODOS LOS DATOS CON LOS SERVICIOS EN ARRAY ORDENADOS POR ELIMINADO
 async function selectAllDataArrayByCed(cedulaParam) {
   try {
-    const pool = await poolsql;
+    const pool = await poolsql.catch(err => {
+      console.error('❌ Error al conectar al pool:', err.message);
+      throw new Error('Error de base de datos');
+    });
+    
 
     const result = await pool
       .request()

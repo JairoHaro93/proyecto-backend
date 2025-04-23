@@ -17,13 +17,17 @@ WHERE uf.sisusuarios_id = ?;`,
 // INSERT usuario en Usuarios
 
 async function insertFunciones(usuarioId, funcionesId) {
-  funcionesId.forEach((element) => {
-    return poolmysql.query(
-      ` INSERT INTO sisusuarios_has_sisfunciones ( sisusuarios_id, sisfunciones_id) VALUES ( ?, ?);`,
-      [usuarioId, element]
-    );
-  });
+  const insertQueries = funcionesId.map((funcId) =>
+    poolmysql.query(
+      `INSERT INTO sisusuarios_has_sisfunciones (sisusuarios_id, sisfunciones_id) VALUES (?, ?)`,
+      [usuarioId, funcId]
+    )
+  );
+
+  return Promise.all(insertQueries);
 }
+
+
 
 async function deleteFunciones(usuarioId) {
   return poolmysql.query(
