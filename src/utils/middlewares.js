@@ -4,10 +4,6 @@ const {
   selectSoporteByOrdIns,
 } = require("../models/negocio_lat/soportes.models");
 
-
-
-
-
 const checkUsuarioId = async (req, res, next) => {
   const { usuarioId } = req.params;
   // si el usuarioId es un numero
@@ -81,9 +77,6 @@ const checkToken = async (req, res, next) => {
   req.user = usuario;
   next();
 };
-
-
-
 
 module.exports = {
   checkUsuarioId,
