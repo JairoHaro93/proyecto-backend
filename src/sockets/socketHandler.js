@@ -6,26 +6,31 @@ function setupSocket(io) {
     const usuarioId = socket.handshake.query.usuario_id;
     console.log(`✅ Cliente conectado: ${socket.id}, usuario_id: ${usuarioId}`);
 
+    // SOKET CAMBIA EL ESTADO DEL SOPORTE
     socket.on("soporteActualizado", () => {
       console.log("🔄 Un soporte ha cambiado. Notificando a todos.");
       io.emit("actualizarSoportes");
     });
 
+    //SOKET DE SOPORTE CREADO
     socket.on("soporteCreado", () => {
       console.log("📢 Se creó un nuevo soporte.");
       io.emit("actualizarSoportes");
     });
 
+    //SOKET DE TRABAJO Culminado POR EL TECNICO
+    socket.on("trabajoCulminado", () => {
+      console.log("✅ Trabajo Culminado. Notificando a todos.");
+      io.emit("trabajoCulminado"); // <--- CAMBIAR AQUÍ
+    });
+
+    //SOKET DE TRABAJO AGENDADO AL TECNICO
     socket.on("trabajoAgendado", () => {
       console.log("✅ Trabajo Agendado. Notificando a todos.");
       io.emit("trabajoAgendado");
     });
 
-    socket.on("soporteResuelto", () => {
-      console.log("✅ Soporte resuelto. Notificando a todos.");
-      io.emit("actualizarSoportes");
-    });
-
+    //SOCKET DE DESCONEXION
     socket.on("disconnect", async () => {
       console.log(`❌ Cliente desconectado: ${socket.id}`);
       if (usuarioId) {
