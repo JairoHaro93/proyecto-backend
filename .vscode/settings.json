@@ -1,4 +1,32 @@
 {
-    "workbench.preferredDarkColorTheme": "Default Dark Modern",
-    "workbench.colorTheme": "Default Dark Modern"
+    "workbench.iconTheme": "vscode-icons",
+    "terminal.integrated.defaultProfile.windows":"Git Bash",
+    "editor.minimap.enabled": false,
+    "editor.formatOnSave": true,
+    "[typescript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+
+    },
+    "[dart]": {
+        "editor.formatOnSave": true,
+        "editor.formatOnType": true,
+        "editor.rulers": [
+            80
+        ],
+        "editor.selectionHighlight": false,
+        "editor.tabCompletion": "onlySnippets",
+        "editor.wordBasedSuggestions": "off"
+    },
+    "rest-client.environmentVariables": {
+
+
+  "$shared": {
+    "TOKEN_AUX": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjo1NCwidXN1YXJpb191c3VhcmlvIjoiamhhcm8iLCJ1c3VhcmlvX3JvbCI6WyJBSW5mb3JtYWNpw7NuIENsaWVudGVzIiwiQVVzdWFyaW9zIiwiQkFzaWduYXIgRXF1aXBvcyIsIkJEZXNwYWNoYXIgRXF1aXBvcyIsIkJJbmdyZXNhciBFcXVpcG9zIiwiQkludmVudGFyaW8iLCJDRGF0b3MgZGUgQ2xpZW50ZXMiLCJOQWdlbmRhIiwiTkFzaWduYXIgVHJhYmFqb3MiLCJOSW5mb3JtZSBEaWFyaW8iLCJOTWFwZW8gQ2FqYXMiLCJOU29wb3J0ZSBUZWNuaWNvIiwiUkdlc3Rpb24iLCJSTWFwYSBNb3Jvc29zIiwiUk1vcm9zb3MiLCJUTWkgQWdlbmRhIiwiVFJlZ2lzdHJvIFNvcG9ydGUiXSwidXN1YXJpb19ub21icmUiOiJKQUlSTyBNQVVSSUNJTyIsImlhdCI6MTc0Njk4MTgzNiwiZXhwIjoxNzQ2OTg1NDM2fQ.Hxjf9u9fPEV0hmKOnhKJ6OVb-OoxYYnOqJgd50ha3q0"
+  }
+},
+"microsoft-sovereign-cloud.customEnvironment": {
+  
+}
+
+  
 }

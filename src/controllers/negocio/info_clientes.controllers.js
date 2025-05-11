@@ -1,10 +1,11 @@
 const {
   selectAllDataMapa,
-  selectServiceByOrdIns,
+
   selectAllDataBasicos,
   selectAllDataArrayByCed,
   selectDataArrayActivosByCed,
   selectDataBasicosActivos,
+  selectByOrdnIns,
 } = require("../../models/negocio/info_clientes.models");
 
 //CONTROLADOR PARA OBTENER LOS NOMBRES Y CEDULA
@@ -77,7 +78,9 @@ const getAllDataMapa = async (req, res, next) => {
 const getServicioByOrdIns = async (req, res, next) => {
   const { servicioOrdIns } = req.params;
   try {
-    const soporte = await selectServiceByOrdIns(servicioOrdIns);
+    //const soporte = await selectServiceByOrdIns(servicioOrdIns);
+    const soporte = await selectByOrdnIns(servicioOrdIns);
+
     if (!soporte) {
       return res
         .status(404)
