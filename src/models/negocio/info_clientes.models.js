@@ -374,7 +374,7 @@ async function selectByOrdnIns(servicioOrdIns) {
 
     return { cedula, nombre_completo, servicios };
   } catch (error) {
-    console.error("❌ Error en selectDataArrayActivosByCed:", error.message);
+    console.error("❌ Error en selectByOrdnIns:", error.message);
     throw error;
   }
 }
@@ -385,6 +385,5 @@ module.exports = {
   selectAllDataArrayByCed,
   selectDataArrayActivosByCed,
   selectAllDataMapa,
-
   selectByOrdnIns,
 };
