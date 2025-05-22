@@ -1,11 +1,22 @@
 const express = require("express");
+const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const { poolmysql, poolsql } = require("./config/db");
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
+// CORS configurado correctamente
+app.use(
+  cors({
+    origin: "http://localhost:4200", // o tu dominio en producción
+    credentials: true, // 🔒 permite envío de cookies
+  })
+);
+
+app.use(cookieParser());
+app.use(express.json());
+
+// Tus rutas deben ir después de CORS
 app.use("/api", require("./routes/api.routes"));
 
 // Verificar conexión MySQL
@@ -31,6 +42,7 @@ async function testSqlServerConnection() {
 testDbConnection();
 testSqlServerConnection();
 
+// Middleware de errores (después de rutas)
 app.use((err, req, res, next) => {
   console.error("❌ Error en el servidor:", err.stack);
   res.status(500).json({ error: err.message });

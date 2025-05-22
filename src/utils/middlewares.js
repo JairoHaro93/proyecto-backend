@@ -55,20 +55,20 @@ const checkSoportesNocId = async (req, res, next) => {
 };
 
 const checkToken = async (req, res, next) => {
-  //Viene la cabecera Authorization incluida?
-  if (!req.headers["authorization"]) {
-    return res.status(403).json({ message: "Authorization no incluida" });
+  const token = req.cookies?.token;
+
+  if (!token) {
+    return res.status(403).json({ message: "Token no presente en cookies" });
   }
-  const token = req.headers["authorization"]; // aqui saca el token
-  //El token es correcto?
+
   let data;
   try {
     data = jwt.verify(token, process.env.JWT_SECRET);
   } catch (error) {
     console.error("❌ Error al verificar el token:", error.message);
-    return res.status(403).json({ message: "Token incorrecto" });
+    return res.status(403).json({ message: "Token inválido" });
   }
-  //El usuario codificado en el token existe?
+
   const usuario = await selectUsuarioById(data.usuario_id);
   if (!usuario) {
     return res.status(403).json({ message: "El usuario no existe" });

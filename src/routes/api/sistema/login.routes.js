@@ -1,15 +1,19 @@
-const express = require("express"); //
+const express = require("express");
+const router = express.Router();
+
 const {
   login,
   logout,
+  me,
 } = require("../../../controllers/sistema/login.controllers");
-
-const router = require("express").Router();
+const { checkToken } = require("../../../utils/middlewares");
 
 // Middleware para recibir texto plano desde sendBeacon
 router.use(express.text({ type: "*/*" }));
 
-router.post("/", login);
-router.post("/not", logout);
+// Rutas
+router.post("/", login); // POST /api/login
+router.post("/not", logout); // POST /api/login/not
+router.get("/me", checkToken, me);
 
 module.exports = router;

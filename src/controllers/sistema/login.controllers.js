@@ -1,5 +1,8 @@
 const bcrypt = require("bcryptjs");
-const { selectByUsuario } = require("../../models/sistema/login.models");
+const {
+  selectByUsuario,
+  selectByid,
+} = require("../../models/sistema/login.models");
 const { createToken } = require("../../utils/helpers");
 const { poolmysql } = require("../../config/db");
 
@@ -32,16 +35,22 @@ const login = async (req, res, next) => {
   }
 
   // Marcar como logueado
-  await poolmysql.query(
-    `
-    UPDATE sisusuarios 
-    SET is_logged = 1 
-    WHERE id = ?
-  `,
-    [result.id]
-  );
+  await poolmysql.query(`UPDATE sisusuarios SET is_logged = 1 WHERE id = ?`, [
+    result.id,
+  ]);
 
-  res.json({ message: "Login Correcto", token: createToken(result) });
+  // Crear el JWT
+  const token = createToken(result);
+
+  // Enviar el token como cookie segura
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: true, // ⚠️ Usa HTTPS en producción
+    sameSite: "Lax", // Protege contra CSRF
+    maxAge: 60 * 60 * 1000, // 1 hora
+  });
+
+  res.json({ message: "Login correcto" });
 };
 
 const logout = async (req, res) => {
@@ -53,20 +62,44 @@ const logout = async (req, res) => {
       return res.status(400).json({ message: "usuario_id es requerido" });
     }
 
-    await poolmysql.query(
-      `
-      UPDATE sisusuarios 
-      SET is_logged = 0 
-      WHERE id = ?
-    `,
-      [usuario_id]
-    );
+    await poolmysql.query(`UPDATE sisusuarios SET is_logged = 0 WHERE id = ?`, [
+      usuario_id,
+    ]);
 
-    res.status(204).end(); // Sin contenido, más apropiado para logout
+    // Eliminar la cookie
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+    });
+
+    res.status(204).end();
   } catch (error) {
     console.error("❌ Error al cerrar sesión:", error.message);
     res.status(500).json({ message: "Error interno del servidor" });
   }
 };
 
-module.exports = { login, logout };
+const me = async (req, res, next) => {
+  try {
+    const usuarioId = req.user?.id || req.user?.usuario_id;
+
+    if (!usuarioId) {
+      return res
+        .status(400)
+        .json({ message: "ID de usuario no encontrado en el token" });
+    }
+
+    const result = await selectByid(usuarioId);
+    if (!result) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error("❌ Error en /me:", error.message);
+    next(error);
+  }
+};
+
+module.exports = { login, logout, me };
