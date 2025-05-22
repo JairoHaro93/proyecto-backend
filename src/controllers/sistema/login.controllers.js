@@ -17,7 +17,7 @@ const login = async (req, res, next) => {
   }
 
   if (result.is_auth !== 1) {
-    return res.status(403).json({ message: "Usuario no autorizado" });
+    return res.status(403).json({ message: "Acceso no autorizado" });
   }
 
   if (result.is_logged === 1) {
