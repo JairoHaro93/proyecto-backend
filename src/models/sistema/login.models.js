@@ -15,6 +15,8 @@ async function selectByUsuario(usuario) {
     U.genero,
     U.is_auth,
     U.is_logged,
+    U.is_logged_app,
+    U.is_auth_app,
     JSON_ARRAYAGG(F.nombre) AS rol
 FROM
     sisusuarios AS U
@@ -47,10 +49,12 @@ async function selectByid(id) {
       U.apellido,
       U.ci,
       U.usuario,
-      U.password,
+      
       U.fecha_nac,
       U.fecha_cont,
       U.genero,
+      U.is_logged_app,
+      U.is_auth_app,
       U.is_auth,
       U.is_logged,
       JSON_ARRAYAGG(F.nombre) AS rol

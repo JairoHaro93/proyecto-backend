@@ -63,11 +63,11 @@ const loginapp = async (req, res, next) => {
       .json({ message: "Error en el usuario y/o contraseña" });
   }
 
-  if (result.is_auth !== 1) {
+  if (result.is_auth_app !== 1) {
     return res.status(403).json({ message: "Usuario no autorizado" });
   }
 
-  if (result.is_logged === 1) {
+  if (result.is_logged_app === 1) {
     return res
       .status(403)
       .json({ message: "El usuario ya inició sesión previamente" });
@@ -85,7 +85,7 @@ const loginapp = async (req, res, next) => {
   await poolmysql.query(
     `
     UPDATE sisusuarios 
-    SET is_logged = 1 
+    SET is_logged_app = 1 
     WHERE id = ?
   `,
     [result.id]
@@ -110,8 +110,8 @@ const logout = async (req, res) => {
     // Eliminar la cookie
     res.clearCookie("token", {
       httpOnly: true,
-      secure: true,
-      sameSite: "Lax",
+      secure: false,
+      sameSite: "lax",
     });
 
     res.status(204).end();
