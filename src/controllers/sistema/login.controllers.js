@@ -45,8 +45,8 @@ const login = async (req, res, next) => {
   // Enviar el token como cookie segura
   res.cookie("token", token, {
     httpOnly: true,
-    secure: true, // ⚠️ Usa HTTPS en producción
-    sameSite: "Lax", // Protege contra CSRF
+    secure: false, // ⚠️ Usa HTTPS en producción
+    sameSite: "lax", // Protege contra CSRF
     maxAge: 60 * 60 * 1000, // 1 hora
   });
 
