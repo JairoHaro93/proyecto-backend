@@ -9,8 +9,14 @@ const NODE_ENV = process.env.NODE_ENV;
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" },
+  cors: {
+    // origin: process.env.IP, // Usa el mismo dominio que el frontend
+    origin: "*", // Usa el mismo dominio que el frontend
+    credentials: true,
+  },
 });
+
+console.log("La ip en index es " + process.env.IP);
 
 // Inicializar socket separado
 setupSocket(io);
