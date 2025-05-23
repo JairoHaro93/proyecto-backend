@@ -10,8 +10,8 @@ const NODE_ENV = process.env.NODE_ENV;
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    // origin: process.env.IP, // Usa el mismo dominio que el frontend
-    origin: "*", // Usa el mismo dominio que el frontend
+    origin: process.env.IP, // Usa el mismo dominio que el frontend
+    // origin: "*", // Usa el mismo dominio que el frontend
     credentials: true,
   },
 });

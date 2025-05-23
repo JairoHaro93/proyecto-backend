@@ -2,19 +2,21 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const { poolmysql, poolsql } = require("./config/db");
-require("dotenv").config();
+const dotenv = require("dotenv");
+
+dotenv.config();
+
 const app = express();
 
 app.use(
   cors({
-    origin: "http://localhost:4200",
-    // origin: process.env.IP,
-    //   origin: process.env.IP, // fallback útil
+    //origin: "http://localhost:4200",
+    origin: process.env.IP,
     credentials: true,
   })
 );
 
-console.log("La ip en app es " + process.env.IP);
+console.log("🌐 IP del frontend permitida por CORS:", process.env.IP);
 
 app.use(cookieParser());
 app.use(express.json());
