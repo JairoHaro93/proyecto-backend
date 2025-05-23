@@ -54,44 +54,58 @@ const login = async (req, res, next) => {
 };
 
 const loginapp = async (req, res, next) => {
-  const { usuario, password } = req.body;
-  const result = await selectByUsuario(usuario);
+  try {
+    const { usuario, password } = req.body;
+    const result = await selectByUsuario(usuario);
 
-  if (!result) {
-    return res
-      .status(401)
-      .json({ message: "Error en el usuario y/o contraseña" });
+    if (!result) {
+      return res.status(401).json({
+        success: false,
+        message: "Error en el usuario y/o contraseña",
+      });
+    }
+
+    if (result.is_auth_app !== 1) {
+      return res.status(403).json({
+        success: false,
+        message: "Usuario no autorizado",
+      });
+    }
+
+    if (result.is_logged_app === 1) {
+      return res.status(403).json({
+        success: false,
+        message: "El usuario ya inició sesión previamente",
+      });
+    }
+
+    const validacion = await bcrypt.compare(password, result.password);
+
+    if (!validacion) {
+      return res.status(401).json({
+        success: false,
+        message: "Error en el usuario y/o contraseña",
+      });
+    }
+
+    // Marcar como logueado
+    await poolmysql.query(
+      `UPDATE sisusuarios SET is_logged_app = 1 WHERE id = ?`,
+      [result.id]
+    );
+
+    return res.json({
+      success: true,
+      message: "Login correcto",
+      token: createToken(result),
+    });
+  } catch (error) {
+    console.error("Error en loginapp:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error interno del servidor",
+    });
   }
-
-  if (result.is_auth_app !== 1) {
-    return res.status(403).json({ message: "Usuario no autorizado" });
-  }
-
-  if (result.is_logged_app === 1) {
-    return res
-      .status(403)
-      .json({ message: "El usuario ya inició sesión previamente" });
-  }
-
-  const validacion = await bcrypt.compare(password, result.password);
-
-  if (!validacion) {
-    return res
-      .status(401)
-      .json({ message: "Error en el usuario y/o contraseña" });
-  }
-
-  // Marcar como logueado
-  await poolmysql.query(
-    `
-    UPDATE sisusuarios 
-    SET is_logged_app = 1 
-    WHERE id = ?
-  `,
-    [result.id]
-  );
-
-  res.json({ message: "Login Correcto", token: createToken(result) });
 };
 
 const logout = async (req, res) => {
@@ -121,6 +135,43 @@ const logout = async (req, res) => {
   }
 };
 
+const logoutapp = async (req, res) => {
+  try {
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const { usuario_id } = body;
+
+    if (!usuario_id) {
+      return res.status(400).json({
+        success: false,
+        message: "usuario_id es requerido",
+      });
+    }
+
+    const [result] = await poolmysql.query(
+      `UPDATE sisusuarios SET is_logged_app = 0 WHERE id = ?`,
+      [usuario_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Usuario no encontrado",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Sesión cerrada correctamente",
+    });
+  } catch (error) {
+    console.error("❌ Error al cerrar sesión:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Error interno del servidor",
+    });
+  }
+};
+
 const me = async (req, res, next) => {
   try {
     const usuarioId = req.user?.id || req.user?.usuario_id;
@@ -143,4 +194,10 @@ const me = async (req, res, next) => {
   }
 };
 
-module.exports = { login, loginapp, logout, me };
+module.exports = {
+  login,
+  loginapp,
+  logout,
+  logoutapp,
+  me,
+};
