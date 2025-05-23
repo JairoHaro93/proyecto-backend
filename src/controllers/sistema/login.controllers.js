@@ -53,6 +53,47 @@ const login = async (req, res, next) => {
   res.json({ message: "Login correcto" });
 };
 
+const loginapp = async (req, res, next) => {
+  const { usuario, password } = req.body;
+  const result = await selectByUsuario(usuario);
+
+  if (!result) {
+    return res
+      .status(401)
+      .json({ message: "Error en el usuario y/o contraseña" });
+  }
+
+  if (result.is_auth !== 1) {
+    return res.status(403).json({ message: "Usuario no autorizado" });
+  }
+
+  if (result.is_logged === 1) {
+    return res
+      .status(403)
+      .json({ message: "El usuario ya inició sesión previamente" });
+  }
+
+  const validacion = await bcrypt.compare(password, result.password);
+
+  if (!validacion) {
+    return res
+      .status(401)
+      .json({ message: "Error en el usuario y/o contraseña" });
+  }
+
+  // Marcar como logueado
+  await poolmysql.query(
+    `
+    UPDATE sisusuarios 
+    SET is_logged = 1 
+    WHERE id = ?
+  `,
+    [result.id]
+  );
+
+  res.json({ message: "Login Correcto", token: createToken(result) });
+};
+
 const logout = async (req, res) => {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
@@ -102,4 +143,4 @@ const me = async (req, res, next) => {
   }
 };
 
-module.exports = { login, logout, me };
+module.exports = { login, loginapp, logout, me };
