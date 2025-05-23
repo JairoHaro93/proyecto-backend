@@ -6,6 +6,7 @@ const {
   logout,
   me,
   loginapp,
+  logoutapp,
 } = require("../../../controllers/sistema/login.controllers");
 const { checkToken } = require("../../../utils/middlewares");
 
@@ -16,6 +17,7 @@ router.use(express.text({ type: "*/*" }));
 router.post("/", login); // POST /api/login
 router.post("/app", loginapp); // POST /api/login
 router.post("/not", logout); // POST /api/login/not
+router.post("/notapp", logoutapp); // POST /api/login/not
 router.get("/me", checkToken, me);
 
 module.exports = router;
