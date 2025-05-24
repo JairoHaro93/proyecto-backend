@@ -61,10 +61,13 @@ const putAgendaHorario = async (req, res, next) => {
 const putAgendaSolucion = async (req, res, next) => {
   const { age_id } = req.params;
   try {
-    const newHorario = req.body;
-    const insertId = await updateSolucion(age_id, newHorario);
-    res.status(201).json({ message: "Agenda registrada", id: insertId });
+    const body = req.body;
+    console.log("📥 PUT solución:", { age_id, body });
+
+    const insertId = await updateSolucion(age_id, body);
+    res.status(201).json({ message: "✅ Solución guardada", id: insertId });
   } catch (error) {
+    console.error("❌ Error al actualizar solución:", error);
     next(error);
   }
 };
