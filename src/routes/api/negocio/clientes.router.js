@@ -6,6 +6,7 @@ const {
   getAllDataArray,
   getDataArrayActivos,
   getDataBasicosActivos,
+  getAllInstPend,
 } = require("../../../controllers/negocio/info_clientes.controllers");
 const { checkToken } = require("../../../utils/middlewares");
 
@@ -28,5 +29,8 @@ router.get("/mapas", checkToken, getAllDataMapa);
 
 //OBTENER INFORMACION DE SERVICIO POR ORDINS
 router.get("/:servicioOrdIns", checkToken, getServicioByOrdIns);
+
+//OBTENER LA INFORMACION DE TODAS INSTALACIONES NUEVAS POR REALIZARCE
+router.get("/inst-pend", checkToken, getAllInstPend);
 
 module.exports = router;

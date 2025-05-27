@@ -6,6 +6,7 @@ const {
   selectDataArrayActivosByCed,
   selectDataBasicosActivos,
   selectByOrdnIns,
+  selectAllInstPend,
 } = require("../../models/negocio/info_clientes.models");
 
 //CONTROLADOR PARA OBTENER LOS NOMBRES Y CEDULA
@@ -92,6 +93,19 @@ const getServicioByOrdIns = async (req, res, next) => {
   }
 };
 
+
+//CONTROLADOR PARA OBTENER UN SOPORTE POR ORDINS
+
+const getAllInstPend  = async (req, res, next) => {
+  try {
+    const result = await selectAllInstPend();
+    res.json(result); // Enviar la respuesta con el JSON estructurado
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 module.exports = {
   getAllDataBasicos,
   getDataBasicosActivos,
@@ -99,4 +113,5 @@ module.exports = {
   getDataArrayActivos,
   getAllDataMapa,
   getServicioByOrdIns,
+  getAllInstPend
 };

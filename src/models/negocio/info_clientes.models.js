@@ -379,6 +379,31 @@ async function selectByOrdnIns(servicioOrdIns) {
   }
 }
 
+
+// ✅ QUERY PARA OBTENER LOS DATOS NOMBRES Y APELLIDOS DE TODOS LOS CLIENTES REGISTRADOS EN LATACUNGA
+async function selectAllInstPend() {
+  try {
+    const pool = await poolsql.catch((err) => {
+      console.error("❌ Error al conectar al pool:", err.message);
+      throw new Error("Error de base de datos");
+    });
+
+    const result = await pool.request().query(`
+SELECT *
+FROM t_Ordenes_Instalaciones o
+JOIN t_Sucursales s ON o.suc_id = s.suc_id
+WHERE o.est_ord_id = 3
+  AND s.suc_nombre = 'LATACUNGA';
+    `
+  );
+
+    return result.recordset;
+  } catch (error) {
+    console.error("❌ Error en selectAllInstPend:", error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   selectAllDataBasicos,
   selectDataBasicosActivos,
@@ -386,4 +411,6 @@ module.exports = {
   selectDataArrayActivosByCed,
   selectAllDataMapa,
   selectByOrdnIns,
+  selectAllInstPend
+
 };

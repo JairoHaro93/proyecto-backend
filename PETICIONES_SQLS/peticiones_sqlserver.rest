@@ -38,11 +38,16 @@ Authorization: {{TOKEN_AUX}}
 GET {{url}}/clientes/mapas
 Authorization: {{TOKEN_AUX}}
 
+//OBTENER TODAS LAS INSTALACIONES PENDIENTES
+###
+GET {{url}}/clientes/inst-pend
+Authorization: {{TOKEN_AUX}}
+
+
 //OBTENER LOS Datos BASICOS BASICOS DEL  MEDIANTE LA ORDEN DE INSTALACION
 ###
 GET {{url}}/clientes/101177
 Authorization: {{TOKEN_AUX}}
-
 
 
 
