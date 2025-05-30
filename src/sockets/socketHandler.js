@@ -55,6 +55,15 @@ socket.on("soporteCreado", () => {
   console.log("📡 Notificado a sala_NOC (soporteCreadoNOC)");
 });
 
+// NUEVO TRABAJO A PREAGENDA
+socket.on("trabajoPreagendado", () => {
+  console.log("📢 Se Preagendo un nuevo trabajo.");
+  io.to("sala_NOC").emit("trabajoPreagendadoNOC");
+  console.log("📡 Notificado a sala_NOC (trabajoPreagendadoNOC)");
+});
+
+
+
  // TRABAJO CULMINADO POR TÉCNICO
 socket.on("trabajoCulminado", ({ tecnicoId }) => {
   console.log("✅ Trabajo Culminado. Notificando a técnico y NOC.");
@@ -74,6 +83,9 @@ socket.on("trabajoAgendado", ({ tecnicoId }) => {
   }
   io.to("sala_NOC").emit("trabajoAgendadoNOC");
 });
+
+
+
 
     //SOCKET DE DESCONEXION
     socket.on("disconnect", async () => {
