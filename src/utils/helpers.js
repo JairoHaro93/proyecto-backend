@@ -39,7 +39,8 @@ const createToken = (usuario) => {
     usuario_nombre: usuario.nombre,
   };
 
-  return jwt.sign(payload, secret, { expiresIn });
+  //return jwt.sign(payload, secret, { expiresIn });
+  return jwt.sign(payload, secret);
 };
 
 module.exports = { createToken };
