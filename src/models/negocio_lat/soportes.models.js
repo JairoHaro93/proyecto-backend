@@ -118,7 +118,7 @@ LEFT JOIN
     ON Sop.reg_sop_registrado_por_id = U.id
 WHERE  
     Sop.reg_sop_noc_id_acepta = ? 
-    AND Sop.reg_sop_estado <> 'RESUELTO';
+    AND Sop.reg_sop_estado NOT IN ('RESUELTO', 'VISITA', 'LOS');
 
   `,
     [id_noc]
@@ -138,7 +138,6 @@ function insertSoporte({
   reg_sop_registrado_por_id,
   reg_sop_observaciones,
   reg_sop_nombre,
- 
 }) {
   return poolmysql.query(
     `INSERT INTO neg_t_soportes (
@@ -157,7 +156,6 @@ function insertSoporte({
       reg_sop_registrado_por_id,
       reg_sop_observaciones,
       reg_sop_nombre,
-      
     ]
   );
 }
@@ -192,8 +190,6 @@ async function updateAsignarSolucion(
     throw error;
   }
 }
-
-
 
 // QUERY PARA QUE NOC ACEPTE EL SOPORTE
 async function aceptarSoporteById(id_sop, { reg_sop_noc_id_acepta }) {
@@ -233,5 +229,4 @@ module.exports = {
   insertSoporte,
   aceptarSoporteById,
   selectSoportesByNoc,
-
 };
