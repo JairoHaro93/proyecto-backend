@@ -2,6 +2,39 @@
 @url = http://localhost:3000/api
 
 
+
+//-----------------------------------------------------------
+//                   LOGIN                                   |
+//-----------------------------------------------------------
+
+//LOGIN 
+###
+POST {{url}}/login
+Content-Type: application/json
+
+{
+"usuario": "jharo",
+"password": "1234567"
+}
+
+
+//LOGOUT
+###
+POST {{url}}/login/not
+Content-Type: application/json
+
+{
+"usuario_id": 54
+}
+
+
+
+//-----------------------------------------------------------
+//                   USUARIOS                               |
+//-----------------------------------------------------------
+
+
+
 //OBTENER TODOS LOS USUARIOS
 ###
 GET {{url}}/usuarios
@@ -59,34 +92,14 @@ Content-Type: application/json
 DELETE {{url}}/usuarios/10
 Authorization: {{TOKEN_AUX}}
 
-////////////////////////////////////////////////////////////////
-//////////// LOGIN ////////////////////////////////////////
-
-//LOGIN 
-###
-POST {{url}}/login
-Content-Type: application/json
-
-{
-"usuario": "jharo",
-"password": "1234567"
-}
-
-
-//LOGOUT
-###
-POST {{url}}/login/not
-Content-Type: application/json
-
-{
-"usuario_id": 54
-}
 
 
 
+//-----------------------------------------------------------
+//                FUNCIONES DEL PERSONAL                    |
+//-----------------------------------------------------------
 
-//////////////////////////////////////////////////////////////
-///////////////////// FUNCIONES DEL PERSONAL //////////////////////////////////
+
 //OBTENER TODAS LAS FUNCIONES DE LA BASE DE DATOS
 ###
 GET {{url}}/funciones
