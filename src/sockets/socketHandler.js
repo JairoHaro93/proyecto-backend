@@ -4,7 +4,6 @@ const { poolmysql } = require("../config/db");
 function setupSocket(io) {
   io.on("connection", async (socket) => {
     const usuarioId = socket.handshake.query.usuario_id;
-  
 
     if (!usuarioId) {
       console.warn("⚠️ Conexión sin usuario_id. Cerrando socket.");
@@ -14,7 +13,23 @@ function setupSocket(io) {
 
     try {
       const [rows] = await poolmysql.query(
-        `SELECT id, nombre, is_noc FROM sisusuarios WHERE id = ?`,
+        `
+        
+    SELECT 
+  u.id, 
+  u.nombre,
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 
+      FROM sisusuarios_has_sisfunciones f 
+      WHERE f.sisusuarios_id = u.id AND f.sisfunciones_id = 17
+    ) THEN 1
+    ELSE 0
+  END AS has_agenda
+FROM sisusuarios u
+WHERE u.id = ?;
+`,
+
         [usuarioId]
       );
 
@@ -28,10 +43,12 @@ function setupSocket(io) {
 
       // 👥 Agregar a sala del usuario individual
       socket.join(`usuario_${usuario.id}`);
-      console.log(`👤 Socket ${socket.id} unido a sala individual usuario_${usuario.id}`);
+      console.log(
+        `👤 Socket ${socket.id} unido a sala individual usuario_${usuario.id}`
+      );
 
       // 🏢 Si es NOC, unir a sala NOC
-      if (usuario.is_noc === 1) {
+      if (usuario.has_agenda === 1) {
         socket.join("sala_NOC");
         console.log(`🏢 Usuario ${usuario.id} unido a sala NOC`);
       }
@@ -41,51 +58,50 @@ function setupSocket(io) {
       return;
     }
 
- // CAMBIO ESTADO DE SOPORTE
-socket.on("soporteActualizado", () => {
-  console.log("🔄 Un soporte ha cambiado.");
-  io.to("sala_NOC").emit("soporteActualizadoNOC");
-  console.log("📡 Notificado a sala_NOC (soporteActualizadoNOC)");
-});
+    // CAMBIO ESTADO DE SOPORTE
+    socket.on("soporteActualizado", () => {
+      console.log("🔄 Un soporte ha cambiado.");
+      io.to("sala_NOC").emit("soporteActualizadoNOC");
+      console.log("📡 Notificado a sala_NOC (soporteActualizadoNOC)");
+    });
 
-// NUEVO SOPORTE CREADO
-socket.on("soporteCreado", () => {
-  console.log("📢 Se creó un nuevo soporte.");
-  io.to("sala_NOC").emit("soporteCreadoNOC");
-  console.log("📡 Notificado a sala_NOC (soporteCreadoNOC)");
-});
+    // NUEVO SOPORTE CREADO
+    socket.on("soporteCreado", () => {
+      console.log("📢 Se creó un nuevo soporte.");
+      io.to("sala_NOC").emit("soporteCreadoNOC");
+      console.log("📡 Notificado a sala_NOC (soporteCreadoNOC)");
+    });
 
-// NUEVO TRABAJO A PREAGENDA
-socket.on("trabajoPreagendado", () => {
-  console.log("📢 Se Preagendo un nuevo trabajo.");
-  io.to("sala_NOC").emit("trabajoPreagendadoNOC");
-  console.log("📡 Notificado a sala_NOC (trabajoPreagendadoNOC)");
-});
+    // NUEVO TRABAJO A PREAGENDA
+    socket.on("trabajoPreagendado", () => {
+      console.log("📢 Se Preagendo un nuevo trabajo.");
+      io.to("sala_NOC").emit("trabajoPreagendadoNOC");
+      console.log("📡 Notificado a sala_NOC (trabajoPreagendadoNOC)");
+    });
 
+    // TRABAJO CULMINADO POR TÉCNICO
+    socket.on("trabajoCulminado", ({ tecnicoId }) => {
+      console.log("✅ Trabajo Culminado. Notificando a técnico y NOC.");
+      if (tecnicoId) {
+        io.to(`usuario_${tecnicoId}`).emit("trabajoCulminadoTecnico");
+        console.log(
+          `📤 Notificado a usuario_${tecnicoId} (trabajoCulminadoTecnico)`
+        );
+      }
+      io.to("sala_NOC").emit("trabajoCulminadoNOC");
+    });
 
-
- // TRABAJO CULMINADO POR TÉCNICO
-socket.on("trabajoCulminado", ({ tecnicoId }) => {
-  console.log("✅ Trabajo Culminado. Notificando a técnico y NOC.");
-  if (tecnicoId) {
-    io.to(`usuario_${tecnicoId}`).emit("trabajoCulminadoTecnico");
-    console.log(`📤 Notificado a usuario_${tecnicoId} (trabajoCulminadoTecnico)`);
-  }
-  io.to("sala_NOC").emit("trabajoCulminadoNOC");
-});
-
-// TRABAJO AGENDADO A UN TÉCNICO
-socket.on("trabajoAgendado", ({ tecnicoId }) => {
-  console.log("📆 Trabajo Agendado. Notificando a técnico y NOC.");
-  if (tecnicoId) {
-    io.to(`usuario_${tecnicoId}`).emit("trabajoAgendadoTecnico");
-    console.log(`📤 Notificado a usuario_${tecnicoId} (trabajoAgendadoTecnico)`);
-  }
-  io.to("sala_NOC").emit("trabajoAgendadoNOC");
-});
-
-
-
+    // TRABAJO AGENDADO A UN TÉCNICO
+    socket.on("trabajoAgendado", ({ tecnicoId }) => {
+      console.log("📆 Trabajo Agendado. Notificando a técnico y NOC.");
+      if (tecnicoId) {
+        io.to(`usuario_${tecnicoId}`).emit("trabajoAgendadoTecnico");
+        console.log(
+          `📤 Notificado a usuario_${tecnicoId} (trabajoAgendadoTecnico)`
+        );
+      }
+      io.to("sala_NOC").emit("trabajoAgendadoNOC");
+    });
 
     //SOCKET DE DESCONEXION
     socket.on("disconnect", async () => {
