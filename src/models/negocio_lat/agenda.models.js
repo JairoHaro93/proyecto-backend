@@ -39,17 +39,20 @@ WHERE
   return preagendas; // Devuelve directamente el array (aunque esté vacío)
 }
 
-// QUERY PARA OBTENER TODOS LOS DATOS AGENDADOS
-async function selectAgenda() {
-  const [agendas] = await poolmysql.query(
+// QUERY PARA OBTENER TODOS LOS TRABAJOS AGENDADOS PENDIENTES
+async function selectAgendaPendByFecha(fecha) {
+  const [pendientes] = await poolmysql.query(
     `
-    SELECT * 
-    FROM neg_t_agenda 
-   
-    `
+SELECT COUNT(*) AS soportes_pendientes
+FROM neg_t_agenda
+WHERE age_fecha = ?
+  AND age_estado = 'PENDIENTE';
+
+    `,
+    [fecha]
   );
 
-  return agendas; // Devuelve directamente el array (aunque esté vacío)
+  return pendientes[0];
 }
 
 // QUERY PARA OBTENER TODOS LOS TRABAJOS ASIGNADOS AL TECNICO
@@ -71,6 +74,23 @@ FROM
     return null; // O podrías devolver un array vacío [] si prefieres.
   }
   return soportes; // DEVOLVER TODOS LOS REGISTROS, NO SOLO EL PRIMERO
+}
+
+// QUERY PARA OBTENER LA INFORMACION DE LA SOLUCION DEL TRABAJO AGENDADO
+async function selectInfoSolByAgeId(age_id) {
+  const [solucion] = await poolmysql.query(
+    `
+ SELECT 
+  age_solucion
+FROM 
+  neg_t_agenda 
+    WHERE id = ?
+
+  `,
+    [age_id]
+  );
+
+  return solucion;
 }
 
 // QUERY PARA FIJAR FECHA HORA VEHICULO Y TECNICO
@@ -212,4 +232,6 @@ module.exports = {
   updateSolucion,
   insertAgendaSop,
   selectTrabajosByTec,
+  selectInfoSolByAgeId,
+  selectAgendaPendByFecha,
 };

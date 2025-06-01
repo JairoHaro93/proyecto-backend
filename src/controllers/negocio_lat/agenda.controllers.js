@@ -6,6 +6,8 @@ const {
   updateHorario,
   selectTrabajosByTec,
   updateSolucion,
+  selectInfoSolByAgeId,
+  selectAgendaPendByFecha,
 } = require("../../models/negocio_lat/agenda.models");
 
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
@@ -14,6 +16,19 @@ const getAgendaByFecha = async (req, res, next) => {
     const { fecha } = req.params;
 
     const result = await selectAgendByFecha(fecha);
+
+    res.json(result); // Si está vacío, devuelve []
+  } catch (error) {
+    next(error);
+  }
+};
+
+// CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
+const getAgendaPendienteByFecha = async (req, res, next) => {
+  try {
+    const { fecha } = req.params;
+
+    const result = await selectAgendaPendByFecha(fecha);
 
     res.json(result); // Si está vacío, devuelve []
   } catch (error) {
@@ -114,6 +129,18 @@ const getAllTrabajosByTec = async (req, res, next) => {
   }
 };
 
+// CONTROLADOR PARA OBTENER LA SOLUCION DEL TRABAJO AGENDADO
+const getInfoSolByAgeId = async (req, res, next) => {
+  const { age_id } = req.params;
+  try {
+    const soporte = await selectInfoSolByAgeId(age_id);
+
+    res.json(soporte);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAgendaByFecha,
   putAgendaHorario,
@@ -123,4 +150,6 @@ module.exports = {
   getPreAgenda,
   postAgendaSop,
   getAllTrabajosByTec,
+  getInfoSolByAgeId,
+  getAgendaPendienteByFecha,
 };

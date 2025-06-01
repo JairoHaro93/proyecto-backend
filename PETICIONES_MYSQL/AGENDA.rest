@@ -22,6 +22,22 @@ Authorization: {{TOKEN_AUX}}
 GET {{url}}/agenda/mis-trabajos-tec/81
 Authorization:{{TOKEN_AUX}}
 
+
+//OBTENER LA SOLUCION DE UN TRABAJO AGENADDO
+###
+GET {{url}}/agenda/sol/151
+Authorization:{{TOKEN_AUX}}
+
+
+
+//OBTENER LOS TRABAJOS PENDIENTES DE LA FECHA
+###
+GET {{url}}/agenda/pendientes/2025-06-01
+Authorization:{{TOKEN_AUX}}
+
+
+
+
 //CREAR TRABAJO EN AGENDA
 ###
 POST {{url}}/agenda/agenda-sop
