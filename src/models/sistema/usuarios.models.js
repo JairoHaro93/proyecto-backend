@@ -16,7 +16,7 @@ async function selectUsuarioById(usuarioId) {
     U.apellido,
     U.ci,
     U.usuario,
-    U.password,
+   
     U.fecha_nac,
     U.fecha_cont,
     U.genero,
