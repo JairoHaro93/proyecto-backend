@@ -18,6 +18,11 @@ Content-Type: application/json
 }
 
 
+//LOGIN 
+###
+GET {{url}}/login/me
+Authorization: {{TOKEN_AUX}}
+
 //LOGOUT
 ###
 POST {{url}}/login/not

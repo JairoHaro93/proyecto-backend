@@ -18,6 +18,13 @@ app.use(
 
 console.log("🌐 IP del frontend permitida por CORS:", process.env.IP);
 
+app.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
+
 app.use(cookieParser());
 app.use(express.json());
 app.use("/api", require("./routes/api.routes"));
