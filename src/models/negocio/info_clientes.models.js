@@ -163,25 +163,26 @@ async function selectDataArrayActivosByCed(cedulaParam) {
           ORDEN_CLIENTE.cli_cedula AS cedula,
           c.cli_nombres + ' ' + c.cli_apellidos AS nombre_completo,
           ORDEN_CLIENTE.ord_ins_id AS orden_instalacion,
-          ORDEN_CLIENTE.ord_ins_fecha_instalacion AS fecha_instalacion,
+          --ORDEN_CLIENTE.ord_ins_fecha_instalacion AS fecha_instalacion,
           ORDEN_CLIENTE.ord_ins_direccion AS direccion,
           ORDEN_CLIENTE.ord_ins_referencia_direccion AS referencia,
-          ORDEN_CLIENTE.ord_ins_ip_equipo_final AS ip,
-          ORDEN_CLIENTE.ord_ins_telefonos AS telefonos,
-          ORDEN_CLIENTE.ord_ins_coordenadas_x + ',' + ORDEN_CLIENTE.ord_ins_coordenadas_y AS coordenadas,
+          --ORDEN_CLIENTE.ord_ins_ip_equipo_final AS ip,
+          --ORDEN_CLIENTE.ord_ins_telefonos AS telefonos,
+          --ORDEN_CLIENTE.ord_ins_coordenadas_x + ',' + ORDEN_CLIENTE.ord_ins_coordenadas_y AS coordenadas,
           IIF(ORDEN_CLIENTE.ord_ins_estado_sin_servicio = 'True', 'SI', 'NO') AS cortado,
-          t_Estado_Ordenes_Instalaciones.est_ord_ins_nombre AS estado_instalacion,
+          --t_Estado_Ordenes_Instalaciones.est_ord_ins_nombre AS estado_instalacion,
           t_Estado_Servicio_Internet.est_ser_int_nombre AS servicio,
           ORDEN_CLIENTE.est_ser_int_id AS estado_servicio_id, -- 🔑 agregado para ordenar
-          t_Servicios_Internet.ser_int_nombre AS tipo_instalacion,
-          t_Forma_Servicio.for_ser_nombre AS tipo,
+          --t_Servicios_Internet.ser_int_nombre AS tipo_instalacion,
+          --t_Forma_Servicio.for_ser_nombre AS tipo,
           t_Planes_Internet.pla_int_nombre AS plan_nombre,
+             --EMPLEADO_TECNICO.emp_nombres + ' ' + EMPLEADO_TECNICO.emp_apellidos AS instalado_por,
           t_Planes_Internet.pla_int_precio AS precio,
           CASE 
             WHEN ORDEN_CLIENTE.ord_ins_fecha_pago IS NOT NULL THEN 'PAGADO'
             ELSE 'PENDIENTE'
-          END AS estado,
-          EMPLEADO_TECNICO.emp_nombres + ' ' + EMPLEADO_TECNICO.emp_apellidos AS instalado_por
+          END AS estado
+       
 
         FROM 
           t_Ordenes_Instalaciones AS ORDEN_CLIENTE
@@ -379,7 +380,6 @@ async function selectByOrdnIns(servicioOrdIns) {
   }
 }
 
-
 // ✅ QUERY PARA OBTENER LOS DATOS NOMBRES Y APELLIDOS DE TODOS LOS CLIENTES REGISTRADOS EN LATACUNGA
 async function selectAllInstPend() {
   try {
@@ -394,8 +394,7 @@ FROM t_Ordenes_Instalaciones o
 JOIN t_Sucursales s ON o.suc_id = s.suc_id
 WHERE o.est_ord_id = 3
   AND s.suc_nombre = 'LATACUNGA';
-    `
-  );
+    `);
 
     return result.recordset;
   } catch (error) {
@@ -411,6 +410,5 @@ module.exports = {
   selectDataArrayActivosByCed,
   selectAllDataMapa,
   selectByOrdnIns,
-  selectAllInstPend
-
+  selectAllInstPend,
 };
