@@ -100,6 +100,19 @@ const postAgendaSop = async (req, res, next) => {
   }
 };
 
+// CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
+const postImagenSolu = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "No se recibió ninguna imagen" });
+  }
+
+  res.status(200).json({
+    message: "Imagen subida con éxito",
+    nombreArchivo: req.file.filename,
+    ruta: req.file.path,
+  });
+};
+
 //CONTROLADOR PARA QUE NOC ASIGNE UN TECNCIO EN AGENDA
 const asignarTecnicoAge = async (req, res, next) => {
   const { soporteId } = req.params;
@@ -149,6 +162,7 @@ module.exports = {
   asignarTecnicoAge,
   getPreAgenda,
   postAgendaSop,
+  postImagenSolu,
   getAllTrabajosByTec,
   getInfoSolByAgeId,
   getAgendaPendienteByFecha,

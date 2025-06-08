@@ -1,4 +1,8 @@
 const jwt = require("jsonwebtoken");
+const path = require("path");
+const multer = require("multer");
+const fs = require("fs");
+
 const { selectUsuarioById } = require("../models/sistema/usuarios.models");
 const {
   selectSoporteByOrdIns,
@@ -83,10 +87,42 @@ const checkToken = async (req, res, next) => {
   req.user = usuario;
   next();
 };
+//MIDDLEWARE
+
+// Configurar almacenamiento
+
+const rutaDestino = "/mnt/externo/imagenes_app";
+
+// Verifica que el directorio exista o lo crea
+if (!fs.existsSync(rutaDestino)) {
+  fs.mkdirSync(rutaDestino, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, rutaDestino);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname); // extensión original
+    const nombreUnico = `img_${Date.now()}${ext}`;
+    cb(null, nombreUnico);
+  },
+});
+
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new Error("Solo se permiten imágenes"), false);
+  }
+};
+
+const upload = multer({ storage, fileFilter });
 
 module.exports = {
   checkUsuarioId,
   checkSoportesNocId,
   checkSoporteOrdIns,
   checkToken,
+  upload,
 };
