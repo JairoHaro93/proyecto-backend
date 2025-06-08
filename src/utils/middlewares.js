@@ -3,6 +3,9 @@ const path = require("path");
 const multer = require("multer");
 const fs = require("fs");
 
+const dotenv = require("dotenv");
+dotenv.config();
+
 const { selectUsuarioById } = require("../models/sistema/usuarios.models");
 const {
   selectSoporteByOrdIns,
@@ -90,10 +93,9 @@ const checkToken = async (req, res, next) => {
 //MIDDLEWARE
 
 // Configurar almacenamiento
+const rutaDestino = process.env.rutaDestino || "uploads/soluciones";
 
-const rutaDestino = "/mnt/externo/imagenes_app";
-
-// Verifica que el directorio exista o lo crea
+// Asegura que el directorio exista
 if (!fs.existsSync(rutaDestino)) {
   fs.mkdirSync(rutaDestino, { recursive: true });
 }
@@ -103,9 +105,8 @@ const storage = multer.diskStorage({
     cb(null, rutaDestino);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname); // extensión original
-    const nombreUnico = `img_${Date.now()}${ext}`;
-    cb(null, nombreUnico);
+    const ext = path.extname(file.originalname);
+    cb(null, `img_${Date.now()}${ext}`);
   },
 });
 
