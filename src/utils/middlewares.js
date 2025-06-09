@@ -102,11 +102,19 @@ if (!fs.existsSync(rutaDestino)) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, rutaDestino);
+    const orden = req.body.orden_instalacion || "sin_orden";
+    const destino = path.join(rutaDestino, orden);
+
+    if (!fs.existsSync(destino)) {
+      fs.mkdirSync(destino, { recursive: true });
+    }
+
+    cb(null, destino);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    cb(null, `img_${Date.now()}_${Math.round(Math.random() * 1e5)}${ext}`);
+    const nombre = `img_${Date.now()}_${Math.round(Math.random() * 1e5)}${ext}`;
+    cb(null, nombre);
   },
 });
 
@@ -125,5 +133,5 @@ module.exports = {
   checkSoportesNocId,
   checkSoporteOrdIns,
   checkToken,
-  uploadMultiple: upload.array("imagenes", 4),
+  upload: upload,
 };

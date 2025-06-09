@@ -27,6 +27,11 @@ app.use((req, res, next) => {
 
 app.use(cookieParser());
 app.use(express.json());
+app.use(
+  "/imagenes",
+  express.static(process.env.rutaDestino || "uploads/soluciones")
+);
+
 app.use("/api", require("./routes/api.routes"));
 
 // Conexión a BDs

@@ -9,13 +9,10 @@ const {
   putAgendaSolucion,
   getInfoSolByAgeId,
   getAgendaPendienteByFecha,
-  subirImagenesVisita,
+  subirImagenUnitaria,
+  obtenerImagenesPorTrabajo,
 } = require("../../../controllers/negocio_lat/agenda.controllers");
-const {
-  checkToken,
-  upload,
-  uploadMultiple,
-} = require("../../../utils/middlewares");
+const { checkToken, upload } = require("../../../utils/middlewares");
 
 const router = require("express").Router();
 
@@ -44,7 +41,14 @@ router.post("/crear", checkToken, postAgenda);
 router.post("/agenda-sop", checkToken, postAgendaSop);
 
 // SUBE LA IMAGEN DE LA SOLUCION DEL TRABAJO
-router.post("/images/visitas", checkToken, uploadMultiple, subirImagenesVisita);
+router.post(
+  "/images/upload",
+  checkToken,
+  upload.single("imagen"),
+  subirImagenUnitaria
+);
+
+router.get("/images/:tabla/:trabajo_id", obtenerImagenesPorTrabajo);
 
 //NOC ACTUALIZA UN TECNICO DEL TRABAJO DE LA AGENDA
 router.put("/asignar-tecnico/:id_sop", checkToken, asignarTecnicoAge);
