@@ -10,6 +10,8 @@ const {
   selectAgendaPendByFecha,
 } = require("../../models/negocio_lat/agenda.models");
 
+const { poolmysql } = require("../../config/db");
+
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
 const getAgendaByFecha = async (req, res, next) => {
   try {
@@ -100,17 +102,54 @@ const postAgendaSop = async (req, res, next) => {
   }
 };
 
-// CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
-const postImagenSolu = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "No se recibió ninguna imagen" });
+// CONTROLADOR PARA SUBIR IMAGENES DE VISITA
+const subirImagenesVisita = async (req, res) => {
+  const { trabajo_id } = req.body;
+
+  if (!trabajo_id) {
+    return res.status(400).json({ message: "Se requiere trabajo_id" });
   }
 
-  res.status(200).json({
-    message: "Imagen subida con éxito",
-    nombreArchivo: req.file.filename,
-    ruta: req.file.path,
-  });
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ message: "No se recibieron imágenes" });
+  }
+
+  // Solo usamos hasta 4 imágenes
+  const archivos = req.files.slice(0, 4);
+  const nombres = archivos.map((f) => f.filename);
+
+  const columnas = ["img_1", "img_2", "img_3", "img_4"];
+  const valoresImagenes = columnas.map((_, i) => nombres[i] || null);
+
+  try {
+    const [existing] = await poolmysql.query(
+      `SELECT id FROM neg_t_img_visita WHERE trabajo_id = ?`,
+      [trabajo_id]
+    );
+
+    if (existing.length > 0) {
+      await poolmysql.query(
+        `UPDATE neg_t_img_visita SET img_1 = ?, img_2 = ?, img_3 = ?, img_4 = ? WHERE trabajo_id = ?`,
+        [...valoresImagenes, trabajo_id]
+      );
+    } else {
+      await poolmysql.query(
+        `INSERT INTO neg_t_img_visita (trabajo_id, img_1, img_2, img_3, img_4) VALUES (?, ?, ?, ?, ?)`,
+        [trabajo_id, ...valoresImagenes]
+      );
+    }
+
+    res.status(200).json({
+      message: "Imágenes asociadas correctamente",
+      trabajo_id,
+      imagenes: nombres,
+    });
+  } catch (error) {
+    console.error("❌ Error al guardar imágenes:", error);
+    res
+      .status(500)
+      .json({ message: "Error al registrar imágenes", error: error.message });
+  }
 };
 
 //CONTROLADOR PARA QUE NOC ASIGNE UN TECNCIO EN AGENDA
@@ -162,7 +201,7 @@ module.exports = {
   asignarTecnicoAge,
   getPreAgenda,
   postAgendaSop,
-  postImagenSolu,
+  subirImagenesVisita,
   getAllTrabajosByTec,
   getInfoSolByAgeId,
   getAgendaPendienteByFecha,

@@ -106,7 +106,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    cb(null, `img_${Date.now()}${ext}`);
+    cb(null, `img_${Date.now()}_${Math.round(Math.random() * 1e5)}${ext}`);
   },
 });
 
@@ -125,5 +125,5 @@ module.exports = {
   checkSoportesNocId,
   checkSoporteOrdIns,
   checkToken,
-  upload,
+  uploadMultiple: upload.array("imagenes", 4),
 };
