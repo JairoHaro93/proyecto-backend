@@ -3,7 +3,7 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const { poolmysql, poolsql } = require("./config/db");
 const dotenv = require("dotenv");
-
+const path = require("path");
 dotenv.config();
 
 const app = express();
@@ -29,9 +29,8 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(
   "/imagenes",
-  express.static(process.env.rutaDestino || "uploads/soluciones")
+  express.static(path.resolve(process.env.rutaDestino || "uploads/soluciones"))
 );
-
 app.use("/api", require("./routes/api.routes"));
 
 // Conexión a BDs

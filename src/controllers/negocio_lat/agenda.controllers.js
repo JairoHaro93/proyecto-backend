@@ -106,9 +106,9 @@ const postAgendaSop = async (req, res, next) => {
 
 // CONTROLADOR PARA SUBIR IMAGENES DE VISITA
 const subirImagenUnitaria = async (req, res) => {
-  const { trabajo_id, campo, tabla, orden_instalacion } = req.body;
+  const { trabajo_id, campo, tabla, ord_ins } = req.body;
 
-  if (!trabajo_id || !campo || !tabla || !orden_instalacion) {
+  if (!trabajo_id || !campo || !tabla || !ord_ins) {
     return res.status(400).json({
       message: "Se requiere trabajo_id, campo, tabla y orden_instalacion",
     });
@@ -144,7 +144,7 @@ const subirImagenUnitaria = async (req, res) => {
 
   // Subcarpeta por orden_instalacion
   const nombreArchivo = req.file.filename;
-  const rutaRelativa = path.join(orden_instalacion, nombreArchivo); // ej: 001-2025/img_123.jpg
+  const rutaRelativa = path.join(ord_ins, nombreArchivo); // ej: 001-2025/img_123.jpg
   const rutaAbsoluta = path.join(process.env.rutaDestino, rutaRelativa);
 
   try {
