@@ -121,7 +121,7 @@ async function insertAgenda({
 async function insertAgendaSop({
   age_tipo,
   age_subtipo,
-  age_ord_ins,
+  ord_ins,
   age_id_sop,
   age_observaciones,
   age_coordenadas,
@@ -133,7 +133,7 @@ async function insertAgendaSop({
       age_estado,
       age_tipo,
       age_subtipo,
-      age_ord_ins,
+      ord_ins,
       age_id_sop,
       age_observaciones,
       age_coordenadas,
@@ -144,7 +144,7 @@ async function insertAgendaSop({
       "PENDIENTE", // valor para age_estado
       age_tipo,
       age_subtipo,
-      age_ord_ins,
+      ord_ins,
       age_id_sop,
       age_observaciones,
       age_coordenadas,

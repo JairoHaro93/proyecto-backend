@@ -12,10 +12,9 @@ const subirImagenUnitaria = async (req, res) => {
     });
   }
 
-  console.log("la orden de instacaion es:" + ord_ins);
   // Campos válidos por tabla
   const camposPermitidos = {
-    neg_t_img_visita: ["img_1", "img_2", "img_3", "img_4"],
+    neg_t_agenda: ["img_1", "img_2", "img_3", "img_4"],
     neg_t_img_inst: [
       "fachada",
       "router",
@@ -110,7 +109,7 @@ const subirImagenUnitaria = async (req, res) => {
 
 const obtenerImagenesPorTrabajo = async (req, res) => {
   const camposPorTabla = {
-    neg_t_img_visita: ["img_1", "img_2", "img_3", "img_4"],
+    neg_t_agenda: ["img_1", "img_2", "img_3", "img_4"],
     neg_t_img_inst: [
       "fachada",
       "router",
@@ -127,7 +126,6 @@ const obtenerImagenesPorTrabajo = async (req, res) => {
 
   const { id, tabla } = req.params;
 
-  console.log(id);
   if (!id || isNaN(id)) {
     return res.status(400).json({ message: "ID de trabajo inválido" });
   }

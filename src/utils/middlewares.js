@@ -102,7 +102,6 @@ if (!fs.existsSync(rutaDestino)) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    console.log("LA ORDEN DE ISN EN MIDELWARE " + req.body.ord_ins);
     const orden = req.body.ord_ins || "sin_orden";
     const destino = path.join(rutaDestino, orden);
 
