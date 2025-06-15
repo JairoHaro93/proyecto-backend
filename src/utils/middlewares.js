@@ -102,8 +102,9 @@ if (!fs.existsSync(rutaDestino)) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const orden = req.body.ord_ins || "sin_orden";
-    const destino = path.join(rutaDestino, orden);
+    const directorio = req.body.directorio || "sin_directorio";
+
+    const destino = path.join(rutaDestino, directorio);
 
     if (!fs.existsSync(destino)) {
       fs.mkdirSync(destino, { recursive: true });

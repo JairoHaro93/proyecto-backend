@@ -4,15 +4,16 @@ const fs = require("fs");
 
 // CONTROLADOR PARA SUBIR IMAGENES DE VISITA
 const subirImagenUnitaria = async (req, res) => {
-  const { campo, tabla, ord_ins } = req.body;
+  let campocompara = "ord_ins";
 
-  if (!campo || !tabla || !ord_ins) {
+  const { campo, tabla, id, directorio } = req.body;
+
+  if (!campo || !tabla || !id || !directorio) {
     return res.status(400).json({
-      message: "Se requiere trabajo_id, campo, tabla y orden_instalacion",
+      message: "Se requiere campo, tabla, id y directorio",
     });
   }
 
-  // Campos válidos por tabla
   const camposPermitidos = {
     neg_t_agenda: ["img_1", "img_2", "img_3", "img_4"],
     neg_t_img_inst: [
@@ -29,7 +30,6 @@ const subirImagenUnitaria = async (req, res) => {
     ],
   };
 
-  // Validar tabla y campo
   if (!camposPermitidos[tabla] || !camposPermitidos[tabla].includes(campo)) {
     return res
       .status(400)
@@ -40,16 +40,18 @@ const subirImagenUnitaria = async (req, res) => {
     return res.status(400).json({ message: "No se recibió ninguna imagen" });
   }
 
-  // Subcarpeta por orden_instalacion
+  if (tabla === "neg_t_agenda") {
+    campocompara = "age_id_sop";
+  }
+
   const nombreArchivo = req.file.filename;
-  const rutaRelativa = path.join(ord_ins, nombreArchivo); // ej: 001-2025/img_123.jpg
+  const rutaRelativa = path.join(directorio, nombreArchivo);
   const rutaAbsoluta = path.join(process.env.rutaDestino, rutaRelativa);
 
   try {
-    // Obtener imagen anterior si existe
     const [rows] = await poolmysql.query(
-      `SELECT ${campo} FROM ${tabla} WHERE ord_ins = ?`,
-      [ord_ins]
+      `SELECT ${campo} FROM ${tabla} WHERE ${campocompara} = ?`,
+      [id]
     );
 
     if (rows.length > 0) {
@@ -61,26 +63,22 @@ const subirImagenUnitaria = async (req, res) => {
         }
       }
 
-      // UPDATE
       await poolmysql.query(`SET SQL_SAFE_UPDATES = 0;`);
-
       await poolmysql.query(
-        `UPDATE ${tabla} SET ${campo} = ?, fecha_actualizacion = NOW() WHERE ord_ins = ?`,
-        [rutaRelativa, ord_ins]
+        `UPDATE ${tabla} SET ${campo} = ?, fecha_actualizacion = NOW() WHERE ${campocompara} = ?`,
+        [rutaRelativa, id]
       );
-
       await poolmysql.query(`SET SQL_SAFE_UPDATES = 1;`);
     } else {
-      // INSERT
       const columnas = camposPermitidos[tabla];
       const placeholders = columnas
         .map((c) => (c === campo ? "?" : "NULL"))
         .join(", ");
       await poolmysql.query(
-        `INSERT INTO ${tabla} (ord_ins, ${columnas.join(
+        `INSERT INTO ${tabla} (${campocompara}, ${columnas.join(
           ", "
         )}, fecha_actualizacion) VALUES (?, ${placeholders}, NOW())`,
-        [ord_ins, rutaRelativa]
+        [id, rutaRelativa]
       );
     }
 
@@ -91,7 +89,7 @@ const subirImagenUnitaria = async (req, res) => {
 
     res.status(200).json({
       message: `Imagen ${campo} subida a ${tabla}`,
-      ord_ins,
+      id,
       campo,
       nombreArchivo,
       ruta_relativa: rutaRelativa,
@@ -100,14 +98,14 @@ const subirImagenUnitaria = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error al guardar imagen:", error);
-    res.status(500).json({
-      message: "Error al registrar imagen",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({ message: "Error al registrar imagen", error: error.message });
   }
 };
 
 const obtenerImagenesPorTrabajo = async (req, res) => {
+  let campocompara = "ord_ins";
   const camposPorTabla = {
     neg_t_agenda: ["img_1", "img_2", "img_3", "img_4"],
     neg_t_img_inst: [
@@ -135,9 +133,12 @@ const obtenerImagenesPorTrabajo = async (req, res) => {
     return res.status(400).json({ message: `Tabla '${tabla}' no válida` });
   }
 
+  if (tabla === "neg_t_agenda") {
+    campocompara = "age_id_sop";
+  }
   try {
     const [rows] = await poolmysql.query(
-      `SELECT ${campos.join(", ")} FROM ${tabla} WHERE ord_ins = ?`,
+      `SELECT ${campos.join(", ")} FROM ${tabla} WHERE ${campocompara} = ?`,
       [id]
     );
 

@@ -7,7 +7,6 @@ const {
   aceptarSoporteById,
   selectSoportesByNoc,
   updateAsignarSolucion,
- 
 } = require("../../models/negocio_lat/soportes.models");
 
 //CONTROLADOR PARA OBTENER TODOS LOS SOPORTES
@@ -77,13 +76,8 @@ const createSoporte = async (req, res, next) => {
     const soportes = await selectSoporteByOrdIns(ord_ins);
 
     // Si alguno no está resuelto, no se permite crear uno nuevo
-    const soporteActivo = soportes.find(
-      (s) =>
-        s.reg_sop_estado !== "RESUELTO" ||
-        s.reg_sop_estado !== "LOS" ||
-        s.reg_sop_estado !== "VISITA"
-    );
-
+    const soporteActivo = soportes.find((s) => s.reg_sop_estado !== "RESUELTO");
+    console.log(soporteActivo);
     if (soporteActivo) {
       return res.status(400).json({
         message: "Ya existe un soporte activo para esta orden de instalación.",
@@ -126,7 +120,6 @@ const asignarSolucion = async (req, res, next) => {
   }
 };
 
-
 // CONTROLADOR PARA OBTENER TODOS LOS SOPORTES DE NOC
 const getAllSoportesByNoc = async (req, res, next) => {
   const { id_noc } = req.params;
@@ -143,9 +136,6 @@ const getAllSoportesByNoc = async (req, res, next) => {
   }
 };
 
-
-
-
 module.exports = {
   getAllDataSoportes,
   getSoporteById,
@@ -156,5 +146,4 @@ module.exports = {
   createSoporte,
   aceptarSoporte,
   getAllSoportesByNoc,
- 
 };

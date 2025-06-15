@@ -118,7 +118,7 @@ LEFT JOIN
     ON Sop.reg_sop_registrado_por_id = U.id
 WHERE  
     Sop.reg_sop_noc_id_acepta = ? 
-    AND Sop.reg_sop_estado NOT IN ('RESUELTO', 'VISITA', 'LOS');
+    AND Sop.reg_sop_estado NOT IN ('RESUELTO');
 
   `,
     [id_noc]
