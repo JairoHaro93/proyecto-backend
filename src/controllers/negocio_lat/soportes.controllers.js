@@ -108,15 +108,20 @@ const aceptarSoporte = async (req, res, next) => {
 };
 
 //CONTROLADOR PARA QUE NOC ASIGNE UNA SOLUCION
-const asignarSolucion = async (req, res, next) => {
+const asignarSolucion = async (req, res) => {
   const { id_sop } = req.params;
+
+  if (!req.body.reg_sop_estado || !req.body.reg_sop_sol_det) {
+    return res.status(400).json({ message: "Faltan campos requeridos" });
+  }
 
   try {
     await updateAsignarSolucion(id_sop, req.body);
     const soporte = await selectSoporteById(id_sop);
     res.json(soporte);
   } catch (error) {
-    next(error);
+    console.error("❌ Error al asignar solución:", error);
+    res.status(500).json({ message: "Error al actualizar el soporte", error });
   }
 };
 
