@@ -19,15 +19,14 @@ const io = new Server(server, {
   },
 });
 
-console.log("La ip en index es " + IP);
-
 // Inicializar socket separado
 setupSocket(io);
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log("🌐 Configuración del servidor:");
+  console.log("🖥 Configuración del servidor:");
   console.log(` - Modo: ${NODE_ENV}`);
   console.log(` - Puerto: ${PORT}`);
+  console.log("💻 IP_FRONTEND " + IP);
   console.log("🌐 IP_BACKEND:", IP_BACKEND);
   console.log("📁 rutaDestino:", RUTA_DESTINO);
 });

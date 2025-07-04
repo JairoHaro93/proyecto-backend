@@ -16,8 +16,6 @@ app.use(
   })
 );
 
-console.log("🌐 IP del frontend permitida por CORS:", process.env.IP);
-
 app.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Pragma", "no-cache");
