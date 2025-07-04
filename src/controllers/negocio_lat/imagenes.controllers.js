@@ -2,11 +2,11 @@ const { poolmysql } = require("../../config/db");
 const path = require("path");
 const fs = require("fs");
 
-// CONTROLADOR PARA SUBIR IMAGENES DE VISITA
+// CONTROLADOR PARA SUBIR IMAGENES
 const subirImagenUnitaria = async (req, res) => {
   let campocompara = "ord_ins";
-
   const { campo, tabla, id, directorio } = req.body;
+  const archivo = req.file;
 
   if (!campo || !tabla || !id || !directorio) {
     return res.status(400).json({
@@ -36,7 +36,7 @@ const subirImagenUnitaria = async (req, res) => {
       .json({ message: `Campo no válido para la tabla ${tabla}` });
   }
 
-  if (!req.file) {
+  if (!archivo) {
     return res.status(400).json({ message: "No se recibió ninguna imagen" });
   }
 
@@ -44,9 +44,15 @@ const subirImagenUnitaria = async (req, res) => {
     campocompara = "age_id_sop";
   }
 
-  const nombreArchivo = req.file.filename;
+  const nombreArchivo = archivo.filename;
   const rutaRelativa = path.join(directorio, nombreArchivo);
-  const rutaAbsoluta = path.join(process.env.rutaDestino, rutaRelativa);
+  const rutaDestino = process.env.rutaDestino;
+
+  if (!rutaDestino) {
+    return res.status(500).json({ message: "rutaDestino no está configurado" });
+  }
+
+  const rutaAbsoluta = path.join(rutaDestino, rutaRelativa);
 
   try {
     const [rows] = await poolmysql.query(
@@ -57,7 +63,7 @@ const subirImagenUnitaria = async (req, res) => {
     if (rows.length > 0) {
       const anterior = rows[0][campo];
       if (anterior) {
-        const rutaVieja = path.join(process.env.rutaDestino, anterior);
+        const rutaVieja = path.join(rutaDestino, anterior);
         if (fs.existsSync(rutaVieja)) {
           fs.unlinkSync(rutaVieja);
         }
@@ -104,6 +110,7 @@ const subirImagenUnitaria = async (req, res) => {
   }
 };
 
+// CONTROLADOR PARA OBTENER IMAGENES
 const obtenerImagenesPorTrabajo = async (req, res) => {
   let campocompara = "ord_ins";
   const camposPorTabla = {
