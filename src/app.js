@@ -29,7 +29,7 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(
   "/imagenes",
-  express.static(path.resolve(process.env.rutaDestino || "uploads/soluciones"))
+  express.static(path.resolve(process.env.RUTA_DESTINO || "uploads/soluciones"))
 );
 app.use("/api", require("./routes/api.routes"));
 

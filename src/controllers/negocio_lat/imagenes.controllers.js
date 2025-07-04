@@ -46,7 +46,7 @@ const subirImagenUnitaria = async (req, res) => {
 
   const nombreArchivo = archivo.filename;
   const rutaRelativa = path.join(directorio, nombreArchivo);
-  const rutaDestino = process.env.rutaDestino;
+  const rutaDestino = process.env.RUTA_DESTINO;
 
   if (!rutaDestino) {
     return res.status(500).json({ message: "rutaDestino no está configurado" });

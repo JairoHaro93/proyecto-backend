@@ -145,7 +145,7 @@ const subirImagenUnitaria = async (req, res) => {
   // Subcarpeta por orden_instalacion
   const nombreArchivo = req.file.filename;
   const rutaRelativa = path.join(ord_ins, nombreArchivo); // ej: 001-2025/img_123.jpg
-  const rutaAbsoluta = path.join(process.env.rutaDestino, rutaRelativa);
+  const rutaAbsoluta = path.join(process.env.RUTA_DESTINO, rutaRelativa);
 
   try {
     // Obtener imagen anterior si existe
@@ -157,7 +157,7 @@ const subirImagenUnitaria = async (req, res) => {
     if (rows.length > 0) {
       const anterior = rows[0][campo];
       if (anterior) {
-        const rutaVieja = path.join(process.env.rutaDestino, anterior);
+        const rutaVieja = path.join(process.env.RUTA_DESTINO, anterior);
         if (fs.existsSync(rutaVieja)) {
           fs.unlinkSync(rutaVieja);
         }

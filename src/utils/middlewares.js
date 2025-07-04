@@ -93,7 +93,7 @@ const checkToken = async (req, res, next) => {
 //MIDDLEWARE
 
 // Configurar almacenamiento
-const rutaDestino = process.env.rutaDestino || "uploads/soluciones";
+const rutaDestino = process.env.RUTA_DESTINO || "uploads/soluciones";
 
 // Asegura que el directorio exista
 if (!fs.existsSync(rutaDestino)) {
