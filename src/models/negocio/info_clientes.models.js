@@ -141,7 +141,16 @@ async function selectAllDataArrayByCed(cedulaParam) {
         cortado: row.cortado,
         estado_servicio_id: row.estado_servicio_id, // necesario para orden
       }))
-      .sort((a, b) => b.estado_servicio_id - a.estado_servicio_id) // orden descendente
+    .sort((a, b) => {
+  const aEliminado = a.servicio === 'CLIENTE ELIMINADO';
+  const bEliminado = b.servicio === 'CLIENTE ELIMINADO';
+
+  if (aEliminado && !bEliminado) return -1;
+  if (!aEliminado && bEliminado) return 1;
+
+  return new Date(a.fecha_instalacion) - new Date(b.fecha_instalacion);
+})
+
       .map(({ estado_servicio_id, ...rest }) => rest); // ❌ elimina ese campo del resultado
 
     return { cedula, nombre_completo, servicios };
