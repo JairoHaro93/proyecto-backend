@@ -1,6 +1,5 @@
 const {
   selectAgendByFecha,
-  insertAgenda,
   selectPreAgenda,
   insertAgendaSop,
   updateHorario,
@@ -8,6 +7,9 @@ const {
   updateSolucion,
   selectInfoSolByAgeId,
   selectAgendaPendByFecha,
+  selectAgendaByOrdIns,
+  insertAgendaHorario,
+  selectAgendaBySopId,
 } = require("../../models/negocio_lat/agenda.models");
 
 const { poolmysql } = require("../../config/db");
@@ -54,10 +56,24 @@ const getPreAgenda = async (req, res, next) => {
 };
 
 // CONTROLADOR PARA CREAR UN HORARIO
-const postAgenda = async (req, res, next) => {
+const postAgendaHorario = async (req, res, next) => {
+  const { ord_ins } = req.body;
+
   try {
+    // Verifica si ya existe agenda para esta orden
+    const agendas = await selectAgendaByOrdIns(ord_ins);
+
+    // Si alguno no está resuelto, no se permite crear uno nuevo
+    const agendaActiva = agendas.find((a) => a.age_estado === "PENDIENTE");
+    console.log(agendaActiva);
+    if (agendaActiva) {
+      return res.status(400).json({
+        message: "Ya existe un trabajo activo para esta orden de instalación.",
+      });
+    }
+
     const newAgenda = req.body;
-    const insertId = await insertAgenda(newAgenda);
+    const insertId = await insertAgendaHorario(newAgenda);
     res.status(201).json({ message: "Agenda registrada", id: insertId });
   } catch (error) {
     next(error);
@@ -91,13 +107,22 @@ const putAgendaSolucion = async (req, res, next) => {
   }
 };
 
-// CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
-const postAgendaSop = async (req, res, next) => {
-  const { soporteId } = req.params;
+// CONTROLADOR PARA CREAR UN CASO EN LA AGENDA
+const postAgenda = async (req, res, next) => {
+  const { ord_ins } = req.body;
 
   try {
-    const newAgenda = req.body;
-    const insertId = await insertAgendaSop(newAgenda);
+    // Verificar si ya existe una agenda activa para esta orden de instalación
+    const agendas = await selectAgendaByOrdIns(ord_ins);
+
+    const agendaActiva = agendas.find((a) => a.age_estado === "PENDIENTE");
+    if (agendaActiva) {
+      return res.status(400).json({
+        message: "Ya existe un trabajo activo para esta orden de instalación.",
+      });
+    }
+
+    const insertId = await insertAgendaSop(req.body);
     res.status(201).json({ message: "Agenda registrada", id: insertId });
   } catch (error) {
     next(error);
@@ -116,8 +141,9 @@ const subirImagenUnitaria = async (req, res) => {
 
   // Campos válidos por tabla
   const camposPermitidos = {
-    neg_t_img_visita: ["img_1", "img_2", "img_3", "img_4"],
-    neg_t_img_inst: [
+    neg_t_visitas: ["img_1", "img_2", "img_3", "img_4"],
+    neg_t_los: ["img_1", "img_2", "img_3", "img_4"],
+    neg_t_instalaciones: [
       "fachada",
       "router",
       "ont",
@@ -206,8 +232,9 @@ const subirImagenUnitaria = async (req, res) => {
 };
 
 const camposPorTabla = {
-  neg_t_img_visita: ["img_1", "img_2", "img_3", "img_4"],
-  neg_t_img_inst: [
+  neg_t_visitas: ["img_1", "img_2", "img_3", "img_4"],
+  neg_t_los: ["img_1", "img_2", "img_3", "img_4"],
+  neg_t_instalaciones: [
     "fachada",
     "router",
     "ont",
@@ -313,11 +340,11 @@ const getInfoSolByAgeId = async (req, res, next) => {
 module.exports = {
   getAgendaByFecha,
   putAgendaHorario,
-  postAgenda,
+  postAgendaHorario,
   putAgendaSolucion,
   asignarTecnicoAge,
   getPreAgenda,
-  postAgendaSop,
+  postAgenda,
   subirImagenUnitaria,
   getAllTrabajosByTec,
   getInfoSolByAgeId,

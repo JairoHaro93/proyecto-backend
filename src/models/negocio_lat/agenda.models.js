@@ -39,6 +39,36 @@ WHERE
   return preagendas; // Devuelve directamente el array (aunque esté vacío)
 }
 
+// QUERY PARA OBTENER UNA AGENDA POR ORDINS
+async function selectAgendaByOrdIns(ord_ins) {
+  const [agendas] = await poolmysql.query(
+    `
+    SELECT 
+            *
+    FROM
+        neg_t_agenda AS Age
+    WHERE  
+        Age.ord_ins = ?
+  
+    `,
+    [ord_ins]
+  );
+
+  return agendas;
+}
+
+async function selectAgendaBySopId(age_id_sop) {
+  const [agendas] = await poolmysql.query(
+    `
+    SELECT *
+    FROM neg_t_agenda
+    WHERE age_id_sop = ?
+    `,
+    [age_id_sop]
+  );
+  return agendas;
+}
+
 // QUERY PARA OBTENER TODOS LOS TRABAJOS AGENDADOS PENDIENTES
 async function selectAgendaPendByFecha(fecha) {
   const [pendientes] = await poolmysql.query(
@@ -94,7 +124,7 @@ FROM
 }
 
 // QUERY PARA FIJAR FECHA HORA VEHICULO Y TECNICO
-async function insertAgenda({
+async function insertAgendaHorario({
   age_hora_inicio,
   age_hora_fin,
   age_fecha,
@@ -120,10 +150,10 @@ async function insertAgenda({
 // QUERY PARA CREAR UN CASO EN LA AGENDA
 async function insertAgendaSop({
   age_tipo,
-  age_subtipo,
   ord_ins,
+  age_id_tipo,
   age_id_sop,
-  age_observaciones,
+  age_diagnostico,
   age_coordenadas,
   age_telefono,
 }) {
@@ -132,10 +162,10 @@ async function insertAgendaSop({
     INSERT INTO neg_t_agenda (
       age_estado,
       age_tipo,
-      age_subtipo,
       ord_ins,
+      age_id_tipo,
       age_id_sop,
-      age_observaciones,
+      age_diagnostico,
       age_coordenadas,
       age_telefono
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -143,10 +173,10 @@ async function insertAgendaSop({
     [
       "PENDIENTE", // valor para age_estado
       age_tipo,
-      age_subtipo,
       ord_ins,
+      age_id_tipo,
       age_id_sop,
-      age_observaciones,
+      age_diagnostico,
       age_coordenadas,
       age_telefono,
     ]
@@ -227,7 +257,9 @@ async function updateSolucion(age_id, { age_estado, age_solucion }) {
 module.exports = {
   selectAgendByFecha,
   selectPreAgenda,
-  insertAgenda,
+  selectAgendaByOrdIns,
+  selectAgendaBySopId,
+  insertAgendaHorario,
   updateHorario,
   updateSolucion,
   insertAgendaSop,

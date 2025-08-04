@@ -10,8 +10,10 @@ const NODE_ENV = process.env.NODE_ENV;
 const IP = process.env.IP;
 const IP_BACKEND = process.env.IP_BACKEND;
 const RUTA_DESTINO = process.env.RUTA_DESTINO;
-
+//
 const server = http.createServer(app);
+
+//
 const io = new Server(server, {
   cors: {
     origin: process.env.IP,

@@ -11,6 +11,7 @@ const {
   getAgendaPendienteByFecha,
   subirImagenUnitaria,
   obtenerImagenesPorTrabajo,
+  postAgendaHorario,
 } = require("../../../controllers/negocio_lat/agenda.controllers");
 const { checkToken, upload } = require("../../../utils/middlewares");
 
@@ -35,10 +36,10 @@ router.get("/mis-trabajos-tec/:id_tec", checkToken, getAllTrabajosByTec);
 router.get("/sol/:age_id", checkToken, getInfoSolByAgeId);
 
 // CREA UN TRABAJO EN LA AGENDA
-router.post("/crear", checkToken, postAgenda);
+router.post("/crear", checkToken, postAgendaHorario);
 
 // CREA UN SOPORTE EN LA AGENDA
-router.post("/agenda-sop", checkToken, postAgendaSop);
+router.post("/agenda-sop", checkToken, postAgenda);
 
 // SUBE LA IMAGEN DE LA SOLUCION DEL TRABAJO
 router.post(

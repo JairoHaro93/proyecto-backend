@@ -16,10 +16,14 @@ Authorization: {{TOKEN_AUX}}
 ###
 GET {{url}}/soportes/pendientes
 Authorization: {{TOKEN_AUX}}
+
+
 //OBTENER SOPORTE POR ORDINS
 ###
 GET {{url}}/soportes/349
 Authorization: {{TOKEN_AUX}}
+
+
 //CREAR SOPORTE
 ###
 POST {{url}}/soportes
@@ -32,8 +36,8 @@ Content-Type: application/json
     "reg_sop_opc": 2,
     "reg_sop_tel": "55555555555",
     "reg_sop_registrado_por_id": "54",
-    "reg_sop_observaciones": "Sin servicio desde las 10am",
-    "reg_sop_nombre": "Butters",
+    "reg_sop_coment_cliente": "Sin servicio desde las 10am",
+  //  "reg_sop_nombre": "Butters",
      "reg_sop_coordenadas": "-0.8544, -0.5544"
 
 }

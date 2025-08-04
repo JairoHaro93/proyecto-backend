@@ -5,8 +5,11 @@ const fs = require("fs");
 // CONTROLADOR PARA SUBIR IMAGENES
 const subirImagenUnitaria = async (req, res) => {
   let campocompara = "ord_ins";
+
   const { campo, tabla, id, directorio } = req.body;
   const archivo = req.file;
+
+  console.log(req.body);
 
   if (!campo || !tabla || !id || !directorio) {
     return res.status(400).json({
@@ -15,8 +18,8 @@ const subirImagenUnitaria = async (req, res) => {
   }
 
   const camposPermitidos = {
-    neg_t_agenda: ["img_1", "img_2", "img_3", "img_4"],
-    neg_t_img_inst: [
+    neg_t_vis: ["img_1", "img_2", "img_3", "img_4"],
+    neg_t_instalaciones: [
       "fachada",
       "router",
       "ont",
@@ -40,8 +43,9 @@ const subirImagenUnitaria = async (req, res) => {
     return res.status(400).json({ message: "No se recibió ninguna imagen" });
   }
 
-  if (tabla === "neg_t_agenda") {
-    campocompara = "age_id_sop";
+  // Ajuste del campo comparador para agenda
+  if (tabla === "neg_t_vis") {
+    campocompara = "id";
   }
 
   const nombreArchivo = archivo.filename;
@@ -55,12 +59,29 @@ const subirImagenUnitaria = async (req, res) => {
   const rutaAbsoluta = path.join(rutaDestino, rutaRelativa);
 
   try {
+    // ✅ Verificar y crear instalación si no existe
+    if (tabla === "neg_t_instalaciones") {
+      const [instRows] = await poolmysql.query(
+        "SELECT 1 FROM neg_t_instalaciones WHERE ord_ins = ?",
+        [id]
+      );
+      if (instRows.length === 0) {
+        await poolmysql.query(
+          "INSERT INTO neg_t_instalaciones (ord_ins) VALUES (?)",
+          [id]
+        );
+        console.log(`🛠 Instalación creada para ord_ins: ${id}`);
+      }
+    }
+
+    // Verificar si ya hay imagen previa
     const [rows] = await poolmysql.query(
       `SELECT ${campo} FROM ${tabla} WHERE ${campocompara} = ?`,
       [id]
     );
 
     if (rows.length > 0) {
+      console.log("SI EXISTE UNA ANTERIOR IMAGEN");
       const anterior = rows[0][campo];
       if (anterior) {
         const rutaVieja = path.join(rutaDestino, anterior);
@@ -74,8 +95,12 @@ const subirImagenUnitaria = async (req, res) => {
         `UPDATE ${tabla} SET ${campo} = ?, fecha_actualizacion = NOW() WHERE ${campocompara} = ?`,
         [rutaRelativa, id]
       );
+      console.log(
+        `UPDATE ${tabla} SET ${campo} = ?, fecha_actualizacion = NOW() WHERE ${campocompara} = ?`
+      );
       await poolmysql.query(`SET SQL_SAFE_UPDATES = 1;`);
     } else {
+      console.log("NO EXISTE UNA IMAGEN ANTERIOR");
       const columnas = camposPermitidos[tabla];
       const placeholders = columnas
         .map((c) => (c === campo ? "?" : "NULL"))
@@ -114,8 +139,8 @@ const subirImagenUnitaria = async (req, res) => {
 const obtenerImagenesPorTrabajo = async (req, res) => {
   let campocompara = "ord_ins";
   const camposPorTabla = {
-    neg_t_agenda: ["img_1", "img_2", "img_3", "img_4"],
-    neg_t_img_inst: [
+    neg_t_vis: ["img_1", "img_2", "img_3", "img_4"],
+    neg_t_instalaciones: [
       "fachada",
       "router",
       "ont",
@@ -140,8 +165,8 @@ const obtenerImagenesPorTrabajo = async (req, res) => {
     return res.status(400).json({ message: `Tabla '${tabla}' no válida` });
   }
 
-  if (tabla === "neg_t_agenda") {
-    campocompara = "age_id_sop";
+  if (tabla === "neg_t_vis") {
+    campocompara = "id";
   }
   try {
     const [rows] = await poolmysql.query(

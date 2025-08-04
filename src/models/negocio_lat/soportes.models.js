@@ -16,10 +16,11 @@ function selectAllSoportesPendientes() {
     Sop.reg_sop_tel,
     Sop.reg_sop_registrado_por_id,
     CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
-    Sop.reg_sop_observaciones,
+    Sop.reg_sop_coment_cliente,
     Sop.reg_sop_fecha,
-    Sop.reg_sop_estado,
-    Sop.reg_sop_nombre
+    #Sop.reg_sop_nombre,
+    Sop.reg_sop_estado
+
 FROM
     neg_t_soportes AS Sop
 LEFT JOIN sisusuarios AS U ON Sop.reg_sop_registrado_por_id = U.id
@@ -41,10 +42,10 @@ async function selectSoporteById(id_sop) {
       Sop.reg_sop_tel,
       Sop.reg_sop_registrado_por_id,
       CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
-      Sop.reg_sop_observaciones,
+      Sop.reg_sop_coment_cliente,
       Sop.reg_sop_fecha,
       Sop.reg_sop_estado,
-      Sop.reg_sop_nombre,
+      #Sop.reg_sop_nombre,
       Sop.reg_sop_fecha_acepta,
       Sop.reg_sop_sol_det
   FROM
@@ -75,10 +76,10 @@ async function selectSoporteByOrdIns(soporteOrdIns) {
         Sop.reg_sop_tel,
         Sop.reg_sop_registrado_por_id,
         CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
-        Sop.reg_sop_observaciones,
+        Sop.reg_sop_coment_cliente,
         Sop.reg_sop_fecha,
         Sop.reg_sop_estado,
-        Sop.reg_sop_nombre,
+        #Sop.reg_sop_nombre,
         Sop.reg_sop_fecha_acepta,
         Sop.reg_sop_sol_det
     FROM
@@ -105,11 +106,11 @@ SELECT
     Sop.reg_sop_tel,
     Sop.reg_sop_registrado_por_id,
     CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
-    Sop.reg_sop_observaciones,
+    Sop.reg_sop_coment_cliente,
     Sop.reg_sop_fecha,
     Sop.reg_sop_fecha_acepta,
     Sop.reg_sop_estado,
-    Sop.reg_sop_nombre,
+    #Sop.reg_sop_nombre,
     Sop.reg_sop_noc_id_acepta
 FROM
     neg_t_soportes AS Sop
@@ -136,8 +137,8 @@ function insertSoporte({
   reg_sop_opc,
   reg_sop_tel,
   reg_sop_registrado_por_id,
-  reg_sop_observaciones,
-  reg_sop_nombre,
+  reg_sop_coment_cliente,
+  // reg_sop_nombre,
 }) {
   return poolmysql.query(
     `INSERT INTO neg_t_soportes (
@@ -145,17 +146,17 @@ function insertSoporte({
         reg_sop_opc,
         reg_sop_tel,
         reg_sop_registrado_por_id,
-        reg_sop_observaciones,
-        reg_sop_nombre,
+        reg_sop_coment_cliente,
+        #reg_sop_nombre,
         reg_sop_fecha
-      ) VALUES (?, ?, ?, ?, ?, ? , NOW());`, // NOW() insertará la fecha y hora actuales
+      ) VALUES (?, ?, ?, ?, ? , NOW());`, // NOW() insertará la fecha y hora actuales
     [
       ord_ins,
       reg_sop_opc,
       reg_sop_tel,
       reg_sop_registrado_por_id,
-      reg_sop_observaciones,
-      reg_sop_nombre,
+      reg_sop_coment_cliente,
+      // reg_sop_nombre,
     ]
   );
 }

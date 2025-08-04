@@ -13,7 +13,7 @@ POST {{url}}/login
 Content-Type: application/json
 
 {
-"usuario": "jharo",
+"usuario": "jmorocho",
 "password": "1234567"
 }
 

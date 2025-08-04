@@ -111,7 +111,7 @@ const aceptarSoporte = async (req, res, next) => {
 const asignarSolucion = async (req, res) => {
   const { id_sop } = req.params;
 
-  if (!req.body.reg_sop_estado || !req.body.reg_sop_sol_det) {
+  if (!req.body.reg_sop_estado && !req.body.reg_sop_sol_det) {
     return res.status(400).json({ message: "Faltan campos requeridos" });
   }
 

@@ -11,6 +11,12 @@ router.use(
   checkToken,
   require("./api/negocio_lat/soportes.router")
 );
+router.use("/vis", checkToken, require("./api/negocio_lat/vis.router"));
+router.use(
+  "/instalaciones",
+  checkToken,
+  require("./api/negocio_lat/instalaciones.router")
+);
 router.use("/agenda", checkToken, require("./api/negocio_lat/agenda.router"));
 router.use("/imagenes", require("./api/sistema/imagenes.routes"));
 

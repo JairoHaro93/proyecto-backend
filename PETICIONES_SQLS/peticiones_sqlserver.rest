@@ -46,7 +46,7 @@ Authorization: {{TOKEN_AUX}}
 
 //OBTENER LOS Datos BASICOS BASICOS DEL  MEDIANTE LA ORDEN DE INSTALACION
 ###
-GET {{url}}/clientes/101177
+GET {{url}}/clientes/107553
 Authorization: {{TOKEN_AUX}}
 
 

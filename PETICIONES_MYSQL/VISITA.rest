@@ -1,0 +1,22 @@
+//@url = http://192.168.0.160/api
+@url = http://localhost:3000/api
+
+
+//-----------------------------------------------------------
+//               VISITA                                     |
+//-----------------------------------------------------------
+
+
+
+
+//CREAR SOPORTE
+###
+POST {{url}}/visita
+Authorization: {{TOKEN_AUX}}
+Content-Type: application/json
+
+{
+    "ord_ins": 103802,
+    "vis_observacion": "CAMBIAR EL ROUTER Y ONT"
+
+}

@@ -45,11 +45,10 @@ Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 {
-    "age_tipo": "SOPORTE",
-    "age_subtipo": "LOS",
+    "age_tipo": "LOS",
     "ord_ins": "109681",
-    "age_id_sop": "316",
-    "age_observaciones":"CLIENTE REPORTA LUZ ROJA EN LA ONT",
+    "age_id_tipo": "316",
+    "age_diagnostico":"CLIENTE REPORTA LUZ ROJA EN LA ONT",
     "age_coordenadas":"-0.953052, -78.632262"
 }
 

@@ -1,0 +1,35 @@
+//@url = http://192.168.0.160/api
+@url = http://localhost:3000/api
+
+
+//-----------------------------------------------------------
+//               LOS                                        |
+//-----------------------------------------------------------
+
+//OBTENER LOS POR ID
+###
+GET {{url}}/los/18
+Authorization: {{TOKEN_AUX}}
+
+
+//CREAR LOS
+###
+POST {{url}}/los
+Authorization: {{TOKEN_AUX}}
+Content-Type: application/json
+
+{
+    "ord_ins": 103802,
+    "los_diagnostico": "LOS EN LA ONT",
+    "los_coment_cliente":"UN CAMION ARRANCO EL CABLE"
+}
+
+//ACTUALIZAR LOS
+###
+PUT {{url}}/los/25
+Authorization: {{TOKEN_AUX}}
+Content-Type: application/json
+
+{
+  "los_estado": "RESUELTO"
+}
