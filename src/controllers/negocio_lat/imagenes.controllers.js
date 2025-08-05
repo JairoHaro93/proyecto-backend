@@ -136,7 +136,7 @@ const subirImagenUnitaria = async (req, res) => {
 };
 
 // CONTROLADOR PARA OBTENER IMAGENES
-const obtenerImagenesPorTrabajo = async (req, res) => {
+const getImagenesByTableAndId = async (req, res) => {
   let campocompara = "ord_ins";
   const camposPorTabla = {
     neg_t_vis: ["img_1", "img_2", "img_3", "img_4"],
@@ -204,8 +204,8 @@ const obtenerImagenesPorTrabajo = async (req, res) => {
   }
 };
 
-// ✅ CONTROLADOR PARA OBTENER TODAS LAS VISITAS CON IMÁGENES POR ORD_INS
-const obtenerImagenesVisitasByOrdIns = async (req, res) => {
+// CONTROLADOR PARA OBTENER TODAS LAS VISITAS CON IMÁGENES POR ORD_INS
+const getArrayAllInfoVisitasByTableAndId = async (req, res) => {
   const { ord_ins, tabla } = req.params;
 
   if (!ord_ins || isNaN(ord_ins)) {
@@ -285,6 +285,6 @@ const obtenerImagenesVisitasByOrdIns = async (req, res) => {
 
 module.exports = {
   subirImagenUnitaria,
-  obtenerImagenesPorTrabajo,
-  obtenerImagenesVisitasByOrdIns,
+  getImagenesByTableAndId,
+  getArrayAllInfoVisitasByTableAndId,
 };

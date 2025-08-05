@@ -7,20 +7,15 @@
 //-----------------------------------------------------------
 
 
-//OBTENER VISITA POR ID
+//OBTIENE UNA VISITA POR ID
+//router.get("/:id_vis", checkToken, getVisById);
 ###
-GET {{url}}/vis/18
+GET {{url}}/vis/41
 Authorization: {{TOKEN_AUX}}
-
-
-//OBTENER TODAS LAS VISITAS POR ORD_INS
-###
-GET {{url}}/vis/visitas/103521
-Authorization: {{TOKEN_AUX}}
-
 
 
 //CREAR VISITA
+//router.post("/", checkToken, createVis);
 ###
 POST {{url}}/vis
 Authorization: {{TOKEN_AUX}}
@@ -28,16 +23,20 @@ Content-Type: application/json
 
 {
     "ord_ins": 103802,
-    "vis_observacion": "CAMBIAR EL ROUTER Y ONT"
+    "vis_estado" : "PENDIENTE",
+    "vis_diagnostico": "CAMBIAR EL ROUTER Y ONT",
+    "vis_coment_cliente":"EL INTERNET VIENE Y VA",
+    "vis_tipo":"VISITA"
 }
 
 //ACTUALIZAR VISITA
+//router.put("/:id_vis", checkToken, updateVisById);
 ###
-PUT {{url}}/vis/44
+PUT {{url}}/vis/46
 Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 {
-  "vis_estado": "RESUE",
+  "vis_estado": "RESUELTO",
   "vis_solucion":"EL ARREGLO"
 }

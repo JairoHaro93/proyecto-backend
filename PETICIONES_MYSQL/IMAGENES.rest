@@ -7,8 +7,21 @@
 //-----------------------------------------------------------
 
 
+//OBTENER TODAS LAS VISITAS POR ORD_INS
+###
+GET {{url}}/imagenes/download/neg_t_instalaciones/103521
+Authorization: {{TOKEN_AUX}}
 
 //OBTENER TODAS LAS VISITAS POR ORD_INS
+###
+GET {{url}}/imagenes/download/neg_t_vis/41
+Authorization: {{TOKEN_AUX}}
+
+
+
+
+//OBTENER TODAS LAS VISITAS POR ORD_INS
+//router.get("/downloadvisitas/:tabla/:ord_ins", obtenerImagenesVisitasByOrdIns);
 ###
 GET {{url}}/imagenes/downloadvisitas/neg_t_vis/103521
 Authorization: {{TOKEN_AUX}}

@@ -19,20 +19,6 @@ const getVisById = async (req, res, next) => {
   }
 };
 
-//CONTROLADOR PARA OBTENER UN VISITA POR ID
-const getAllVisByOrdIns = async (req, res, next) => {
-  const { ord_ins } = req.params;
-  try {
-    const vis = await selectVisByOrdIns(ord_ins);
-    if (!vis) {
-      return res.status(404).json({ message: "El ID de VIS no existe." });
-    }
-    res.json(vis);
-  } catch (error) {
-    next(error);
-  }
-};
-
 //CONTROLADOR PARA CREAR UNA VISITA
 const createVis = async (req, res, next) => {
   try {
@@ -81,7 +67,6 @@ const updateVisById = async (req, res, next) => {
 
 module.exports = {
   getVisById,
-  getAllVisByOrdIns,
   createVis,
   updateVisById,
 };
