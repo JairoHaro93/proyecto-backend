@@ -7,16 +7,37 @@
 //-----------------------------------------------------------
 
 
-
-
-//CREAR SOPORTE
+//OBTENER VISITA POR ID
 ###
-POST {{url}}/visita
+GET {{url}}/vis/18
+Authorization: {{TOKEN_AUX}}
+
+
+//OBTENER TODAS LAS VISITAS POR ORD_INS
+###
+GET {{url}}/vis/visitas/103521
+Authorization: {{TOKEN_AUX}}
+
+
+
+//CREAR VISITA
+###
+POST {{url}}/vis
 Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 {
     "ord_ins": 103802,
     "vis_observacion": "CAMBIAR EL ROUTER Y ONT"
+}
 
+//ACTUALIZAR VISITA
+###
+PUT {{url}}/vis/44
+Authorization: {{TOKEN_AUX}}
+Content-Type: application/json
+
+{
+  "vis_estado": "RESUE",
+  "vis_solucion":"EL ARREGLO"
 }

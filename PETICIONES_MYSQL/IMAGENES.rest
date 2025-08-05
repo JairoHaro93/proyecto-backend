@@ -1,0 +1,14 @@
+//@url = http://192.168.0.180/api
+@url = http://localhost:3000/api
+
+
+//-----------------------------------------------------------
+//               IMAGENES                                      |
+//-----------------------------------------------------------
+
+
+
+//OBTENER TODAS LAS VISITAS POR ORD_INS
+###
+GET {{url}}/imagenes/downloadvisitas/neg_t_vis/103521
+Authorization: {{TOKEN_AUX}}

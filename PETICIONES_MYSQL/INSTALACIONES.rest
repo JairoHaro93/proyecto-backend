@@ -8,7 +8,7 @@
 
 //OBTENER INSTALACION POR ID
 ###
-GET {{url}}/instalaciones/18
+GET {{url}}/instalaciones/41
 Authorization: {{TOKEN_AUX}}
 
 

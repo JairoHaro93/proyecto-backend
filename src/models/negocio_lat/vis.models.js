@@ -30,10 +30,16 @@ async function selectVisByOrdIns(ord_ins) {
     SELECT 
       vis.id,
       vis.ord_ins,
+      vis.vis_tipo,
       vis.vis_estado,
-      vis.vis_diagnostico,
       vis.vis_coment_cliente,
-      vis.vis_tipo
+      vis.vis_diagnostico,
+      vis.vis_solucion,
+      vis.img_1,
+      vis.img_2,
+      vis.img_3,
+      vis.img_4,
+      vis.fecha_actualizacion
     FROM
       neg_t_vis AS vis
     WHERE  
@@ -69,12 +75,13 @@ function insertVis({
 }
 
 // ACTUALIZA EL ESTADO DE UN VISITA POR ID
-function updateVisEstadoById(id_vis, estado) {
-  return poolmysql.query("UPDATE neg_t_vis SET vis_estado = ? WHERE id = ?", [
-    estado,
-    id_vis,
-  ]);
+function updateVisEstadoById(id_vis, vis_estado, vis_solucion) {
+  return poolmysql.query(
+    "UPDATE neg_t_vis SET vis_estado = ?, vis_solucion = ? WHERE id = ?",
+    [vis_estado, vis_solucion, id_vis]
+  );
 }
+
 module.exports = {
   selectVisById,
   selectVisByOrdIns,

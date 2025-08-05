@@ -204,7 +204,87 @@ const obtenerImagenesPorTrabajo = async (req, res) => {
   }
 };
 
+// ✅ CONTROLADOR PARA OBTENER TODAS LAS VISITAS CON IMÁGENES POR ORD_INS
+const obtenerImagenesVisitasByOrdIns = async (req, res) => {
+  const { ord_ins, tabla } = req.params;
+
+  if (!ord_ins || isNaN(ord_ins)) {
+    return res.status(400).json({ message: "ord_ins inválido" });
+  }
+
+  const camposPorTabla = {
+    neg_t_vis: [
+      "id",
+      "vis_tipo",
+      "vis_estado",
+      "vis_diagnostico",
+      "vis_coment_cliente",
+      "vis_solucion",
+      "fecha_actualizacion",
+      "img_1",
+      "img_2",
+      "img_3",
+      "img_4",
+    ],
+  };
+
+  const campos = camposPorTabla[tabla];
+  if (!campos) {
+    return res.status(400).json({ message: `Tabla '${tabla}' no válida` });
+  }
+
+  try {
+    const [rows] = await poolmysql.query(
+      `SELECT ${campos.join(
+        ", "
+      )} FROM ${tabla} WHERE ord_ins = ? ORDER BY id DESC`,
+      [ord_ins]
+    );
+
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No se encontraron visitas con imágenes" });
+    }
+
+    const baseUrl = `${process.env.IP_BACKEND}/imagenes/`;
+
+    const visitasConImagenes = rows.map((row) => {
+      const imagenes = {};
+      ["img_1", "img_2", "img_3", "img_4"].forEach((campo) => {
+        const valor = row[campo];
+        if (valor) {
+          imagenes[campo] = {
+            ruta: valor,
+            url: baseUrl + valor.replace(/\\/g, "/"),
+          };
+        }
+      });
+
+      return {
+        id: row.id,
+        vis_tipo: row.vis_tipo,
+        vis_estado: row.vis_estado,
+        vis_diagnostico: row.vis_diagnostico,
+        vis_coment_cliente: row.vis_coment_cliente,
+        vis_solucion: row.vis_solucion,
+        fecha_actualizacion: row.fecha_actualizacion,
+        imagenes,
+      };
+    });
+
+    res.status(200).json(visitasConImagenes);
+  } catch (error) {
+    console.error("❌ Error al obtener imágenes de visitas:", error);
+    res.status(500).json({
+      message: "Error al obtener imágenes",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   subirImagenUnitaria,
   obtenerImagenesPorTrabajo,
+  obtenerImagenesVisitasByOrdIns,
 };
