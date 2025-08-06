@@ -8,7 +8,7 @@ const router = express.Router();
 
 const { upload } = require("../../../utils/middlewares");
 
-//OBTENER LAS IMAGANES DE UNA INSTALACION
+//OBTENER LAS IMAGENES DE LA INSTALACION SEGUN NOMBRE TABLA Y UN ID
 router.get("/download/:tabla/:id", getImagenesByTableAndId);
 
 //OBTENER TODAS LAS VISITAS POR ORD_INS
@@ -17,7 +17,7 @@ router.get(
   getArrayAllInfoVisitasByTableAndId
 );
 
-//SUBE IMAGENES
+//SUBE UNA IMAGEN
 router.post("/upload", upload.single("imagen"), subirImagenUnitaria);
 
 module.exports = router;
