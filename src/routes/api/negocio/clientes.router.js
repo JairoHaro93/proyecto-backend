@@ -1,22 +1,21 @@
 const {
   getAllDataMapa,
   getServicioByOrdIns,
-
-  getAllDataBasicos,
   getAllDataArray,
   getDataArrayActivos,
-  getDataBasicosActivos,
   getAllInstPend,
+  buscarClientesActivos,
+  buscarClientes,
 } = require("../../../controllers/negocio/info_clientes.controllers");
 const { checkToken } = require("../../../utils/middlewares");
 
 const router = require("express").Router();
 
-//OBTENER INFORMACION DE CLIENTES BASICA
-router.get("/", checkToken, getAllDataBasicos);
+//OBTENER INFORMACION DE CLIENTES BASICA DE TODOS LOS CLIENTES
+router.get("/", checkToken, buscarClientes);
 
-//OBTENER INFORMACION DE CLIENTES BASICA
-router.get("/activos", checkToken, getDataBasicosActivos);
+//OBTENER INFORMACION DE CLIENTES BASICA DE LOS CLIENTES ACTIVOS
+router.get("/activos", checkToken, buscarClientesActivos);
 
 //OBTENER INFORMACION DE CLIENTES CON ARRAY DE SERVICIOS ORDENADOS POR ESTADO
 router.get("/data/:cedula", checkToken, getAllDataArray);

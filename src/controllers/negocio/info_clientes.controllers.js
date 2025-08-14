@@ -1,29 +1,64 @@
 const {
   selectAllDataMapa,
 
-  selectAllDataBasicos,
   selectAllDataArrayByCed,
   selectDataArrayActivosByCed,
-  selectDataBasicosActivos,
+
   selectByOrdnIns,
   selectAllInstPend,
+  selectClientesSugerenciasActivos,
+  selectClientesSugerencias,
 } = require("../../models/negocio/info_clientes.models");
 
 //CONTROLADOR PARA OBTENER LOS NOMBRES Y CEDULA
-const getAllDataBasicos = async (req, res, next) => {
+const buscarClientes = async (req, res, next) => {
   try {
-    const result = await selectAllDataBasicos();
-    res.json(result); // Enviar la respuesta con el JSON estructurado
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) {
+      return res.status(400).json({ message: "Mínimo 2 caracteres" });
+    }
+
+    const limitParam = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitParam)
+      ? Math.min(Math.max(limitParam, 1), 50)
+      : 15;
+
+    const sucursal = "LATACUNGA"; // fija por ahora (sin authScope)
+
+    const data = await selectClientesSugerencias({
+      term: q,
+      sucursal,
+      limit,
+    });
+
+    res.json(data); // [{ cedula, nombre_completo }]
   } catch (error) {
     next(error);
   }
 };
 
 //CONTROLADOR PARA OBTENER LOS NOMBRES Y CEDULA CON SERVICIOS ACTIVOS
-const getDataBasicosActivos = async (req, res, next) => {
+const buscarClientesActivos = async (req, res, next) => {
   try {
-    const result = await selectDataBasicosActivos();
-    res.json(result); // Enviar la respuesta con el JSON estructurado
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) {
+      return res.status(400).json({ message: "Mínimo 2 caracteres" });
+    }
+
+    const limitParam = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitParam)
+      ? Math.min(Math.max(limitParam, 1), 50)
+      : 15;
+
+    const sucursal = "LATACUNGA"; // fija por ahora (sin authScope)
+
+    const data = await selectClientesSugerenciasActivos({
+      term: q,
+      sucursal,
+      limit,
+    });
+
+    res.json(data); // [{ cedula, nombre_completo }]
   } catch (error) {
     next(error);
   }
@@ -93,10 +128,9 @@ const getServicioByOrdIns = async (req, res, next) => {
   }
 };
 
-
 //CONTROLADOR PARA OBTENER UN SOPORTE POR ORDINS
 
-const getAllInstPend  = async (req, res, next) => {
+const getAllInstPend = async (req, res, next) => {
   try {
     const result = await selectAllInstPend();
     res.json(result); // Enviar la respuesta con el JSON estructurado
@@ -105,13 +139,12 @@ const getAllInstPend  = async (req, res, next) => {
   }
 };
 
-
 module.exports = {
-  getAllDataBasicos,
-  getDataBasicosActivos,
+  buscarClientes,
+  buscarClientesActivos,
   getAllDataArray,
   getDataArrayActivos,
   getAllDataMapa,
   getServicioByOrdIns,
-  getAllInstPend
+  getAllInstPend,
 };

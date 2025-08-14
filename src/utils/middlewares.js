@@ -90,7 +90,6 @@ const checkToken = async (req, res, next) => {
   req.user = usuario;
   next();
 };
-//MIDDLEWARE
 
 // Configurar almacenamiento
 const rutaDestino = process.env.RUTA_DESTINO || "uploads/soluciones";

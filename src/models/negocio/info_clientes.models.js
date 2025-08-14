@@ -2,67 +2,65 @@ const { poolsql } = require("../../config/db");
 const sql = require("mssql");
 
 // ✅ QUERY PARA OBTENER LOS DATOS NOMBRES Y APELLIDOS DE TODOS LOS CLIENTES REGISTRADOS EN LATACUNGA
-async function selectAllDataBasicos() {
-  try {
-    const pool = await poolsql.catch((err) => {
-      console.error("❌ Error al conectar al pool:", err.message);
-      throw new Error("Error de base de datos");
-    });
+async function selectClientesSugerencias({ term, sucursal, limit }) {
+  const pool = await poolsql;
+  // Normaliza búsqueda: acentos-insensible, case-insensitive
+  // Busca por prefijo en nombre o apellido, o en nombre completo.
+  const request = pool.request();
+  request.input("term", term + "%");
+  request.input("termLike", "%" + term + "%");
+  request.input("sucursal", sucursal);
+  request.input("limit", limit);
 
-    const result = await pool.request().query(`
-      SELECT 
-        c.cli_cedula AS cedula,
-        CONCAT(c.cli_nombres, ' ', c.cli_apellidos) AS nombre_completo
-      FROM 
-        t_Clientes c
-        JOIN t_Ordenes_Instalaciones o ON c.cli_cedula = o.cli_cedula
-        JOIN t_Sucursales s ON o.suc_id = s.suc_id
-      WHERE 
-        s.suc_nombre = 'LATACUNGA'
-      GROUP BY 
-        c.cli_cedula, c.cli_nombres, c.cli_apellidos
-        
-      ORDER BY 
-        nombre_completo;
-    `);
-
-    return result.recordset;
-  } catch (error) {
-    console.error("❌ Error en selectAllDataBasicos:", error.message);
-    throw error;
-  }
+  const sql = `
+    SELECT DISTINCT TOP (@limit)
+      c.cli_cedula       AS cedula,
+      CONCAT(c.cli_nombres, ' ', c.cli_apellidos) COLLATE Latin1_General_CI_AI AS nombre_completo
+    FROM t_Clientes c
+    JOIN t_Ordenes_Instalaciones o ON o.cli_cedula = c.cli_cedula
+    JOIN t_Sucursales s ON s.suc_id = o.suc_id
+    WHERE s.suc_nombre = @sucursal
+    
+      AND (
+        c.cli_nombres COLLATE Latin1_General_CI_AI LIKE @term
+        OR c.cli_apellidos COLLATE Latin1_General_CI_AI LIKE @term
+        OR CONCAT(c.cli_nombres, ' ', c.cli_apellidos) COLLATE Latin1_General_CI_AI LIKE @termLike
+      )
+    ORDER BY nombre_completo;
+  `;
+  const result = await request.query(sql);
+  return result.recordset;
 }
 
 // ✅ QUERY PARA OBTENER LOS DATOS NOMBRES Y APELLIDOS DE TODOS LOS CLIENTES REGISTRADOS EN LATACUNGA CON SERVICIOS ACTIVOS
-async function selectDataBasicosActivos() {
-  try {
-    const pool = await poolsql.catch((err) => {
-      console.error("❌ Error al conectar al pool:", err.message);
-      throw new Error("Error de base de datos");
-    });
+async function selectClientesSugerenciasActivos({ term, sucursal, limit }) {
+  const pool = await poolsql;
+  // Normaliza búsqueda: acentos-insensible, case-insensitive
+  // Busca por prefijo en nombre o apellido, o en nombre completo.
+  const request = pool.request();
+  request.input("term", term + "%");
+  request.input("termLike", "%" + term + "%");
+  request.input("sucursal", sucursal);
+  request.input("limit", limit);
 
-    const result = await pool.request().query(`
-      SELECT 
-        c.cli_cedula AS cedula,
-        CONCAT(c.cli_nombres, ' ', c.cli_apellidos) AS nombre_completo
-      FROM 
-        t_Clientes c
-        JOIN t_Ordenes_Instalaciones o ON c.cli_cedula = o.cli_cedula
-        JOIN t_Sucursales s ON o.suc_id = s.suc_id
-      WHERE 
-        s.suc_nombre = 'LATACUNGA'
-        AND o.est_ser_int_id <> 10
-      GROUP BY 
-        c.cli_cedula, c.cli_nombres, c.cli_apellidos
-      ORDER BY 
-        nombre_completo;
-    `);
-
-    return result.recordset;
-  } catch (error) {
-    console.error("❌ Error en selectAllDataBasicos:", error.message);
-    throw error;
-  }
+  const sql = `
+    SELECT DISTINCT TOP (@limit)
+      c.cli_cedula       AS cedula,
+      CONCAT(c.cli_nombres, ' ', c.cli_apellidos) COLLATE Latin1_General_CI_AI AS nombre_completo
+    FROM t_Clientes c
+    JOIN t_Ordenes_Instalaciones o ON o.cli_cedula = c.cli_cedula
+    JOIN t_Sucursales s ON s.suc_id = o.suc_id
+    WHERE s.suc_nombre = @sucursal
+      AND o.est_ser_int_id <> 10
+      AND (
+        c.cli_nombres COLLATE Latin1_General_CI_AI LIKE @term
+        OR c.cli_apellidos COLLATE Latin1_General_CI_AI LIKE @term
+        OR CONCAT(c.cli_nombres, ' ', c.cli_apellidos) COLLATE Latin1_General_CI_AI LIKE @termLike
+      )
+    ORDER BY nombre_completo;
+  `;
+  const result = await request.query(sql);
+  return result.recordset;
 }
 
 //OBTIENE TODOS LOS DATOS CON LOS SERVICIOS EN ARRAY ORDENADOS POR ELIMINADO
@@ -141,15 +139,15 @@ async function selectAllDataArrayByCed(cedulaParam) {
         cortado: row.cortado,
         estado_servicio_id: row.estado_servicio_id, // necesario para orden
       }))
-    .sort((a, b) => {
-  const aEliminado = a.servicio === 'CLIENTE ELIMINADO';
-  const bEliminado = b.servicio === 'CLIENTE ELIMINADO';
+      .sort((a, b) => {
+        const aEliminado = a.servicio === "CLIENTE ELIMINADO";
+        const bEliminado = b.servicio === "CLIENTE ELIMINADO";
 
-  if (aEliminado && !bEliminado) return -1;
-  if (!aEliminado && bEliminado) return 1;
+        if (aEliminado && !bEliminado) return -1;
+        if (!aEliminado && bEliminado) return 1;
 
-  return new Date(a.fecha_instalacion) - new Date(b.fecha_instalacion);
-})
+        return new Date(a.fecha_instalacion) - new Date(b.fecha_instalacion);
+      })
 
       .map(({ estado_servicio_id, ...rest }) => rest); // ❌ elimina ese campo del resultado
 
@@ -413,9 +411,9 @@ WHERE o.est_ord_id = 3
 }
 
 module.exports = {
-  selectAllDataBasicos,
-  selectDataBasicosActivos,
   selectAllDataArrayByCed,
+  selectClientesSugerenciasActivos,
+  selectClientesSugerencias,
   selectDataArrayActivosByCed,
   selectAllDataMapa,
   selectByOrdnIns,
