@@ -3,6 +3,19 @@ const {
   selectInstalacionesByOrdIns,
 } = require("../../models/negocio_lat/instalaciones.models");
 
+const getInstalacionByOrdIns = async (req, res, next) => {
+  const { ordIns } = req.params;
+  try {
+    // Verifica si ya existe una instalación registrada para esta orden
+    const [instalaciones] = await selectInstalacionesByOrdIns(ordIns);
+    console.log(ordIns);
+    console.log(instalaciones);
+    res.json(instalaciones);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const createInstalacion = async (req, res, next) => {
   try {
     const { ord_ins } = req.body;
@@ -33,4 +46,5 @@ const createInstalacion = async (req, res, next) => {
 
 module.exports = {
   createInstalacion,
+  getInstalacionByOrdIns,
 };
