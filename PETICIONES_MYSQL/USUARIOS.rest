@@ -62,34 +62,34 @@ Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 {
-"nombre": "DARWIN JESUS",
-"apellido": "MONTENEGRO LAGOS",
-"ci": "0401111075",
-"usuario": "DARW",
+"nombre": "JAIRO MAURICIO",
+"apellido": "HARO YEPEZ",
+"ci": "1003638978",
+"usuario": "jharo",
 "password": "1234567",
 "fecha_nac": "1993-06-03",
 "fecha_cont": "2015-01-07",
 "genero": "M",
-"rol":[3,13,14]
+"rol":[1,2,3,13,14]
 }
 
 
 //EDITAR USUARIO POR ID
 ###
-PUT {{url}}/usuarios/92
+PUT {{url}}/usuarios/1
 Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 
 {
-"nombre": "NORMA ODILA",
-"apellido": "DELGADO NARVAEZ",
-"ci": "0401274352",
-"usuario": "ndelgado",
+"nombre": "JAIRO MAURICIO",
+"apellido": "HARO YEPEZ",
+"ci": "1003638978",
+"usuario": "jharo",
 "password": "1234567",
 "fecha_nac": "1993-06-03",
 "fecha_cont": "2015-01-07",
-"genero": "F",
-"rol":[3,10,14]
+"genero": "M",
+"rol":[1,2,3,13,14]
 }
 
 //ELIMINAR UN USUARIO POR ID
