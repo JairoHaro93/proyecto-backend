@@ -51,3 +51,11 @@ Authorization: {{TOKEN_AUX}}
 
 
 
+### Obtener datos de clientes por ord_ins (batch)
+POST {{url}}/clientes/multiples
+Authorization: {{TOKEN_AUX}}
+Content-Type: application/json
+
+{
+  "ord_ins": [103521,107431]
+}

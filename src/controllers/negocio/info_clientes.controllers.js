@@ -8,6 +8,7 @@ const {
   selectAllInstPend,
   selectClientesSugerenciasActivos,
   selectClientesSugerencias,
+  fetchClientesByOrdInsBatch,
 } = require("../../models/negocio/info_clientes.models");
 
 //CONTROLADOR PARA OBTENER LOS NOMBRES Y CEDULA
@@ -139,6 +140,24 @@ const getAllInstPend = async (req, res, next) => {
   }
 };
 
+//CONTROLADOR PARA OBTENER MULTIPLES SERVICIOS POR VARIOS ORDINS
+async function getClientesByOrdInsBatch(req, res) {
+  try {
+    const { ord_ins } = req.body || {};
+    if (!Array.isArray(ord_ins) || ord_ins.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "ord_ins debe ser un array no vacío" });
+    }
+
+    const data = await fetchClientesByOrdInsBatch(ord_ins);
+    return res.json(data);
+  } catch (err) {
+    console.error("getClientesByOrdInsBatch error:", err?.message);
+    return res.status(500).json({ message: "Error interno" });
+  }
+}
+
 module.exports = {
   buscarClientes,
   buscarClientesActivos,
@@ -147,4 +166,5 @@ module.exports = {
   getAllDataMapa,
   getServicioByOrdIns,
   getAllInstPend,
+  getClientesByOrdInsBatch,
 };

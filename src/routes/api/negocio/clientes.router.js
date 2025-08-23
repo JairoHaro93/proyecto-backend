@@ -6,6 +6,7 @@ const {
   getAllInstPend,
   buscarClientesActivos,
   buscarClientes,
+  getClientesByOrdInsBatch,
 } = require("../../../controllers/negocio/info_clientes.controllers");
 const { checkToken } = require("../../../utils/middlewares");
 
@@ -31,5 +32,8 @@ router.get("/:servicioOrdIns", checkToken, getServicioByOrdIns);
 
 //OBTENER LA INFORMACION DE TODAS INSTALACIONES NUEVAS POR REALIZARCE
 router.get("/inst-pend", checkToken, getAllInstPend);
+
+//OBTENER LA INFORMACION DE TODAS INSTALACIONES NUEVAS POR REALIZARCE
+router.post("/multiples", checkToken, getClientesByOrdInsBatch);
 
 module.exports = router;
