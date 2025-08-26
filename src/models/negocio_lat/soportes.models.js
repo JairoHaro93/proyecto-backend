@@ -95,34 +95,33 @@ async function selectSoporteByOrdIns(soporteOrdIns) {
   return soportes;
 }
 
-// QUERY PARA OBTENER TODOS LOS SOPORTES ACEPTADOS POR NOC
-async function selectSoportesByNoc(id_noc) {
+// QUERY PARA OBTENER TODOS LOS SOPORTES QUE SE HA REVISADO 1 VEZ
+async function selectSoportesByNoc() {
   const [soportes] = await poolmysql.query(
     `
-SELECT 
-    Sop.id,
-    Sop.ord_ins,
-    Sop.reg_sop_opc,
-    Sop.reg_sop_tel,
-    Sop.reg_sop_registrado_por_id,
-    CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
-    Sop.reg_sop_coment_cliente,
-    Sop.reg_sop_fecha,
-    Sop.reg_sop_fecha_acepta,
-    Sop.reg_sop_estado,
-    #Sop.reg_sop_nombre,
-    Sop.reg_sop_noc_id_acepta
-FROM
-    neg_t_soportes AS Sop
-LEFT JOIN 
-    sisusuarios AS U 
-    ON Sop.reg_sop_registrado_por_id = U.id
-WHERE  
-    Sop.reg_sop_noc_id_acepta = ? 
-    AND Sop.reg_sop_estado NOT IN ('RESUELTO');
-
-  `,
-    [id_noc]
+    SELECT 
+        Sop.id,
+        Sop.ord_ins,
+        Sop.reg_sop_opc,
+        Sop.reg_sop_tel,
+        Sop.reg_sop_registrado_por_id,
+        CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
+        Sop.reg_sop_coment_cliente,
+        Sop.reg_sop_fecha,
+        Sop.reg_sop_fecha_acepta,
+        Sop.reg_sop_estado,
+        Sop.reg_sop_noc_id_acepta,
+        CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_aceptado_por_nombre
+    FROM
+        neg_t_soportes AS Sop
+    LEFT JOIN 
+        sisusuarios AS U 
+        ON Sop.reg_sop_registrado_por_id = U.id
+    WHERE  
+        Sop.reg_sop_estado NOT IN ('RESUELTO')
+        AND Sop.reg_sop_noc_id_acepta IS NOT NULL
+        AND Sop.reg_sop_noc_id_acepta <> '';
+    `
   );
 
   if (soportes.length === 0) {
@@ -130,6 +129,7 @@ WHERE
   }
   return soportes; // DEVOLVER TODOS LOS REGISTROS, NO SOLO EL PRIMERO
 }
+
 
 // QUERY PARA CREAR UN SOPORTE NUEVO        --PAGINA REGISTRAR SOPORTE /home/tecnico/registrosop
 function insertSoporte({

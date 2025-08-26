@@ -127,9 +127,9 @@ const asignarSolucion = async (req, res) => {
 
 // CONTROLADOR PARA OBTENER TODOS LOS SOPORTES DE NOC
 const getAllSoportesByNoc = async (req, res, next) => {
-  const { id_noc } = req.params;
+  
   try {
-    const soporte = await selectSoportesByNoc(id_noc);
+    const soporte = await selectSoportesByNoc();
 
     if (!soporte || soporte.length === 0) {
       return res.json([]); // Devuelve un array vacío en lugar de 404

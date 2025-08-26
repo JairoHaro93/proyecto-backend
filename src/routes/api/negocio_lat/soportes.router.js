@@ -22,11 +22,11 @@ router.get("/", checkToken, getAllDataSoportes);
 // OBTIENE LOS SOPORTES PENDIENTES
 router.get("/pendientes", checkToken, getAllSoportesPendientes);
 
-//OBTIENE UN SOPORTE POR ORDEN DE INSTALACION
-router.get("/:id_sop", checkToken, checkSoporteOrdIns, getSoporteById);
-
 //NOC RECIBE LA INFORMACION DE LOS SOPORTES ACEPTADOS
-router.get(  "/mis-soportes/:id_noc",  checkSoportesNocId,  checkToken,  getAllSoportesByNoc);
+router.get("/revisados", checkToken, getAllSoportesByNoc);
+
+//OBTIENE UN SOPORTE POR ORDEN DE INSTALACION
+router.get("/:id_sop", checkToken, getSoporteById);
 
 //CREA UN SOPORTE
 router.post("/", checkToken, createSoporte);

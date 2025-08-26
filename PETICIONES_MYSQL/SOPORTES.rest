@@ -55,7 +55,7 @@ Content-Type: application/json
 
 //OBTENER MIS SOPORTES DE NOC
 ###
-GET {{url}}/soportes/mis-soportes/54
+GET {{url}}/soportes/revisados
 Authorization: {{TOKEN_AUX}}
 
 
