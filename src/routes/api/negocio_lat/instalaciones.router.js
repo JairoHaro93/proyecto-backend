@@ -2,6 +2,7 @@ const router = require("express").Router();
 const {
   createInstalacion,
   getInstalacionByOrdIns,
+  terminarInstalacion,
 } = require("../../../controllers/negocio_lat/instalaciones.controlers");
 const { checkToken } = require("../../../utils/middlewares");
 
@@ -10,5 +11,8 @@ router.get("/:ordIns", checkToken, getInstalacionByOrdIns);
 
 //CREA UNA INSTALACION
 router.post("/", checkToken, createInstalacion);
+
+//TERMINA UNA INSTALACION
+router.patch("/terminar/:ord_ins", checkToken, terminarInstalacion);
 
 module.exports = router;
