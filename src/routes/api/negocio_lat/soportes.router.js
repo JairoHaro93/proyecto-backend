@@ -4,9 +4,8 @@ const {
   getSoporteById,
   getAllSoportesPendientes,
   aceptarSoporte,
-  getAllSoportesByNoc,
+  getAllSoportesRevisados,
   asignarSolucion,
-  asignarTecnico,
 } = require("../../../controllers/negocio_lat/soportes.controllers");
 const {
   checkToken,
@@ -23,7 +22,7 @@ router.get("/", checkToken, getAllDataSoportes);
 router.get("/pendientes", checkToken, getAllSoportesPendientes);
 
 //NOC RECIBE LA INFORMACION DE LOS SOPORTES ACEPTADOS
-router.get("/revisados", checkToken, getAllSoportesByNoc);
+router.get("/revisados", checkToken, getAllSoportesRevisados);
 
 //OBTIENE UN SOPORTE POR ORDEN DE INSTALACION
 router.get("/:id_sop", checkToken, getSoporteById);
@@ -36,7 +35,5 @@ router.put("/:id_sop", checkToken, aceptarSoporte);
 
 //NOC ACTUALIZA LA TABLA SOLUCION
 router.put("/mis-soportes/solucion/:id_sop", checkToken, asignarSolucion);
-
-
 
 module.exports = router;

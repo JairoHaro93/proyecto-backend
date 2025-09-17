@@ -96,7 +96,7 @@ async function selectSoporteByOrdIns(soporteOrdIns) {
 }
 
 // QUERY PARA OBTENER TODOS LOS SOPORTES QUE SE HA REVISADO 1 VEZ
-async function selectSoportesByNoc() {
+async function selectSoportesRevisados() {
   const [soportes] = await poolmysql.query(
     `
     SELECT 
@@ -129,7 +129,6 @@ async function selectSoportesByNoc() {
   }
   return soportes; // DEVOLVER TODOS LOS REGISTROS, NO SOLO EL PRIMERO
 }
-
 
 // QUERY PARA CREAR UN SOPORTE NUEVO        --PAGINA REGISTRAR SOPORTE /home/tecnico/registrosop
 function insertSoporte({
@@ -229,5 +228,5 @@ module.exports = {
   updateAsignarSolucion,
   insertSoporte,
   aceptarSoporteById,
-  selectSoportesByNoc,
+  selectSoportesRevisados,
 };

@@ -5,7 +5,7 @@ const {
   selectAllSoportesPendientes,
   selectSoporteByOrdIns,
   aceptarSoporteById,
-  selectSoportesByNoc,
+  selectSoportesRevisados,
   updateAsignarSolucion,
 } = require("../../models/negocio_lat/soportes.models");
 
@@ -126,10 +126,9 @@ const asignarSolucion = async (req, res) => {
 };
 
 // CONTROLADOR PARA OBTENER TODOS LOS SOPORTES DE NOC
-const getAllSoportesByNoc = async (req, res, next) => {
-  
+const getAllSoportesRevisados = async (req, res, next) => {
   try {
-    const soporte = await selectSoportesByNoc();
+    const soporte = await selectSoportesRevisados();
 
     if (!soporte || soporte.length === 0) {
       return res.json([]); // Devuelve un array vacío en lugar de 404
@@ -150,5 +149,5 @@ module.exports = {
   getAllSoportesPendientes,
   createSoporte,
   aceptarSoporte,
-  getAllSoportesByNoc,
+  getAllSoportesRevisados,
 };

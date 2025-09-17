@@ -17,6 +17,12 @@ Authorization: {{TOKEN_AUX}}
 GET {{url}}/soportes/pendientes
 Authorization: {{TOKEN_AUX}}
 
+//OBTENER SOPORTES PENDIENTES POR CONCLUIR
+###
+GET {{url}}/soportes/concluir
+Authorization: {{TOKEN_AUX}}
+
+
 
 //OBTENER SOPORTE POR ORDINS
 ###
