@@ -7,39 +7,32 @@ function selectAllUsuarios() {
 }
 
 // OBTENER USUARIO POR ID
+// usuarios.models.js
 async function selectUsuarioById(usuarioId) {
   const [usuarios] = await poolmysql.query(
     `
     SELECT 
-    U.id,
-    U.nombre,
-    U.apellido,
-    U.ci,
-    U.usuario,
-   
-    U.fecha_nac,
-    U.fecha_cont,
-    U.genero,
-    JSON_ARRAYAGG(F.id) AS rol
-FROM
-    sisusuarios AS U
-
-INNER JOIN
-    sisusuarios_has_sisfunciones AS UHF
-ON  
-    UHF.sisusuarios_id = U.id
-INNER JOIN
-    sisfunciones AS F
-ON 
-    UHF.sisfunciones_id = F.id
-WHERE  
-U.id = ?`,
+      U.id,
+      U.nombre,
+      U.apellido,
+      U.ci,
+      U.usuario,
+      U.fecha_nac,
+      U.fecha_cont,
+      U.genero,
+      COALESCE(JSON_ARRAYAGG(F.id), JSON_ARRAY()) AS rol
+    FROM sisusuarios AS U
+    LEFT JOIN sisusuarios_has_sisfunciones AS UHF
+      ON UHF.sisusuarios_id = U.id
+    LEFT JOIN sisfunciones AS F
+      ON UHF.sisfunciones_id = F.id
+    WHERE U.id = ?
+    GROUP BY U.id, U.nombre, U.apellido, U.ci, U.usuario, U.fecha_nac, U.fecha_cont, U.genero
+    `,
     [usuarioId]
   );
 
-  if (usuarios.length === 0) {
-    return null;
-  }
+  if (usuarios.length === 0) return null;
   return usuarios[0];
 }
 
@@ -106,7 +99,6 @@ async function updateUsuarioById(
   return poolmysql.query(
     `
     UPDATE sisusuarios SET 
-
     nombre = ? ,
     apellido = ?,
     ci = ?,
@@ -115,10 +107,7 @@ async function updateUsuarioById(
     fecha_nac = ?, 
     fecha_cont = ?, 
     genero = ?
-   
-
     WHERE id=?
-
     `,
     [
       nombre,
