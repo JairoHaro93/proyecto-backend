@@ -3,6 +3,7 @@ const {
   subirImagenUnitaria,
   getImagenesByTableAndId,
   getArrayAllInfoVisitasByTableAndId,
+  subirImagenInfraestructura,
 } = require("../../../controllers/negocio_lat/imagenes.controllers");
 const router = express.Router();
 
@@ -19,5 +20,8 @@ router.get(
 
 //SUBE UNA IMAGEN
 router.post("/upload", upload.single("imagen"), subirImagenUnitaria);
+
+//SUBE UNA IMAGEN INFRAESTRUCTURA
+router.post("/infra", upload.single("imagen"), subirImagenInfraestructura);
 
 module.exports = router;

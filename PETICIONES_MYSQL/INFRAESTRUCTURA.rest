@@ -1,0 +1,27 @@
+//@url = http://192.168.0.180/api
+@url = http://localhost:3000/api
+
+//-----------------------------------------------------------
+//               INFREAESTRUCTURA                            |
+//-----------------------------------------------------------
+
+
+//CREAR TRABAJO EN INFRAESTRUCTURA
+###
+POST {{url}}/infraestructura
+Authorization: {{TOKEN_AUX}}
+Content-Type: application/json
+
+{
+    "nombre": "SUNCHAR",
+    "observacion": "SUNCHAR 10 POSTES",
+    "coordenadas":"-0.953052, -78.632262"
+}
+
+
+//OBTENER TRABAJO EN INFRAESTRUCTURA Y AGENDA
+###
+GET {{url}}/infraestructura/agenda/3
+Authorization: {{TOKEN_AUX}}
+Content-Type: application/json
+

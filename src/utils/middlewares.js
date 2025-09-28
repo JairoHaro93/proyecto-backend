@@ -11,13 +11,14 @@ const {
   selectSoporteByOrdIns,
 } = require("../models/negocio_lat/soportes.models");
 
+/* =========================
+   AUTH / CHECKS
+========================= */
 const checkUsuarioId = async (req, res, next) => {
   const { usuarioId } = req.params;
-  // si el usuarioId es un numero
   if (isNaN(usuarioId)) {
     return res.status(400).json({ message: "El id del usuario es incorrecto" });
   }
-  // si existe en la bbdd
   const usuario = await selectUsuarioById(usuarioId);
   if (!usuario) {
     return res.status(404).json({ message: "El id del usuario no existe" });
@@ -27,37 +28,29 @@ const checkUsuarioId = async (req, res, next) => {
 
 const checkSoporteOrdIns = async (req, res, next) => {
   const { id_sop } = req.params;
-
-  // si el usuarioId es un numero
   if (isNaN(id_sop)) {
     return res
       .status(400)
       .json({ message: "La Ord_Ins del soporte es incorrecto" });
   }
-  // si existe en la bbdd
   const soporte = await selectSoporteByOrdIns(id_sop);
   if (!soporte) {
     return res.status(404).json({ message: "El id del soporte no existe" });
   }
-
   next();
 };
 
 const checkSoportesNocId = async (req, res, next) => {
   const { id_noc } = req.params;
-
-  // si el usuarioId es un numero
   if (isNaN(id_noc)) {
     return res
       .status(400)
       .json({ message: "El noc_id del soporte es incorrecto" });
   }
-  // si existe en la bbdd
   const soporte = await selectSoporteByOrdIns(id_noc);
   if (!soporte) {
     return res.status(404).json({ message: "El noc_id del soporte no existe" });
   }
-
   next();
 };
 
@@ -91,19 +84,37 @@ const checkToken = async (req, res, next) => {
   next();
 };
 
-// Configurar almacenamiento
-const rutaDestino = process.env.RUTA_DESTINO || "uploads/soluciones";
+/* =========================
+   MULTER: DESTINOS DINÁMICOS
+========================= */
+const RUTA_DESTINO_DEFAULT = "uploads/soluciones";
+const RUTA_DESTINO_INFRA_DEFAULT = "uploads/infraestructura";
 
-// Asegura que el directorio exista
-if (!fs.existsSync(rutaDestino)) {
-  fs.mkdirSync(rutaDestino, { recursive: true });
-}
+const rutaDestino = process.env.RUTA_DESTINO || RUTA_DESTINO_DEFAULT;
+const rutaDestinoInfra =
+  process.env.RUTA_DESTINO_INFRAESTRUCTURA || RUTA_DESTINO_INFRA_DEFAULT;
+
+// Asegurar que existan las carpetas base
+[rutaDestino, rutaDestinoInfra].forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const directorio = req.body.directorio || "sin_directorio";
+    // Heurística: si la subida es de infraestructura
+    // 1) porque el controlador envía tabla = 'neg_t_infraestructura'
+    // 2) o porque la ruta contiene '/infra' (útil si separas las rutas de API)
+    const isInfra =
+      req.body?.tabla === "neg_t_infraestructura" ||
+      (typeof req.path === "string" && req.path.includes("/infra"));
 
-    const destino = path.join(rutaDestino, directorio);
+    const baseDir = isInfra ? rutaDestinoInfra : rutaDestino;
+
+    // el subdirectorio "directorio" sigue funcionando igual
+    const directorio = req.body.directorio || "sin_directorio";
+    const destino = path.join(baseDir, directorio);
 
     if (!fs.existsSync(destino)) {
       fs.mkdirSync(destino, { recursive: true });
@@ -133,5 +144,5 @@ module.exports = {
   checkSoportesNocId,
   checkSoporteOrdIns,
   checkToken,
-  upload: upload,
+  upload,
 };

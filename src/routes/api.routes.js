@@ -2,10 +2,17 @@ const { checkToken } = require("../utils/middlewares");
 
 const router = require("express").Router();
 
-router.use("/usuarios",  require("./api/sistema/usuarios.routes"));
+//SISTEMA
+
+router.use("/usuarios", require("./api/sistema/usuarios.routes"));
 router.use("/login", require("./api/sistema/login.routes"));
 router.use("/funciones", checkToken, require("./api/sistema/funciones.routes"));
+router.use("/imagenes", require("./api/sistema/imagenes.routes"));
+
+//NEGOCIO ATUNTAQUI
 router.use("/clientes", checkToken, require("./api/negocio/clientes.router"));
+
+//NEGOCIO LATACUNGA
 router.use(
   "/soportes",
   checkToken,
@@ -17,7 +24,11 @@ router.use(
   checkToken,
   require("./api/negocio_lat/instalaciones.router")
 );
-router.use("/agenda", checkToken, require("./api/negocio_lat/agenda.router"));
-router.use("/imagenes", require("./api/sistema/imagenes.routes"));
 
+router.use("/agenda", checkToken, require("./api/negocio_lat/agenda.router"));
+router.use(
+  "/infraestructura",
+  require("./api/negocio_lat/infraestructura.router")
+);
+router.use("/images", require("./api/negocio_lat/images.router"));
 module.exports = router;
