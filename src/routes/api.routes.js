@@ -7,7 +7,6 @@ const router = require("express").Router();
 router.use("/usuarios", require("./api/sistema/usuarios.routes"));
 router.use("/login", require("./api/sistema/login.routes"));
 router.use("/funciones", checkToken, require("./api/sistema/funciones.routes"));
-router.use("/imagenes", require("./api/sistema/imagenes.routes"));
 
 //NEGOCIO ATUNTAQUI
 router.use("/clientes", checkToken, require("./api/negocio/clientes.router"));

@@ -12,13 +12,36 @@ dotenv.config();
 
 const app = express();
 
+// Si estás detrás de Nginx/HTTPS, necesario para que 'secure' en cookies funcione bien
+app.set("trust proxy", 1);
+
 // ----- CORS -----
-app.use(
-  cors({
-    origin: process.env.IP, // ajusta a tu origen (o lista) según tu despliegue
-    credentials: true,
-  })
-);
+// En .env define uno o varios orígenes separados por coma, ej:
+// IP=http://localhost:4200,http://192.168.100.110:4200,https://app.tu-dominio.com
+const allowlist = (process.env.IP || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin: function (origin, cb) {
+    // Permite herramientas locales (sin Origin) y los orígenes explícitos
+    if (!origin || allowlist.includes(origin)) return cb(null, true);
+    return cb(new Error(`Origen no permitido: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "X-Requested-With",
+    "Accept",
+    "Authorization",
+  ],
+  exposedHeaders: ["X-Session-Expires"], // 👈 importante
+};
+app.use(cors(corsOptions));
+// Preflight explícito (evita 404/500 en OPTIONS)
+app.options("*", cors(corsOptions));
 
 // ----- Estáticos de imágenes -----
 // Sirve TODAS las imágenes desde la RAÍZ de uploads (no un subfolder).

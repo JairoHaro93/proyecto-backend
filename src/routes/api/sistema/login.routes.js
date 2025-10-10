@@ -1,3 +1,4 @@
+// routes/api/sistema/login.routes.js
 const express = require("express");
 const router = express.Router();
 
@@ -10,14 +11,17 @@ const {
 } = require("../../../controllers/sistema/login.controllers");
 const { checkToken } = require("../../../utils/middlewares");
 
-// Middleware para recibir texto plano desde sendBeacon
-router.use(express.text({ type: "*/*" }));
+// ⚠️ No apliques text("*/*") global: rompe JSON.
+// Habilita text/plain SOLO donde lo necesitas (sendBeacon).
+const textPlain = express.text({ type: "text/plain" });
 
-// Rutas
-router.post("/", login); // POST /api/login
-router.post("/app", loginapp); // POST /api/login
-router.post("/not", logout); // POST /api/login/not
-router.post("/notapp", logoutapp); // POST /api/login/not
+// --- Web (cookies HttpOnly) ---
+router.post("/", login); // espera JSON (no tocar)
 router.get("/me", checkToken, me);
+router.post("/not", textPlain, logout); // soporta sendBeacon text/plain
+
+// --- App (móvil) --- (déjalo igual si usa JSON/Bearer)
+router.post("/app", loginapp);
+router.post("/notapp", textPlain, logoutapp);
 
 module.exports = router;

@@ -1,3 +1,6 @@
+// utils/middlewares.js
+"use strict";
+
 const jwt = require("jsonwebtoken");
 const path = require("path");
 const multer = require("multer");
@@ -10,6 +13,42 @@ const { selectUsuarioById } = require("../models/sistema/usuarios.models");
 const {
   selectSoporteByOrdIns,
 } = require("../models/negocio_lat/soportes.models");
+
+/* =========================
+   CONFIG COOKIE JWT (sesión deslizante 1h)
+========================= */
+const COOKIE_NAME = "token";
+const SESSION_TTL_S = parseInt(process.env.SESSION_TTL_S || "3600", 10);
+
+const isProd = process.env.NODE_ENV === "production";
+
+/** Opciones de cookie (ajustables por .env) */
+const cookieOpts = {
+  httpOnly: true,
+  sameSite: process.env.COOKIE_SAMESITE || (isProd ? "None" : "Lax"),
+  secure: process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === "true"
+    : isProd,
+  path: "/",
+  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+  maxAge: SESSION_TTL_S * 1000, // 👈 usa el TTL configurable
+};
+
+/** Emite/renueva JWT en cookie por 1h desde ahora */
+function issueSessionCookie(res, payload) {
+  // 👇 firma con el TTL configurable
+  const token = jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: SESSION_TTL_S,
+  });
+
+  res.cookie(COOKIE_NAME, token, cookieOpts);
+
+  // 👇 expón el vencimiento para el auto-logout del front
+  const expiresAtMs = Date.now() + SESSION_TTL_S * 1000;
+  res.setHeader("X-Session-Expires", new Date(expiresAtMs).toISOString());
+
+  return token;
+}
 
 /* =========================
    AUTH / CHECKS
@@ -54,33 +93,43 @@ const checkSoportesNocId = async (req, res, next) => {
   next();
 };
 
+/** Protege rutas: valida JWT en cookie y RENUEVA la cookie (+1h) en cada request válido */
 const checkToken = async (req, res, next) => {
-  let token = req.cookies?.token;
+  // Cookies-first
+  let token = req.cookies?.[COOKIE_NAME];
 
+  // Fallback opcional a Bearer (si aún tienes clientes que lo usen)
   if (!token && req.headers.authorization?.startsWith("Bearer ")) {
     token = req.headers.authorization.split(" ")[1];
   }
-
   if (!token) {
-    return res
-      .status(403)
-      .json({ message: "Token no presente en cookies ni en headers" });
+    return res.status(401).json({ message: "No autenticado" });
   }
 
   let data;
   try {
     data = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (error) {
-    console.error("❌ Error al verificar el token:", error.message);
-    return res.status(403).json({ message: "Token inválido" });
+  } catch (_err) {
+    return res.status(401).json({ message: "Token inválido o expirado" });
   }
 
+  // Confirmar usuario vigente
   const usuario = await selectUsuarioById(data.usuario_id);
   if (!usuario) {
-    return res.status(403).json({ message: "El usuario no existe" });
+    return res.status(401).json({ message: "Usuario no existe" });
   }
 
+  // Exponer usuario a la request
   req.user = usuario;
+
+  // 🔁 Sesión deslizante: re-emitir cookie por +1h
+  issueSessionCookie(res, {
+    usuario_id: usuario.id,
+    usuario_usuario: usuario.usuario,
+    usuario_rol: usuario.rol,
+    usuario_nombre: `${usuario.nombre} ${usuario.apellido}`.trim(),
+  });
+
   next();
 };
 
@@ -94,7 +143,7 @@ const rutaDestino = process.env.RUTA_DESTINO || RUTA_DESTINO_DEFAULT;
 const rutaDestinoInfra =
   process.env.RUTA_DESTINO_INFRAESTRUCTURA || RUTA_DESTINO_INFRA_DEFAULT;
 
-// Asegurar que existan las carpetas base
+// Asegura que existan las carpetas base
 [rutaDestino, rutaDestinoInfra].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -103,16 +152,12 @@ const rutaDestinoInfra =
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Heurística: si la subida es de infraestructura
-    // 1) porque el controlador envía tabla = 'neg_t_infraestructura'
-    // 2) o porque la ruta contiene '/infra' (útil si separas las rutas de API)
     const isInfra =
       req.body?.tabla === "neg_t_infraestructura" ||
       (typeof req.path === "string" && req.path.includes("/infra"));
 
     const baseDir = isInfra ? rutaDestinoInfra : rutaDestino;
 
-    // el subdirectorio "directorio" sigue funcionando igual
     const directorio = req.body.directorio || "sin_directorio";
     const destino = path.join(baseDir, directorio);
 
@@ -129,7 +174,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const fileFilter = (req, file, cb) => {
+const fileFilter = (_req, file, cb) => {
   if (file.mimetype.startsWith("image/")) {
     cb(null, true);
   } else {
@@ -140,9 +185,17 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ storage, fileFilter });
 
 module.exports = {
+  // checks
   checkUsuarioId,
   checkSoportesNocId,
   checkSoporteOrdIns,
   checkToken,
+
+  // multer
   upload,
+
+  // para login/logout/controllers
+  COOKIE_NAME,
+  cookieOpts,
+  issueSessionCookie,
 };
