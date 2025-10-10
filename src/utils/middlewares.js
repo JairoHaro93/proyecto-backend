@@ -20,33 +20,24 @@ const {
 const COOKIE_NAME = "token";
 const SESSION_TTL_S = parseInt(process.env.SESSION_TTL_S || "3600", 10);
 
-const isProd = process.env.NODE_ENV === "production";
-
-/** Opciones de cookie (ajustables por .env) */
 const cookieOpts = {
   httpOnly: true,
-  sameSite: process.env.COOKIE_SAMESITE || (isProd ? "None" : "Lax"),
-  secure: process.env.COOKIE_SECURE
-    ? process.env.COOKIE_SECURE === "true"
-    : isProd,
+  sameSite: "Lax", // ✅ en HTTP usa Lax (o Strict si quieres más bloqueo)
+  secure: false, // ✅ nada de Secure si no hay HTTPS
   path: "/",
-  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
-  maxAge: SESSION_TTL_S * 1000, // 👈 usa el TTL configurable
+  // ⚠️ Evita 'domain' salvo que sea estrictamente necesario y coincida EXACTO
+  maxAge: SESSION_TTL_S * 1000,
 };
 
-/** Emite/renueva JWT en cookie por 1h desde ahora */
 function issueSessionCookie(res, payload) {
-  // 👇 firma con el TTL configurable
   const token = jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: SESSION_TTL_S,
   });
-
   res.cookie(COOKIE_NAME, token, cookieOpts);
-
-  // 👇 expón el vencimiento para el auto-logout del front
-  const expiresAtMs = Date.now() + SESSION_TTL_S * 1000;
-  res.setHeader("X-Session-Expires", new Date(expiresAtMs).toISOString());
-
+  res.setHeader(
+    "X-Session-Expires",
+    new Date(Date.now() + SESSION_TTL_S * 1000).toISOString()
+  );
   return token;
 }
 
@@ -184,6 +175,12 @@ const fileFilter = (_req, file, cb) => {
 
 const upload = multer({ storage, fileFilter });
 
+function clearLegacyCookies(res) {
+  // borra posibles variantes previas
+  res.clearCookie(COOKIE_NAME, { path: "/", sameSite: "None", secure: true });
+  res.clearCookie(COOKIE_NAME, { path: "/", sameSite: "Lax", secure: false });
+}
+
 module.exports = {
   // checks
   checkUsuarioId,
@@ -198,4 +195,5 @@ module.exports = {
   COOKIE_NAME,
   cookieOpts,
   issueSessionCookie,
+  clearLegacyCookies,
 };
