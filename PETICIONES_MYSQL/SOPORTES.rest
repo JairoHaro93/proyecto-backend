@@ -65,6 +65,12 @@ GET {{url}}/soportes/revisados
 Authorization: {{TOKEN_AUX}}
 
 
+//OBTENER MIS SOPORTES DE NOC
+###
+GET {{url}}/soportes/diario/2025-10-11
+Authorization: {{TOKEN_AUX}}
+
+
 
 //OBTENER MIS SOPORTES DE TECNICO
 ###

@@ -6,6 +6,7 @@ const {
   aceptarSoporte,
   getAllSoportesRevisados,
   asignarSolucion,
+  getSoportesByDate,
 } = require("../../../controllers/negocio_lat/soportes.controllers");
 const {
   checkToken,
@@ -26,6 +27,9 @@ router.get("/revisados", checkToken, getAllSoportesRevisados);
 
 //OBTIENE UN SOPORTE POR ORDEN DE INSTALACION
 router.get("/:id_sop", checkToken, getSoporteById);
+
+//OBTIENE TODO LOS SOPORTES DEL DIA
+router.get("/diario/:fecha", checkToken, getSoportesByDate);
 
 //CREA UN SOPORTE
 router.post("/", checkToken, createSoporte);

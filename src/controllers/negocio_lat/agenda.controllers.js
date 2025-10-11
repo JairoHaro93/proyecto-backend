@@ -15,15 +15,72 @@ const {
 const { poolmysql } = require("../../config/db");
 const path = require("path");
 const fs = require("fs");
+const {
+  selectNombresByOrdInsBatch,
+} = require("../../models/negocio/info_clientes.models");
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
 const getAgendaByFecha = async (req, res, next) => {
   try {
     const { fecha } = req.params;
 
-    const result = await selectAgendByFecha(fecha);
+    if (!ISO_DATE_RE.test(fecha)) {
+      return res
+        .status(400)
+        .json({ message: "Formato de fecha inválido. Usa YYYY-MM-DD." });
+    }
 
-    res.json(result); // Si está vacío, devuelve []
+    // 1) Base: agenda del día (incluye nombre del técnico desde MySQL)
+    const agenda = await selectAgendByFecha(fecha); // siempre array
+
+    if (!Array.isArray(agenda) || agenda.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // 2) Lista única de ord_ins numéricos para batch
+    const ordInsList = Array.from(
+      new Set(
+        agenda
+          .map((a) => {
+            const n = Number(a.ord_ins);
+            return Number.isFinite(n) ? n : null;
+          })
+          .filter((v) => v !== null)
+      )
+    );
+
+    // 3) Batch a SQL Server: ord_ins -> nombre_completo del cliente
+    let nombresMap = new Map(); // ord_ins -> nombre_completo
+    if (ordInsList.length > 0) {
+      try {
+        const filas = await selectNombresByOrdInsBatch(ordInsList);
+        for (const r of filas) {
+          // r.orden_instalacion, r.nombre_completo
+          nombresMap.set(
+            Number(r.orden_instalacion),
+            r.nombre_completo || null
+          );
+        }
+      } catch (err) {
+        console.warn("⚠️ Falló SQL Server (nombre cliente):", err.message);
+        // degradar con gracia: se devuelve sin clienteNombre
+      }
+    }
+
+    // 4) Fusión sin alterar orden
+    const enriquecida = agenda.map((a) => {
+      const key = Number(a.ord_ins);
+      return {
+        ...a,
+        clienteNombre: Number.isFinite(key)
+          ? nombresMap.get(key) ?? null
+          : null,
+      };
+    });
+
+    return res.status(200).json(enriquecida);
   } catch (error) {
     next(error);
   }

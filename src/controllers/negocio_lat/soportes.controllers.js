@@ -1,4 +1,7 @@
 const {
+  selectNombresByOrdInsBatch,
+} = require("../../models/negocio/info_clientes.models");
+const {
   selectAllSoportes,
   selectSoporteById,
   insertSoporte,
@@ -7,6 +10,7 @@ const {
   aceptarSoporteById,
   selectSoportesRevisados,
   updateAsignarSolucion,
+  selectAllSoportesByDate,
 } = require("../../models/negocio_lat/soportes.models");
 
 //CONTROLADOR PARA OBTENER TODOS LOS SOPORTES
@@ -38,6 +42,66 @@ const getSoporteById = async (req, res, next) => {
   }
 };
 
+//CONTROLADOR PARA OBTENER TODOS LOS SOPORTES DE UN DIA
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+async function getSoportesByDate(req, res, next) {
+  const { fecha } = req.params;
+
+  try {
+    if (!ISO_DATE_RE.test(fecha)) {
+      return res
+        .status(400)
+        .json({ message: "Formato de fecha inválido. Usa YYYY-MM-DD." });
+    }
+
+    const soportes = await selectAllSoportesByDate(fecha); // array
+    if (!Array.isArray(soportes) || soportes.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    const ordInsList = Array.from(
+      new Set(
+        soportes
+          .map((s) => {
+            const n = Number(s.ord_ins);
+            return Number.isFinite(n) ? n : null;
+          })
+          .filter((v) => v !== null)
+      )
+    );
+
+    let nombresMap = new Map();
+    if (ordInsList.length > 0) {
+      try {
+        const filas = await selectNombresByOrdInsBatch(ordInsList);
+        for (const r of filas) {
+          nombresMap.set(
+            Number(r.orden_instalacion),
+            r.nombre_completo || null
+          );
+        }
+      } catch (err) {
+        console.warn("⚠️ Falló SQL Server (nombre cliente):", err.message);
+        nombresMap = new Map();
+      }
+    }
+
+    const enriquecidos = soportes.map((s) => {
+      const key = Number(s.ord_ins);
+      return {
+        ...s,
+        clienteNombre: Number.isFinite(key)
+          ? nombresMap.get(key) ?? null
+          : null,
+      };
+    });
+
+    return res.status(200).json(enriquecidos);
+  } catch (error) {
+    next(error);
+  }
+}
 //CONTROLADOR PARA OBTENER UN SOPORTE POR ORDINS
 const getSoporteByOrdIns = async (req, res, next) => {
   const { soporteOrdIns } = req.params;
@@ -145,7 +209,7 @@ module.exports = {
   getSoporteById,
   getSoporteByOrdIns,
   asignarSolucion,
-
+  getSoportesByDate,
   getAllSoportesPendientes,
   createSoporte,
   aceptarSoporte,

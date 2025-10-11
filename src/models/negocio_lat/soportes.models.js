@@ -65,6 +65,51 @@ async function selectSoporteById(id_sop) {
   return soportes[0];
 }
 
+// QUERY: obtener todos los soportes de una fecha determinada (YYYY-MM-DD)
+// excluyendo estados 'VISITA' y 'LOS'
+async function selectAllSoportesByDate(fecha) {
+  const [rows] = await poolmysql.query(
+    `
+    SELECT 
+      Sop.id,
+      Sop.ord_ins,
+      Sop.reg_sop_opc,
+      Sop.reg_sop_tel,
+
+      -- Registrado por
+      Sop.reg_sop_registrado_por_id,
+      CONCAT(Ureg.nombre, ' ', Ureg.apellido) AS reg_sop_registrado_por_nombre,
+
+      Sop.reg_sop_coment_cliente,
+      Sop.reg_sop_fecha,
+      Sop.reg_sop_estado,
+      Sop.reg_sop_fecha_acepta,
+      Sop.reg_sop_sol_det,
+
+      -- Aceptado por (NOC)
+      Sop.reg_sop_noc_id_acepta,
+      CONCAT(Uacepta.nombre, ' ', Uacepta.apellido) AS reg_sop_aceptado_por_nombre
+
+    FROM neg_t_soportes AS Sop
+    -- JOIN 1: usuario que registró
+    LEFT JOIN sisusuarios AS Ureg 
+      ON Ureg.id = Sop.reg_sop_registrado_por_id
+    -- JOIN 2: usuario que aceptó (NOC)
+    LEFT JOIN sisusuarios AS Uacepta
+      ON Uacepta.id = Sop.reg_sop_noc_id_acepta
+
+    WHERE 
+      Sop.reg_sop_fecha >= ? 
+      AND Sop.reg_sop_fecha < DATE_ADD(?, INTERVAL 1 DAY)
+      AND (Sop.reg_sop_estado IS NULL OR Sop.reg_sop_estado NOT IN ('VISITA','LOS'))
+
+    ORDER BY Sop.reg_sop_fecha ASC, Sop.id ASC
+    `,
+    [fecha, fecha]
+  );
+
+  return rows; // array (vacío si no hay resultados)
+}
 // QUERY PARA OBTENER UN SOPORTE POR ORDINS   --PAGINA INFO-SOP  /home/noc/info-sop/99847
 async function selectSoporteByOrdIns(soporteOrdIns) {
   const [soportes] = await poolmysql.query(
@@ -100,34 +145,45 @@ async function selectSoportesRevisados() {
   const [soportes] = await poolmysql.query(
     `
     SELECT 
-        Sop.id,
-        Sop.ord_ins,
-        Sop.reg_sop_opc,
-        Sop.reg_sop_tel,
-        Sop.reg_sop_registrado_por_id,
-        CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_registrado_por_nombre,
-        Sop.reg_sop_coment_cliente,
-        Sop.reg_sop_fecha,
-        Sop.reg_sop_fecha_acepta,
-        Sop.reg_sop_estado,
-        Sop.reg_sop_noc_id_acepta,
-        CONCAT(U.nombre, ' ', U.apellido) AS reg_sop_aceptado_por_nombre
-    FROM
-        neg_t_soportes AS Sop
-    LEFT JOIN 
-        sisusuarios AS U 
-        ON Sop.reg_sop_registrado_por_id = U.id
-    WHERE  
-        Sop.reg_sop_estado NOT IN ('RESUELTO')
-        AND Sop.reg_sop_noc_id_acepta IS NOT NULL
-        AND Sop.reg_sop_noc_id_acepta <> '';
+      Sop.id,
+      Sop.ord_ins,
+      Sop.reg_sop_opc,
+      Sop.reg_sop_tel,
+
+      -- Registrado por
+      Sop.reg_sop_registrado_por_id,
+      CONCAT(Ureg.nombre, ' ', Ureg.apellido) AS reg_sop_registrado_por_nombre,
+
+      Sop.reg_sop_coment_cliente,
+      Sop.reg_sop_fecha,
+      Sop.reg_sop_fecha_acepta,
+      Sop.reg_sop_estado,
+
+      -- Aceptado por (NOC)
+      Sop.reg_sop_noc_id_acepta,
+      CONCAT(Uacepta.nombre, ' ', Uacepta.apellido) AS reg_sop_aceptado_por_nombre
+
+    FROM neg_t_soportes AS Sop
+
+    -- JOIN 1: usuario que registró
+    LEFT JOIN sisusuarios AS Ureg
+      ON Ureg.id = Sop.reg_sop_registrado_por_id
+
+    -- JOIN 2: usuario que aceptó (NOC)
+    LEFT JOIN sisusuarios AS Uacepta
+      ON Uacepta.id = Sop.reg_sop_noc_id_acepta
+
+    WHERE
+      Sop.reg_sop_estado <> 'RESUELTO'
+      AND Sop.reg_sop_noc_id_acepta IS NOT NULL
+      -- si el campo es VARCHAR y puede venir vacío, mantén este filtro:
+      AND TRIM(CAST(Sop.reg_sop_noc_id_acepta AS CHAR)) <> ''
+
+    ORDER BY Sop.reg_sop_fecha DESC, Sop.id DESC
     `
   );
 
-  if (soportes.length === 0) {
-    return null; // O podrías devolver un array vacío [] si prefieres.
-  }
-  return soportes; // DEVOLVER TODOS LOS REGISTROS, NO SOLO EL PRIMERO
+  return soportes;
 }
 
 // QUERY PARA CREAR UN SOPORTE NUEVO        --PAGINA REGISTRAR SOPORTE /home/tecnico/registrosop
@@ -163,7 +219,7 @@ function insertSoporte({
 // QUERY PARA ACTUALIZAR LA SOLUCION  --PAGINA INFO-SOP  /home/noc/info-sop/99847
 async function updateAsignarSolucion(
   soporteId,
-  { reg_sop_estado, reg_sop_sol_det }
+  { reg_sop_estado, reg_sop_sol_det, reg_sop_noc_id_acepta }
 ) {
   try {
     // Desactiva "Safe Updates" temporalmente
@@ -175,10 +231,11 @@ async function updateAsignarSolucion(
         UPDATE neg_t_soportes 
         SET 
             reg_sop_estado = ?,
-            reg_sop_sol_det = ?
+            reg_sop_sol_det = ?,
+            reg_sop_noc_id_acepta = ?
         WHERE id = ?
       ;`,
-      [reg_sop_estado, reg_sop_sol_det, soporteId]
+      [reg_sop_estado, reg_sop_sol_det, reg_sop_noc_id_acepta, soporteId]
     );
 
     // Reactiva "Safe Updates"
@@ -223,6 +280,7 @@ async function aceptarSoporteById(id_sop, { reg_sop_noc_id_acepta }) {
 module.exports = {
   selectAllSoportes,
   selectAllSoportesPendientes,
+  selectAllSoportesByDate,
   selectSoporteById,
   selectSoporteByOrdIns,
   updateAsignarSolucion,

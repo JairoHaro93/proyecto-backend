@@ -470,6 +470,61 @@ async function fetchClientesByOrdInsBatch(ordInsList) {
   }
 }
 
+/**
+ * Trae nombres de cliente para una lista de ord_ins (batch).
+ * @param {number[]} ordInsList - Lista de IDs de orden de instalación (enteros)
+ * @returns {Promise<Array<{ orden_instalacion: number, nombre_completo: string }>>}
+ */
+async function selectNombresByOrdInsBatch(ordInsList) {
+  if (!Array.isArray(ordInsList) || ordInsList.length === 0) return [];
+
+  // Seguridad: solo enteros finitos
+  const ids = ordInsList
+    .filter((n) => Number.isFinite(n))
+    .map((n) => Number(n));
+  if (ids.length === 0) return [];
+
+  // Límite conservador de parámetros: 900 ids/lote (cada id = 1 parámetro)
+  const CHUNK_SIZE = 900;
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+    chunks.push(ids.slice(i, i + CHUNK_SIZE));
+  }
+
+  const allRows = [];
+
+  for (const chunk of chunks) {
+    const request = await getRequest();
+
+    // placeholders: (@id0),(@id1),...
+    const valuesPlaceholders = chunk.map((_, i) => `(@id${i})`).join(",");
+
+    // bind params
+    chunk.forEach((val, i) => request.input(`id${i}`, sql.Int, val));
+
+    const q = `
+      DECLARE @ids TABLE (ord_ins_id INT PRIMARY KEY);
+      INSERT INTO @ids (ord_ins_id)
+      VALUES ${valuesPlaceholders};
+
+      SELECT
+        OC.ord_ins_id AS orden_instalacion,
+        C.cli_nombres + ' ' + C.cli_apellidos AS nombre_completo
+      FROM t_Ordenes_Instalaciones AS OC
+      LEFT JOIN t_Clientes AS C
+        ON C.cli_cedula = OC.cli_cedula
+      INNER JOIN @ids AS X
+        ON X.ord_ins_id = OC.ord_ins_id;
+    `;
+
+    const result = await request.query(q);
+    if (result && Array.isArray(result.recordset)) {
+      allRows.push(...result.recordset);
+    }
+  }
+
+  return allRows;
+}
 module.exports = {
   // Sugerencias
   selectClientesSugerencias,
@@ -485,4 +540,5 @@ module.exports = {
   selectAllInstPend,
   // Batch
   fetchClientesByOrdInsBatch,
+  selectNombresByOrdInsBatch,
 };

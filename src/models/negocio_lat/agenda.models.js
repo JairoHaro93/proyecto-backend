@@ -1,21 +1,39 @@
 const { poolmysql } = require("../../config/db");
 
-// QUERY PARA OBTENER LA AGENDA DE UNA FECHA EN ESPECIFICO
+// QUERY: obtener agenda de una fecha específica (YYYY-MM-DD) + nombre del técnico
 async function selectAgendByFecha(fecha) {
   const [agendas] = await poolmysql.query(
     `
-   SELECT 
-  a.*
-
-FROM 
-  neg_t_agenda a
-
-    WHERE age_fecha = ?
+    SELECT
+      a.id,
+      a.age_tipo,
+      a.ord_ins,
+      a.age_id_tipo,
+      a.age_id_sop,
+      a.age_coordenadas,
+      a.age_hora_inicio,
+      a.age_hora_fin,
+      a.age_fecha,
+      a.age_vehiculo,
+      a.age_tecnico,
+      a.age_diagnostico,
+      a.age_telefono,
+      a.age_solucion,
+      a.age_estado,
+      -- Nombre del técnico
+      CONCAT(Utec.nombre, ' ', Utec.apellido) AS nombre_completo
+    FROM neg_t_agenda AS a
+    LEFT JOIN sisusuarios AS Utec
+      ON Utec.id = CAST(a.age_tecnico AS UNSIGNED)  -- si age_tecnico es VARCHAR, castear ayuda
+    WHERE
+      a.age_fecha >= ?
+      AND a.age_fecha < DATE_ADD(?, INTERVAL 1 DAY)
+    ORDER BY a.age_hora_inicio ASC, a.id ASC
     `,
-    [fecha]
+    [fecha, fecha]
   );
 
-  return agendas; // Devuelve directamente el array (aunque esté vacío)
+  return agendas; // array (vacío si no hay resultados)
 }
 
 // QUERY PARA OBTENER TODOS LOS DATOS PREAGENDA
