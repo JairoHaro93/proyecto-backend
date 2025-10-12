@@ -140,7 +140,9 @@ const createSoporte = async (req, res, next) => {
     const soportes = await selectSoporteByOrdIns(ord_ins);
 
     // Si alguno no está resuelto, no se permite crear uno nuevo
-    const soporteActivo = soportes.find((s) => s.reg_sop_estado !== "RESUELTO");
+    const soporteActivo = soportes.find(
+      (s) => !["RESUELTO", "CULMINADO"].includes(s.reg_sop_estado)
+    );
     console.log(soporteActivo);
     if (soporteActivo) {
       return res.status(400).json({
