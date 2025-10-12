@@ -101,7 +101,7 @@ async function selectAllSoportesByDate(fecha) {
     WHERE 
       Sop.reg_sop_fecha >= ? 
       AND Sop.reg_sop_fecha < DATE_ADD(?, INTERVAL 1 DAY)
-      AND (Sop.reg_sop_estado IS NULL OR Sop.reg_sop_estado NOT IN ('VISITA','LOS'))
+      AND (Sop.reg_sop_estado IS NULL OR Sop.reg_sop_estado NOT IN ('VISITA','LOS','CULMINADO'))
 
     ORDER BY Sop.reg_sop_fecha ASC, Sop.id ASC
     `,
