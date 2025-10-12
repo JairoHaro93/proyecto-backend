@@ -174,7 +174,10 @@ async function selectSoportesRevisados() {
       ON Uacepta.id = Sop.reg_sop_noc_id_acepta
 
     WHERE
-      Sop.reg_sop_estado <> 'RESUELTO'
+    (
+        Sop.reg_sop_estado IS NULL
+        OR UPPER(TRIM(Sop.reg_sop_estado)) NOT IN ('RESUELTO', 'CULMINADO')
+      )
       AND Sop.reg_sop_noc_id_acepta IS NOT NULL
       -- si el campo es VARCHAR y puede venir vacío, mantén este filtro:
       AND TRIM(CAST(Sop.reg_sop_noc_id_acepta AS CHAR)) <> ''
