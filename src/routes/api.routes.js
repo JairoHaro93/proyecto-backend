@@ -30,4 +30,5 @@ router.use(
   require("./api/negocio_lat/infraestructura.router")
 );
 router.use("/images", require("./api/negocio_lat/images.router"));
+router.use("/cajas", require("./api/negocio_lat/cajas.router"));
 module.exports = router;
