@@ -1,10 +1,20 @@
 // controllers/negocio_lat/cajas.controllers.js
-const { insertCaja } = require("../../models/negocio_lat/cajas.model");
+const {
+  insertCaja,
+  listCajas,
+} = require("../../models/negocio_lat/cajas.model");
 
+// Crear caja (actualizado para aceptar ciudad y coordenadas)
 async function createCaja(req, res) {
   try {
-    let { caja_tipo, caja_nombre, caja_estado, caja_hilo, caja_coordenadas } =
-      req.body;
+    const {
+      caja_tipo,
+      caja_nombre,
+      caja_estado,
+      caja_hilo,
+      caja_coordenadas,
+      caja_ciudad,
+    } = req.body;
 
     if (!caja_tipo || !caja_nombre) {
       return res.status(400).json({
@@ -13,19 +23,13 @@ async function createCaja(req, res) {
       });
     }
 
-    // Normaliza strings
-    caja_tipo = String(caja_tipo).trim();
-    caja_nombre = String(caja_nombre).trim();
-    caja_estado = (caja_estado ?? "DISEÑO").toString().trim();
-    caja_hilo = caja_hilo?.toString().trim() || null;
-    caja_coordenadas = caja_coordenadas?.toString().trim() || null; // "-0.93,-78.61"
-
     const [result] = await insertCaja({
       caja_tipo,
       caja_nombre,
       caja_estado,
       caja_hilo,
       caja_coordenadas,
+      caja_ciudad,
     });
 
     res.status(201).json({
@@ -35,9 +39,10 @@ async function createCaja(req, res) {
         id: result.insertId,
         caja_tipo,
         caja_nombre,
-        caja_estado,
-        caja_hilo,
-        caja_coordenadas,
+        caja_estado: caja_estado || "DISEÑO",
+        caja_hilo: caja_hilo ?? null,
+        caja_coordenadas: caja_coordenadas ?? null,
+        caja_ciudad: caja_ciudad ?? null,
       },
     });
   } catch (error) {
@@ -49,4 +54,37 @@ async function createCaja(req, res) {
   }
 }
 
-module.exports = { createCaja };
+// Listar cajas (con filtros y bbox)
+async function getCajas(req, res) {
+  try {
+    const { ciudad, tipo, estado, q, ne, sw, limit, offset } = req.query;
+
+    const [rows] = await listCajas({
+      ciudad,
+      tipo,
+      estado,
+      q,
+      ne,
+      sw,
+      limit,
+      offset,
+    });
+
+    res.json({
+      success: true,
+      message: "Cajas obtenidas correctamente",
+      data: rows,
+    });
+  } catch (error) {
+    console.error("Error al listar cajas:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error interno del servidor al listar las cajas",
+    });
+  }
+}
+
+module.exports = {
+  createCaja,
+  getCajas,
+};

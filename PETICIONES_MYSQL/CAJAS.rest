@@ -7,10 +7,9 @@
 //-----------------------------------------------------------
 
 
-//OBTIENE UNA CAJAS POR ID
-//router.get("/:id_vis", checkToken, getVisById);
-###
-GET {{url}}/cajas/41
+//OBTIENE TODAS LAS CAJAS
+//router.get("/", checkToken, getCajas);
+GET {{url}}/cajas
 Authorization: {{TOKEN_AUX}}
 
 
@@ -23,7 +22,7 @@ Content-Type: application/json
 
 {
 
-     "caja_hilo" : "1",
+    "caja_hilo" : "1",
     "caja_nombre" : "PON_LAT_OFOP_1",
     "caja_tipo" : "PON"
 }
