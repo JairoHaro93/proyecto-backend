@@ -68,7 +68,7 @@ Content-Type: application/json
 
 //ATUALIZA LA SOLUCION Y ESTADO
 ###
-PUT {{url}}/agenda/edita-sol/75
+PUT {{url}}/agenda/edita-sol/2
 Authorization: {{TOKEN_AUX}}
 Content-Type: application/json
 

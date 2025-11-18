@@ -1,27 +1,30 @@
-// routes/images_router.js
+// routes/negocio_lat/images_router.js
 "use strict";
 const router = require("express").Router();
-
 const { uploadSingleImage } = require("../../../utils/multer");
 const {
   uploadImage,
   listImages,
-  listVisitasWithImagesByOrdIns,
+  listVisitasWithImagesByOrdIns, // (la puedes dejar por compatibilidad)
+  listImagesByOrdIns, // ✅ NUEVA
+  deleteImageSlot, // ✅ NUEVA
 } = require("../../../controllers/negocio_lat/images.controllers");
-
-// Middleware de auth (usa el tuyo)
 const { checkToken } = require("../../../utils/middlewares");
 
-// Subir imagen (protegido)
-router.post("/upload", uploadSingleImage, uploadImage);
+// Subir
+router.post("/upload", checkToken, uploadSingleImage, uploadImage);
 
-// Listar imágenes por módulo/entidad (público por ahora)
+// Listar por entidad
 router.get("/list/:module/:entityId", listImages);
+router.get("/download/:module/:entityId", listImages); // alias
 
-// Alias de compatibilidad
-router.get("/download/:module/:entityId", listImages);
+// Listar TODO por ord_ins (instalación + visitas)
+router.get("/by-ord/:ord_ins", listImagesByOrdIns); // ✅ NUEVA
 
-//IMAGENES EN VISITAS
+// Borrar un slot (module+entity_id+tag+position)
+router.delete("/slot", checkToken, deleteImageSlot); // ✅ NUEVA
+
+// (Opcional) legacy visitas por ord_ins
 router.get("/visitas/by-ord/:ord_ins", listVisitasWithImagesByOrdIns);
 
 module.exports = router;
