@@ -8,12 +8,12 @@ const {
 const { checkToken } = require("../../../utils/middlewares");
 
 //OBTIENE UNA VISITA POR ID
-router.get("/:id_vis", checkToken, getVisById);
+//router.get("/:id_vis", checkToken, getVisById);
 
 //CREA UNA VISITA
-router.post("/", checkToken, createVis);
+//router.post("/", checkToken, createVis);
 
 //ACTUALIZA UNA VISITA
-router.put("/:id_vis", checkToken, updateVisById);
+//router.put("/:id_vis", checkToken, updateVisById);
 
 module.exports = router;

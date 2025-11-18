@@ -10,6 +10,7 @@ const {
   selectAgendaByOrdIns,
   insertAgendaHorario,
   selectAgendaBySopId,
+  selectAgendaLiteById,
 } = require("../../models/negocio_lat/agenda.models");
 
 const { poolmysql } = require("../../config/db");
@@ -19,6 +20,10 @@ const {
   selectNombresByOrdInsBatch,
 } = require("../../models/negocio/info_clientes.models");
 
+const {
+  updateSoporteEstadoById,
+  updateSoporteEstadoByOrdIns,
+} = require("../../models/negocio_lat/soportes.models");
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // CONTROLADOR PARA OBTENER LA AGENDA POR FECHA
@@ -152,12 +157,42 @@ const putAgendaHorario = async (req, res, next) => {
 // CONTROLADOR PARA asignar o actualizar la Solucion y el estado
 const putAgendaSolucion = async (req, res, next) => {
   const { age_id } = req.params;
-  try {
-    const body = req.body;
-    console.log("📥 PUT solución:", { age_id, body });
 
-    const insertId = await updateSolucion(age_id, body);
-    res.status(201).json({ message: "✅ Solución guardada", id: insertId });
+  try {
+    const body = req.body; // { age_estado, age_solucion }
+    // 1) Actualiza agenda (estado + solución) como ya lo hacías
+    const result = await updateSolucion(age_id, body);
+
+    // 2) Lógica que antes hacía el trigger (pero ahora en código)
+    //    - Solo si quedó CONCLUIDO
+    const lite = await selectAgendaLiteById(age_id);
+    if (lite) {
+      const estado = String(lite.age_estado || "")
+        .trim()
+        .toUpperCase();
+      const tipo = String(lite.age_tipo || "")
+        .trim()
+        .toUpperCase();
+
+      if (estado === "CONCLUIDO") {
+        // a) VISITA / LOS ⇒ cerrar soporte(s)
+        if (tipo === "VISITA" || tipo === "LOS") {
+          const idSop = lite.age_id_sop && String(lite.age_id_sop).trim();
+          const ordIns = lite.ord_ins && String(lite.ord_ins).trim();
+
+          if (idSop && idSop !== "0") {
+            await updateSoporteEstadoById(Number(idSop), "CULMINADO");
+          } else if (ordIns && ordIns !== "0") {
+            await updateSoporteEstadoByOrdIns(ordIns, "CULMINADO");
+          }
+        }
+
+        // b) RETIRO / TRASLADO EXTERNO / MIGRACION ⇒ no tocar soportes
+        // (se considera resuelto solo en agenda)
+      }
+    }
+
+    return res.status(201).json({ message: "✅ Solución guardada", result });
   } catch (error) {
     console.error("❌ Error al actualizar solución:", error);
     next(error);

@@ -272,6 +272,27 @@ async function updateSolucion(age_id, { age_estado, age_solucion }) {
   }
 }
 
+/**
+ * Devuelve datos mínimos de la agenda (para lógica post-actualización)
+ */
+async function selectAgendaLiteById(age_id) {
+  const [rows] = await poolmysql.query(
+    `
+    SELECT 
+      id,
+      age_tipo,
+      age_id_sop,
+      ord_ins,
+      age_estado
+    FROM neg_t_agenda
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [age_id]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   selectAgendByFecha,
   selectPreAgenda,
@@ -284,4 +305,5 @@ module.exports = {
   selectTrabajosByTec,
   selectInfoSolByAgeId,
   selectAgendaPendByFecha,
+  selectAgendaLiteById,
 };

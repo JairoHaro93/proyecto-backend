@@ -280,6 +280,38 @@ async function aceptarSoporteById(id_sop, { reg_sop_noc_id_acepta }) {
   }
 }
 
+/**
+ * Actualiza el estado de un soporte por ID, si no está ya CULMINADO.
+ */
+async function updateSoporteEstadoById(id, nuevoEstado = "CULMINADO") {
+  const [r] = await poolmysql.query(
+    `
+    UPDATE neg_t_soportes
+      SET reg_sop_estado = ?
+    WHERE id = ?
+      AND (reg_sop_estado IS NULL OR UPPER(TRIM(reg_sop_estado)) <> 'CULMINADO')
+    `,
+    [nuevoEstado, id]
+  );
+  return r.affectedRows;
+}
+
+/**
+ * Actualiza el estado de todos los soportes de un ord_ins, si no están ya CULMINADO.
+ */
+async function updateSoporteEstadoByOrdIns(ord_ins, nuevoEstado = "CULMINADO") {
+  const [r] = await poolmysql.query(
+    `
+    UPDATE neg_t_soportes
+      SET reg_sop_estado = ?
+    WHERE ord_ins = ?
+      AND (reg_sop_estado IS NULL OR UPPER(TRIM(reg_sop_estado)) <> 'CULMINADO')
+    `,
+    [nuevoEstado, ord_ins]
+  );
+  return r.affectedRows;
+}
+
 module.exports = {
   selectAllSoportes,
   selectAllSoportesPendientes,
@@ -290,4 +322,6 @@ module.exports = {
   insertSoporte,
   aceptarSoporteById,
   selectSoportesRevisados,
+  updateSoporteEstadoById,
+  updateSoporteEstadoByOrdIns,
 };
