@@ -80,12 +80,10 @@ const uploadImage = async (req, res) => {
       try {
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
       } catch (_) {}
-      return res
-        .status(400)
-        .json({
-          ok: false,
-          message: "ord_ins requerido o no resolvible para visitas",
-        });
+      return res.status(400).json({
+        ok: false,
+        message: "ord_ins requerido o no resolvible para visitas",
+      });
     }
 
     // 2) Carpeta final: instalaciones/<ord_ins>/<age_id>
@@ -312,55 +310,54 @@ const listImages = async (req, res) => {
 
 /**
  * GET /api/images/visitas/by-ord/:ord_ins
- * Devuelve TODAS las visitas (neg_t_vis) de un ord_ins y sus imágenes
- * desde el esquema nuevo (files + file_links) con module='visitas'.
+ * Devuelve TODAS las visitas de un ord_ins (desde neg_t_agenda)
+ * y sus imágenes desde files+file_links con module='visitas'
+ * y entity_id = id de la AGENDA (no neg_t_vis).
  */
-// Reemplaza la función por esta versión:
-// GET /api/images/visitas/by-ord/:ord_ins
 async function listVisitasWithImagesByOrdIns(req, res) {
   const { ord_ins } = req.params;
-
-  if (!ord_ins || isNaN(Number(ord_ins))) {
-    return res.status(400).json({ ok: false, message: "ord_ins inválido" });
+  if (!ord_ins) {
+    return res.status(400).json({ ok: false, message: "ord_ins requerido" });
   }
 
   try {
     const sql = `
       SELECT
-        v.id                  AS vis_id,
-        v.vis_tipo,
-        v.vis_estado,
-        v.vis_diagnostico,
-        v.vis_coment_cliente,
-        v.vis_solucion,
-        v.fecha_actualizacion,
+        a.id                      AS vis_id,         -- usamos id agenda
+        a.age_tipo                AS vis_tipo,
+        a.age_estado              AS vis_estado,
+        a.age_diagnostico         AS vis_diagnostico,
+        NULL                      AS vis_coment_cliente,  -- no está en agenda
+        a.age_solucion            AS vis_solucion,
+        CONCAT(a.age_fecha, ' ', COALESCE(a.age_hora_fin, a.age_hora_inicio)) AS fecha_actualizacion,
 
-        fl.id                 AS link_id,
-        fl.tag                AS link_tag,
-        fl.position           AS link_position,
-        f.ruta_relativa       AS file_rel
-      FROM neg_t_vis v
+        fl.id                     AS link_id,
+        fl.tag                    AS link_tag,
+        fl.position               AS link_position,
+        f.ruta_relativa           AS file_rel
+      FROM neg_t_agenda a
       LEFT JOIN file_links fl
              ON fl.module = 'visitas'
-            AND fl.entity_id = v.id
+            AND fl.entity_id = a.id             -- 🔴 clave: AGENDA.ID
       LEFT JOIN files f
              ON f.id = fl.file_id
-      WHERE v.ord_ins = ?
-      ORDER BY v.id DESC, fl.position ASC, fl.id ASC
+      WHERE a.ord_ins = ?
+        AND a.age_tipo IN ('VISITA', 'LOS', 'RETIRO')
+      ORDER BY a.id DESC, fl.position ASC, fl.id ASC
     `;
 
     const [rows] = await poolmysql.query(sql, [ord_ins]);
 
+    // responde 200 [] (mejor para front)
     if (!rows || rows.length === 0) {
-      return res
-        .status(404)
-        .json({ ok: false, message: "No se encontraron visitas" });
+      return res.status(200).json([]);
     }
 
     const visitasMap = new Map();
 
     for (const r of rows) {
       const visId = r.vis_id;
+
       if (!visitasMap.has(visId)) {
         visitasMap.set(visId, {
           id: r.vis_id,
@@ -374,17 +371,21 @@ async function listVisitasWithImagesByOrdIns(req, res) {
         });
       }
 
-      // Si hay imagen vinculada
+      // Si hay imagen
       if (r.link_id && r.file_rel) {
-        const tag = (r.link_tag || "otros").trim();
-        const key =
-          tag === "img" && typeof r.link_position === "number"
-            ? `img_${r.link_position}`
-            : tag || "otros";
+        const tag = (r.link_tag || "img").trim();
+        const pos = Number(r.link_position ?? 0) || 0; // 🔴 forzar número
 
-        const rel = r.file_rel;
-        const url = publicUrlFromRel(req, rel);
-        visitasMap.get(visId).imagenes[key] = { url, ruta: rel };
+        // Clave legacy para el front:
+        const key =
+          tag === "img" && pos > 0
+            ? `img_${pos}`
+            : pos > 0
+            ? `${tag}_${pos}`
+            : tag;
+
+        const url = publicUrlFromRel(req, r.file_rel);
+        visitasMap.get(visId).imagenes[key] = { url, ruta: r.file_rel };
       }
     }
 
