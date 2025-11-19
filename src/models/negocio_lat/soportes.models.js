@@ -345,7 +345,7 @@ async function selectSoportesResueltosByOrdIns(ord_ins) {
     LEFT JOIN sisusuarios AS u_noc ON u_noc.id = s.reg_sop_noc_id_acepta
 
     WHERE s.ord_ins = ?
-      AND s.reg_sop_estado IN ('RESUELTO','CULMINADO')
+      AND s.reg_sop_estado IN ('RESUELTO')
 
     ORDER BY COALESCE(s.reg_sop_fecha_acepta, s.reg_sop_fecha) DESC, s.id DESC
     `,
