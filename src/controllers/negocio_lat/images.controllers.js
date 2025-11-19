@@ -342,7 +342,7 @@ async function listVisitasWithImagesByOrdIns(req, res) {
       LEFT JOIN files f
              ON f.id = fl.file_id
       WHERE a.ord_ins = ?
-        AND a.age_tipo IN ('VISITA', 'LOS', 'RETIRO')
+        AND a.age_tipo IN ('VISITA', 'LOS', 'RETIRO', 'TRASLADO EXT')
       ORDER BY a.id DESC, fl.position ASC, fl.id ASC
     `;
 
