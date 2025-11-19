@@ -11,6 +11,7 @@ const {
   selectSoportesRevisados,
   updateAsignarSolucion,
   selectAllSoportesByDate,
+  selectSoportesResueltosByOrdIns,
 } = require("../../models/negocio_lat/soportes.models");
 
 //CONTROLADOR PARA OBTENER TODOS LOS SOPORTES
@@ -37,6 +38,28 @@ const getSoporteById = async (req, res, next) => {
       return res.status(404).json({ message: "El ID de soporte no existe." });
     }
     res.json(soporte);
+  } catch (error) {
+    next(error);
+  }
+};
+
+//CONTROLADOR PARA OBTENER TODOS LOS SOPORTES DE UNA ORDINS
+const getAllSoportesByOrdIns = async (req, res, next) => {
+  const { ord_ins } = req.params;
+
+  try {
+    if (!ord_ins || isNaN(Number(ord_ins))) {
+      return res.status(400).json({ message: "Parámetro ord_ins inválido." });
+    }
+
+    const soportes = await selectSoportesResueltosByOrdIns(ord_ins);
+
+    // Devolvemos 200 con arreglo (posiblemente vacío) para listados
+    return res.status(200).json({
+      ord_ins: Number(ord_ins),
+      total: soportes.length,
+      data: soportes,
+    });
   } catch (error) {
     next(error);
   }
@@ -216,4 +239,5 @@ module.exports = {
   createSoporte,
   aceptarSoporte,
   getAllSoportesRevisados,
+  getAllSoportesByOrdIns,
 };

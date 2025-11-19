@@ -72,6 +72,14 @@ Authorization: {{TOKEN_AUX}}
 
 
 
+//OBTENER LOS SOPORTES RESUELTOS DE UNA ORD_INS
+###
+GET {{url}}/soportes/resueltos/125007
+Authorization: {{TOKEN_AUX}}
+
+
+
+
 //OBTENER MIS SOPORTES DE TECNICO
 ###
 GET {{url}}/soportes/mis-soportes-tec/81

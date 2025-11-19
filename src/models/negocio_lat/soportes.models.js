@@ -312,6 +312,48 @@ async function updateSoporteEstadoByOrdIns(ord_ins, nuevoEstado = "CULMINADO") {
   return r.affectedRows;
 }
 
+async function selectSoportesResueltosByOrdIns(ord_ins) {
+  const [rows] = await poolmysql.query(
+    `
+    SELECT
+      s.id,
+      s.ord_ins,
+      s.reg_sop_opc,
+      s.reg_sop_tel,
+
+      -- IDs originales (por si los necesitas)
+      s.reg_sop_registrado_por_id,
+      s.reg_sop_noc_id_acepta,
+
+      -- NOMBRE/USUARIO de quien registró
+      CONCAT(u_reg.nombre, ' ', u_reg.apellido)           AS reg_sop_registrado_por_nombre,
+      u_reg.usuario                                       AS reg_sop_registrado_por_usuario,
+
+      s.reg_sop_coment_cliente,
+      s.reg_sop_fecha,
+      s.reg_sop_estado,
+      s.reg_sop_fecha_acepta,
+
+      -- NOMBRE/USUARIO de quien aceptó en NOC
+      CONCAT(u_noc.nombre, ' ', u_noc.apellido)           AS reg_sop_aceptado_por_nombre,
+      u_noc.usuario                                       AS reg_sop_noc_acepta_usuario,
+
+      s.reg_sop_sol_det
+
+    FROM neg_t_soportes AS s
+    LEFT JOIN sisusuarios AS u_reg ON u_reg.id = s.reg_sop_registrado_por_id
+    LEFT JOIN sisusuarios AS u_noc ON u_noc.id = s.reg_sop_noc_id_acepta
+
+    WHERE s.ord_ins = ?
+      AND s.reg_sop_estado IN ('RESUELTO','CULMINADO')
+
+    ORDER BY COALESCE(s.reg_sop_fecha_acepta, s.reg_sop_fecha) DESC, s.id DESC
+    `,
+    [ord_ins]
+  );
+  return rows;
+}
+
 module.exports = {
   selectAllSoportes,
   selectAllSoportesPendientes,
@@ -324,4 +366,5 @@ module.exports = {
   selectSoportesRevisados,
   updateSoporteEstadoById,
   updateSoporteEstadoByOrdIns,
+  selectSoportesResueltosByOrdIns,
 };
