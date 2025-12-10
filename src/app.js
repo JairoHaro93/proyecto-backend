@@ -39,9 +39,20 @@ const corsOptions = {
   ],
   exposedHeaders: ["X-Session-Expires"], // 👈 importante
 };
+
+/*
 app.use(cors(corsOptions));
 // Preflight explícito (evita 404/500 en OPTIONS)
 app.options("*", cors(corsOptions));
+*/
+
+app.use(
+  cors({
+    origin: "http://localhost:4200", // o tu dominio real
+    credentials: true,
+    exposedHeaders: ["Content-Disposition"], // 👈 CLAVE
+  })
+);
 
 // ----- Estáticos de imágenes -----
 // Sirve TODAS las imágenes desde la RAÍZ de uploads (no un subfolder).

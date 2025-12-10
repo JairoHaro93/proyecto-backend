@@ -7,14 +7,18 @@ const {
   updateUsuario,
   deleteByID,
   getAllAgendaTecnicos,
+  getUsuariosParaTurnos,
 } = require("../../../controllers//sistema/usuarios.controllers");
-const { checkUsuarioId } = require("../../../utils/middlewares");
+const { checkUsuarioId, checkToken } = require("../../../utils/middlewares");
 
 //OBTENER TODOS LOS USUARIOS
-router.get("/", getAllUsuarios);
+router.get("/", checkToken, getAllUsuarios);
 
 //OBTENER LOS USUARIOS CON OPCION DE AGENDA TECNICOS
-router.get("/agenda-tecnicos", getAllAgendaTecnicos);
+router.get("/agenda-tecnicos", checkToken, getAllAgendaTecnicos);
+
+// 🔹 Lista de usuarios filtrados para módulo de turnos (IMPORTANTE: ANTES de :usuarioId)
+router.get("/para-turnos", checkToken, getUsuariosParaTurnos);
 
 //OBTENER USUARIOS POR ID
 router.get("/:usuarioId", checkUsuarioId, getUsuarioById);

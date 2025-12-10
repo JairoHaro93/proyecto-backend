@@ -7,6 +7,12 @@ const router = require("express").Router();
 router.use("/usuarios", require("./api/sistema/usuarios.routes"));
 router.use("/login", require("./api/sistema/login.routes"));
 router.use("/funciones", checkToken, require("./api/sistema/funciones.routes"));
+router.use("/asistencia", require("./api/negocio_lat/asistencia.router"));
+router.use("/huellas", require("./api/negocio_lat/huellas.router"));
+router.use("/timbres", require("./api/negocio_lat/timbres.routes"));
+router.use("/turnos", require("./api/negocio_lat/turnos.router"));
+router.use("/departamentos", require("./api/sistema/departamentos.routes"));
+router.use("/sucursales", require("./api/sistema/sucursales.routes"));
 
 //NEGOCIO ATUNTAQUI
 router.use("/clientes", checkToken, require("./api/negocio/clientes.router"));
@@ -25,6 +31,7 @@ router.use(
 );
 
 router.use("/agenda", checkToken, require("./api/negocio_lat/agenda.router"));
+
 router.use(
   "/infraestructura",
   require("./api/negocio_lat/infraestructura.router")
@@ -32,4 +39,5 @@ router.use(
 router.use("/images", require("./api/negocio_lat/images.router"));
 router.use("/cajas", require("./api/negocio_lat/cajas.router"));
 router.use("/olt", require("./api/negocio_lat/olt.router"));
+
 module.exports = router;

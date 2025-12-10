@@ -9,7 +9,10 @@ const fs = require("fs");
 const dotenv = require("dotenv");
 dotenv.config();
 
+const { createToken } = require("./helpers");
+
 const { selectUsuarioById } = require("../models/sistema/usuarios.models");
+const { selectByid } = require("../models/sistema/login.models");
 const {
   selectSoporteByOrdIns,
 } = require("../models/negocio_lat/soportes.models");
@@ -22,22 +25,26 @@ const SESSION_TTL_S = parseInt(process.env.SESSION_TTL_S || "3600", 10);
 
 const cookieOpts = {
   httpOnly: true,
-  sameSite: "Lax", // ✅ en HTTP usa Lax (o Strict si quieres más bloqueo)
-  secure: false, // ✅ nada de Secure si no hay HTTPS
+  sameSite: "Lax",
+  secure: false, // en producción, con HTTPS, cámbialo a true
   path: "/",
-  // ⚠️ Evita 'domain' salvo que sea estrictamente necesario y coincida EXACTO
   maxAge: SESSION_TTL_S * 1000,
 };
 
-function issueSessionCookie(res, payload) {
-  const token = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: SESSION_TTL_S,
-  });
+/**
+ * Emite la cookie de sesión:
+ *  - Crea un JWT con el usuario completo (incluye sucursal/depto/rol).
+ *  - Setea cookie + header X-Session-Expires para el frontend.
+ */
+function issueSessionCookie(res, usuario) {
+  const token = createToken(usuario, SESSION_TTL_S); // segundos
+
   res.cookie(COOKIE_NAME, token, cookieOpts);
   res.setHeader(
     "X-Session-Expires",
     new Date(Date.now() + SESSION_TTL_S * 1000).toISOString()
   );
+
   return token;
 }
 
@@ -84,12 +91,17 @@ const checkSoportesNocId = async (req, res, next) => {
   next();
 };
 
-/** Protege rutas: valida JWT en cookie y RENUEVA la cookie (+1h) en cada request válido */
+/**
+ * Protege rutas:
+ *  - Valida JWT en cookie o Authorization: Bearer
+ *  - Confirma que el usuario existe en BD
+ *  - Carga usuario completo (incluye sucursal/depto/roles) en req.user
+ *  - RENUEVA la cookie (sesión deslizante)
+ */
 const checkToken = async (req, res, next) => {
-  // Cookies-first
   let token = req.cookies?.[COOKIE_NAME];
 
-  // Fallback opcional a Bearer (si aún tienes clientes que lo usen)
+  // Fallback opcional a Bearer (móvil / app)
   if (!token && req.headers.authorization?.startsWith("Bearer ")) {
     token = req.headers.authorization.split(" ")[1];
   }
@@ -104,22 +116,17 @@ const checkToken = async (req, res, next) => {
     return res.status(401).json({ message: "Token inválido o expirado" });
   }
 
-  // Confirmar usuario vigente
-  const usuario = await selectUsuarioById(data.usuario_id);
+  // Confirmar usuario vigente y cargar datos completos (incluyendo sucursal/depto)
+  const usuario = await selectByid(data.usuario_id); // 👈 usamos login.models
   if (!usuario) {
     return res.status(401).json({ message: "Usuario no existe" });
   }
 
-  // Exponer usuario a la request
+  // Exponer usuario completo en la request
   req.user = usuario;
 
-  // 🔁 Sesión deslizante: re-emitir cookie por +1h
-  issueSessionCookie(res, {
-    usuario_id: usuario.id,
-    usuario_usuario: usuario.usuario,
-    usuario_rol: usuario.rol,
-    usuario_nombre: `${usuario.nombre} ${usuario.apellido}`.trim(),
-  });
+  // 🔁 Sesión deslizante: re-emitir cookie por +1h (incluye sucursal/depto/rol)
+  issueSessionCookie(res, usuario);
 
   next();
 };
@@ -176,7 +183,7 @@ const fileFilter = (_req, file, cb) => {
 const upload = multer({ storage, fileFilter });
 
 function clearLegacyCookies(res) {
-  // borra posibles variantes previas
+  // Borra posibles variantes previas
   res.clearCookie(COOKIE_NAME, { path: "/", sameSite: "None", secure: true });
   res.clearCookie(COOKIE_NAME, { path: "/", sameSite: "Lax", secure: false });
 }

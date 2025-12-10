@@ -1,3 +1,4 @@
+// index.js
 const http = require("http");
 const app = require("./src/app");
 const { Server } = require("socket.io");
@@ -10,18 +11,23 @@ const NODE_ENV = process.env.NODE_ENV;
 const IP = process.env.IP;
 const IP_BACKEND = process.env.IP_BACKEND;
 const RUTA_DESTINO = process.env.RUTA_DESTINO;
-//
+
 const server = http.createServer(app);
 
-//
 const io = new Server(server, {
   cors: {
-    origin: process.env.IP,
-    credentials: true,
+    origin: "*", // luego volvemos a restringir
+    methods: ["GET", "POST"],
   },
+  allowEIO3: true, // necesario para ESP32 (EIO3)
+  pingInterval: 8000, // cada 8s el server hace ping
+  pingTimeout: 5000, // si en 5s no hay pong => disconnect
 });
 
-// Inicializar socket separado
+// guardar io en app
+app.set("io", io);
+
+// Inicializar lógica de sockets
 setupSocket(io);
 
 server.listen(PORT, "0.0.0.0", () => {

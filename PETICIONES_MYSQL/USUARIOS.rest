@@ -13,7 +13,29 @@ POST {{url}}/login
 Content-Type: application/json
 
 {
+"usuario": "jharo",
+"password": "1234567"
+}
+
+
+//LOGIN 
+###
+POST {{url}}/login
+Content-Type: application/json
+
+{
 "usuario": "jmorocho",
+"password": "1234567"
+}
+
+
+//LOGIN 
+###
+POST {{url}}/login
+Content-Type: application/json
+
+{
+"usuario": "dcueva",
 "password": "1234567"
 }
 
@@ -47,7 +69,7 @@ Authorization: {{TOKEN_AUX}}
 
 //OBTENER USUARIO POR ID
 ###
-GET {{url}}/usuarios/54
+GET {{url}}/usuarios/1
 Authorization: {{TOKEN_AUX}}
 
 //OBTENER TODOS LOS USUARIOS AGENDA-TECNICOS
@@ -116,3 +138,11 @@ GET {{url}}/funciones/54
 Authorization: {{TOKEN_AUX}}
 
 
+
+//-----------------------------------------------------------
+//                DEPARTAMENTOS                           |
+//-----------------------------------------------------------
+
+### Como Jefe de sucursal (TOKEN_JEFE_SUCURSAL)
+GET {{url}}/usuarios/para-turnos
+Authorization: {{TOKEN_AUX}}

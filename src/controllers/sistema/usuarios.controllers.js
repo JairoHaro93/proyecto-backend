@@ -6,6 +6,7 @@ const {
   selectUsuarioById,
   deleteUsuario,
   selectAllAgendaTecnicos,
+  selectUsuariosParaTurnos,
 } = require("../../models/sistema/usuarios.models");
 
 // -------- helpers mínimos --------
@@ -77,22 +78,18 @@ const createUsuario = async (req, res, next) => {
       [payload.ci, payload.usuario, payload.ci, payload.usuario]
     );
     if (dups.ci_dup) {
-      return res
-        .status(409)
-        .json({
-          message: "La cédula ya está registrada.",
-          field: "ci",
-          code: "DUPLICATE",
-        });
+      return res.status(409).json({
+        message: "La cédula ya está registrada.",
+        field: "ci",
+        code: "DUPLICATE",
+      });
     }
     if (dups.usuario_dup) {
-      return res
-        .status(409)
-        .json({
-          message: "El nombre de usuario ya está en uso.",
-          field: "usuario",
-          code: "DUPLICATE",
-        });
+      return res.status(409).json({
+        message: "El nombre de usuario ya está en uso.",
+        field: "usuario",
+        code: "DUPLICATE",
+      });
     }
 
     const conn = await poolmysql.getConnection();
@@ -134,14 +131,12 @@ const createUsuario = async (req, res, next) => {
       await conn.rollback();
       if (err && (err.code === "ER_DUP_ENTRY" || err.errno === 1062)) {
         const { field, value } = parseDuplicateKey(err);
-        return res
-          .status(409)
-          .json({
-            message: `Ya existe un usuario con ese ${field}.`,
-            field,
-            value,
-            code: "DUPLICATE",
-          });
+        return res.status(409).json({
+          message: `Ya existe un usuario con ese ${field}.`,
+          field,
+          value,
+          code: "DUPLICATE",
+        });
       }
       throw err;
     } finally {
@@ -183,13 +178,11 @@ const updateUsuario = async (req, res, next) => {
         [effectiveCi, usuarioId]
       );
       if (ciDup.cnt > 0) {
-        return res
-          .status(409)
-          .json({
-            message: "La cédula ya está registrada en otro usuario.",
-            field: "ci",
-            code: "DUPLICATE",
-          });
+        return res.status(409).json({
+          message: "La cédula ya está registrada en otro usuario.",
+          field: "ci",
+          code: "DUPLICATE",
+        });
       }
     }
     if (effectiveUsuario) {
@@ -198,13 +191,11 @@ const updateUsuario = async (req, res, next) => {
         [effectiveUsuario, usuarioId]
       );
       if (usrDup.cnt > 0) {
-        return res
-          .status(409)
-          .json({
-            message: "El nombre de usuario ya está en uso por otro usuario.",
-            field: "usuario",
-            code: "DUPLICATE",
-          });
+        return res.status(409).json({
+          message: "El nombre de usuario ya está en uso por otro usuario.",
+          field: "usuario",
+          code: "DUPLICATE",
+        });
       }
     }
 
@@ -264,14 +255,12 @@ const updateUsuario = async (req, res, next) => {
       await conn.rollback();
       if (err && (err.code === "ER_DUP_ENTRY" || err.errno === 1062)) {
         const { field, value } = parseDuplicateKey(err);
-        return res
-          .status(409)
-          .json({
-            message: `Valor duplicado para ${field}.`,
-            field,
-            value,
-            code: "DUPLICATE",
-          });
+        return res.status(409).json({
+          message: `Valor duplicado para ${field}.`,
+          field,
+          value,
+          code: "DUPLICATE",
+        });
       }
       throw err;
     } finally {
@@ -299,6 +288,75 @@ const deleteByID = async (req, res, next) => {
   }
 };
 
+/**
+ * Devuelve la lista de usuarios que se pueden gestionar en turnos
+ * según la sucursal/departamento del usuario logueado.
+ *
+ * Por ahora:
+ *  - Si el usuario tiene sucursal_id => solo esa sucursal
+ *  - Si además tiene departamento_id => solo ese departamento
+ *  - (Más adelante podemos meter roles tipo ADMIN para ver todo)
+ */
+// controllers/sistema/usuarios.controllers.js
+/**
+ * Devuelve la lista de usuarios que se pueden gestionar en turnos
+ * según la sucursal/departamento del usuario logueado.
+ *
+ * Regla:
+ *  - Siempre se filtra por sucursal_id del usuario.
+ *  - Si el usuario NO tiene departamento_id → se considera JEFE DE SUCURSAL
+ *    y ve a TODOS los usuarios de la sucursal (todos los departamentos).
+ *  - Si SÍ tiene departamento_id → JEFE DE DEPARTAMENTO, solo ve su departamento.
+ *  - Siempre se EXCLUYE al propio usuario (no puede asignarse sus turnos).
+ */
+/**
+ * Devuelve la lista de usuarios que se pueden gestionar en turnos
+ * según la sucursal/departamento del usuario logueado.
+ *
+ * Reglas:
+ *  - Si el usuario tiene sucursal_id pero NO tiene departamento_id
+ *    => se considera Jefe de Sucursal → ve jefes de departamento.
+ *
+ *  - Si tiene sucursal_id y departamento_id
+ *    => se considera Jefe de Departamento → ve usuarios de su
+ *       departamento y sub-departamentos (árbol recursivo).
+ */
+const getUsuariosParaTurnos = async (req, res, next) => {
+  try {
+    const jefe = req.user; // ← viene de checkToken
+
+    if (!jefe) {
+      return res.status(401).json({ message: "No autenticado" });
+    }
+
+    // 🔹 viene desde Angular como query param (opcional)
+    const { departamento_id } = req.query;
+    const departamentoFiltro = departamento_id
+      ? Number(departamento_id)
+      : undefined;
+
+    console.log("[TURNOS] jefe backend:", {
+      id: jefe.id,
+      sucursal_id: jefe.sucursal_id,
+      departamento_id: jefe.departamento_id,
+      departamentoFiltro,
+    });
+
+    const lista = await selectUsuariosParaTurnos({
+      sucursalId: jefe.sucursal_id || null,
+      departamentoId: jefe.departamento_id || null,
+      jefeUsuarioId: jefe.id,
+      departamentoFiltro,
+    });
+
+    console.log("[TURNOS] usuarios para turnos (backend):", lista.length);
+
+    return res.json(lista);
+  } catch (err) {
+    console.error("❌ Error en getUsuariosParaTurnos:", err.message);
+    next(err);
+  }
+};
 module.exports = {
   getAllUsuarios,
   getUsuarioById,
@@ -306,4 +364,5 @@ module.exports = {
   createUsuario,
   updateUsuario,
   deleteByID,
+  getUsuariosParaTurnos,
 };
