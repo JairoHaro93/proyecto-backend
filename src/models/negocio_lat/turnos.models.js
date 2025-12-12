@@ -371,15 +371,17 @@ async function seleccionarTurnosDiarios({
 }) {
   const params = [];
   let sql = `
-    SELECT
-      t.*,
-      CONCAT(u.nombre, ' ', u.apellido) AS usuario_nombre,
-      u.usuario AS usuario_usuario,
-      u.ci AS usuario_cedula
-    FROM neg_t_turnos_diarios t
-    JOIN sisusuarios u ON u.id = t.usuario_id
-    WHERE 1=1
-  `;
+  SELECT
+    t.*,
+    TIME(t.hora_entrada_real) AS hora_entrada_real,
+    TIME(t.hora_salida_real)  AS hora_salida_real,
+    CONCAT(u.nombre, ' ', u.apellido) AS usuario_nombre,
+    u.usuario AS usuario_usuario,
+    u.ci AS usuario_cedula
+  FROM neg_t_turnos_diarios t
+  JOIN sisusuarios u ON u.id = t.usuario_id
+  WHERE 1=1
+`;
 
   if (sucursal) {
     sql += " AND t.sucursal = ?";
