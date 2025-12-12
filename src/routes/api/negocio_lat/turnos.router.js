@@ -2,7 +2,7 @@ const router = require("express").Router();
 const {
   getTurnos,
   postGenerarTurnos,
-  putTurno,
+
   deleteTurno,
   putActualizarTurno,
 } = require("../../../controllers/negocio_lat/turnos.controllers");

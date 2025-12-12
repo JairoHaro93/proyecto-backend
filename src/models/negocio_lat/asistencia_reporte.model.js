@@ -1,5 +1,45 @@
 const { poolmysql } = require("../../config/db");
 
+function formatFecha(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function timeStrToMinutes(timeStr) {
+  if (!timeStr) return null;
+  const [hh, mm] = String(timeStr).split(":");
+  const h = parseInt(hh || "0", 10);
+  const m = parseInt(mm || "0", 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function calcularMinutosTrabajadosDesdeMarcas(
+  hora_entrada_1,
+  hora_salida_1,
+  hora_entrada_2,
+  hora_salida_2
+) {
+  const e1 = timeStrToMinutes(hora_entrada_1);
+  const s1 = timeStrToMinutes(hora_salida_1);
+  const e2 = timeStrToMinutes(hora_entrada_2);
+  const s2 = timeStrToMinutes(hora_salida_2);
+
+  let minutos = 0;
+
+  // Oficina: mañana + tarde
+  if (e1 != null && s1 != null && s1 > e1) minutos += s1 - e1;
+  if (e2 != null && s2 != null && s2 > e2) minutos += s2 - e2;
+
+  // Campo: si por algún motivo solo se usó entrada_1 / salida_2
+  if (minutos === 0 && e1 != null && s2 != null && s2 > e1) {
+    minutos = s2 - e1;
+  }
+
+  return minutos;
+}
+
 async function getAsistenciaCruda({ usuarioIds, fechaDesde, fechaHasta }) {
   if (!usuarioIds || !usuarioIds.length) return [];
 
@@ -7,17 +47,7 @@ async function getAsistenciaCruda({ usuarioIds, fechaDesde, fechaHasta }) {
   const [turnosRows] = await poolmysql.query(
     `
     SELECT
-      t.usuario_id,
-      t.fecha,
-      t.sucursal,
-      t.hora_entrada_prog,
-      t.hora_salida_prog,
-      t.min_trabajados,
-      t.min_atraso,
-      t.min_extra,
-      TIME(t.hora_entrada_real) AS hora_entrada_real_time,
-      TIME(t.hora_salida_real) AS hora_salida_real_time,
-      t.estado_asistencia,                             -- 👈 NUEVO
+      t.*,
       u.ci AS cedula,
       CONCAT(u.nombre, ' ', u.apellido) AS nombre_completo
     FROM neg_t_turnos_diarios t
@@ -45,21 +75,23 @@ async function getAsistenciaCruda({ usuarioIds, fechaDesde, fechaHasta }) {
     [usuarioIds, fechaDesde, fechaHasta]
   );
 
-  // 3) Agrupar marcas por usuario+fecha
-  const marcasPorClave = new Map(); // 👈 ESTA LÍNEA ES LA QUE FALTABA
+  // 3) Agrupar marcas por usuario+fecha (clave con YYYY-MM-DD)
+  const marcasPorClave = new Map();
 
   for (const row of marcasRows) {
-    const clave = `${row.usuario_id}-${row.fecha}`; // fecha es 'YYYY-MM-DD'
+    const fechaStr = formatFecha(row.fecha); // <-- CLAVE CORREGIDA
+    const clave = `${row.usuario_id}-${fechaStr}`;
+
     if (!marcasPorClave.has(clave)) {
       marcasPorClave.set(clave, []);
     }
     marcasPorClave.get(clave).push({
-      hora: row.hora, // 'HH:MM:SS'
-      tipo_marcado: row.tipo_marcado, // 'ENTRADA', 'SALIDA', 'ALMUERZO_SALIDA', etc.
+      hora: String(row.hora), // 'HH:MM:SS'
+      tipo_marcado: row.tipo_marcado, // 'ENTRADA', 'SALIDA', ...
     });
   }
 
-  // 4) Repartir marcas en 4 slots (entrada1, salida1, entrada2, salida2)
+  // 4) Repartir marcas en Entrada1/Salida1/Entrada2/Salida2
   function repartirMarcas(marcas) {
     if (!marcas || !marcas.length) {
       return {
@@ -70,51 +102,43 @@ async function getAsistenciaCruda({ usuarioIds, fechaDesde, fechaHasta }) {
       };
     }
 
-    // Ya vienen ordenadas por hora gracias al ORDER BY
     let entrada1 = null;
-    let almSalida = null;
-    let almEntrada = null;
-    let salidaDef = null;
+    let salida1 = null;
+    let entrada2 = null;
+    let salida2 = null;
 
     for (const m of marcas) {
-      switch (m.tipo_marcado) {
-        case "ENTRADA":
-          if (!entrada1) entrada1 = m.hora;
-          if (!salidaDef) salidaDef = m.hora; // fallback inicial
-          break;
-        case "ALMUERZO_SALIDA":
-          if (!almSalida) almSalida = m.hora;
-          break;
-        case "ALMUERZO_ENTRADA":
-          if (!almEntrada) almEntrada = m.hora;
-          break;
-        case "SALIDA":
-          // última SALIDA del día manda
-          salidaDef = m.hora;
-          break;
-        default:
-          // 'OTRO' u otros: como fallback si falta algo
-          if (!entrada1) entrada1 = m.hora;
-          salidaDef = m.hora;
-          break;
+      const tipo = m.tipo_marcado;
+      const esEntrada = tipo === "ENTRADA" || tipo === "ALMUERZO_ENTRADA";
+      const esSalida = tipo === "SALIDA" || tipo === "ALMUERZO_SALIDA";
+
+      if (esEntrada) {
+        if (!entrada1) {
+          // Primera entrada del día
+          entrada1 = m.hora;
+        } else if (salida1 && !entrada2) {
+          // Ya hubo primer tramo completo → esta es la entrada del segundo tramo
+          entrada2 = m.hora;
+        }
+      } else if (esSalida) {
+        if (!salida1) {
+          // Primera salida del día (normalmente almuerzo o salida directa)
+          salida1 = m.hora;
+        } else {
+          // Cualquier salida posterior la consideramos salida2 (última del día)
+          salida2 = m.hora;
+        }
+      } else {
+        // Otros tipos: como fallback, si no hay entrada, la usamos
+        if (!entrada1) entrada1 = m.hora;
       }
-    }
-
-    // Si no hay SALIDA explícita, tomar la última marca como salida
-    if (!salidaDef && marcas.length) {
-      salidaDef = marcas[marcas.length - 1].hora;
-    }
-
-    // Si no hay ENTRADA explícita, tomar la primera marca como entrada
-    if (!entrada1 && marcas.length) {
-      entrada1 = marcas[0].hora;
     }
 
     return {
       hora_entrada_1: entrada1,
-      hora_salida_1: almSalida,
-      hora_entrada_2: almEntrada,
-      hora_salida_2: salidaDef,
+      hora_salida_1: salida1,
+      hora_entrada_2: entrada2,
+      hora_salida_2: salida2,
     };
   }
 
@@ -122,18 +146,13 @@ async function getAsistenciaCruda({ usuarioIds, fechaDesde, fechaHasta }) {
   const resultado = [];
 
   for (const t of turnosRows) {
-    const fechaStr =
-      t.fecha instanceof Date
-        ? t.fecha.toISOString().slice(0, 10)
-        : String(t.fecha).slice(0, 10); // 'YYYY-MM-DD'
-
+    const fechaStr = formatFecha(t.fecha); // 'YYYY-MM-DD'
     const clave = `${t.usuario_id}-${fechaStr}`;
     const marcas = marcasPorClave.get(clave) || [];
 
     const { hora_entrada_1, hora_salida_1, hora_entrada_2, hora_salida_2 } =
       repartirMarcas(marcas);
 
-    // hora_entrada_prog / hora_salida_prog vienen como 'HH:MM:SS' → recortamos a HH:MM
     const horaEntradaProg =
       t.hora_entrada_prog != null
         ? String(t.hora_entrada_prog).slice(0, 5)
@@ -143,9 +162,13 @@ async function getAsistenciaCruda({ usuarioIds, fechaDesde, fechaHasta }) {
         ? String(t.hora_salida_prog).slice(0, 5)
         : null;
 
+    const horaEntradaReal =
+      t.hora_entrada_real != null
+        ? String(t.hora_entrada_real).slice(11, 16) // 'YYYY-MM-DD HH:MM:SS' -> 'HH:MM'
+        : null;
     const horaSalidaReal =
-      t.hora_salida_real_time != null
-        ? String(t.hora_salida_real_time).slice(0, 5)
+      t.hora_salida_real != null
+        ? String(t.hora_salida_real).slice(11, 16)
         : null;
 
     resultado.push({
@@ -154,17 +177,22 @@ async function getAsistenciaCruda({ usuarioIds, fechaDesde, fechaHasta }) {
       cedula: t.cedula,
       fecha: fechaStr,
       sucursal: t.sucursal,
+
       hora_entrada_prog: horaEntradaProg,
       hora_salida_prog: horaSalidaProg,
+
       hora_entrada_1,
       hora_salida_1,
       hora_entrada_2,
       hora_salida_2,
+
+      hora_entrada_real: horaEntradaReal,
+      hora_salida_real: horaSalidaReal,
+
       min_trabajados: t.min_trabajados,
       min_atraso: t.min_atraso,
       min_extra: t.min_extra,
-      hora_salida_real_time: horaSalidaReal,
-      estado_asistencia: t.estado_asistencia || null, // 👈 NUEVO PARA EL REPORTE
+      estado_asistencia: t.estado_asistencia || null,
     });
   }
 

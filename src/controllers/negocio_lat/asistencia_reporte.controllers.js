@@ -242,15 +242,24 @@ async function getReporteAsistenciaExcel(req, res) {
       const row = rowsPorFecha.get(fechaStr);
 
       if (row) {
-        // ✅ Día con turno (y posiblemente timbres)
         const minutos_trabajados = calcularMinutosTrabajados(row);
         const minutos_atrasados = calcularMinutosAtraso(row);
         const minutos_salida_temprana = calcularMinutosSalidaTemprana(row);
+
+        let estado = row.estado_asistencia || "SIN_MARCA";
 
         filasReporte.push({
           nombre_completo: row.nombre_completo,
           cedula: row.cedula,
           fecha_dia,
+
+          estado_asistencia: estado,
+
+          // Programado
+          hora_entrada_prog: row.hora_entrada_prog || null,
+          hora_salida_prog: row.hora_salida_prog || null,
+
+          // Marcas 1 y 2
           hora_entrada_1: row.hora_entrada_1
             ? String(row.hora_entrada_1).slice(0, 5)
             : null,
@@ -263,10 +272,11 @@ async function getReporteAsistenciaExcel(req, res) {
           hora_salida_2: row.hora_salida_2
             ? String(row.hora_salida_2).slice(0, 5)
             : null,
+
+          // Ya no enviamos entrada_real / salida_real al Excel
           minutos_atrasados,
           minutos_salida_temprana,
           minutos_trabajados,
-          estado_asistencia: row.estado_asistencia || "SIN_MARCA",
         });
       } else {
         // 🚫 Día SIN turno asignado → "SIN_TURNO"
@@ -293,31 +303,29 @@ async function getReporteAsistenciaExcel(req, res) {
     // 5) Generar Excel
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Asistencia");
-
     worksheet.columns = [
       { header: "Nombre completo", key: "nombre_completo", width: 32 },
       { header: "Cédula", key: "cedula", width: 15 },
       { header: "Fecha (día)", key: "fecha_dia", width: 24 },
-      {
-        header: "Estado asistencia",
-        key: "estado_asistencia",
-        width: 20,
-      },
-      { header: "Hora entrada 1", key: "hora_entrada_1", width: 14 },
-      { header: "Hora salida 1", key: "hora_salida_1", width: 14 },
-      { header: "Hora entrada 2", key: "hora_entrada_2", width: 14 },
-      { header: "Hora salida 2", key: "hora_salida_2", width: 14 },
+      { header: "Estado asistencia", key: "estado_asistencia", width: 18 },
+
+      // Programado
+      { header: "Hora entrada prog", key: "hora_entrada_prog", width: 16 },
+      { header: "Hora salida prog", key: "hora_salida_prog", width: 16 },
+
+      // Marcas crudas
+      { header: "Entrada 1", key: "hora_entrada_1", width: 12 },
+      { header: "Salida 1", key: "hora_salida_1", width: 12 },
+      { header: "Entrada 2", key: "hora_entrada_2", width: 12 },
+      { header: "Salida 2", key: "hora_salida_2", width: 12 },
+
       { header: "Minutos atraso", key: "minutos_atrasados", width: 16 },
       {
-        header: "Minutos salida temprana",
+        header: "Min. salida temprana",
         key: "minutos_salida_temprana",
-        width: 22,
+        width: 20,
       },
-      {
-        header: "Minutos trabajados",
-        key: "minutos_trabajados",
-        width: 18,
-      },
+      { header: "Minutos trabajados", key: "minutos_trabajados", width: 18 },
     ];
 
     worksheet.addRows(filasReporte);

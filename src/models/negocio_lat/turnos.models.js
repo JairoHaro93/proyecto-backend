@@ -71,33 +71,34 @@ async function updateTurnoFromAsistencia(
 
     // 2) Actualizar entrada/salida real según tipo de marcación
     if (tipo_marcado === "ENTRADA") {
+      // Tomamos la PRIMERA entrada del día
       if (!horaEntradaReal || marcacion < horaEntradaReal) {
         horaEntradaReal = marcacion;
       }
     } else if (tipo_marcado === "SALIDA") {
+      // Tomamos la ÚLTIMA salida del día
       if (!horaSalidaReal || marcacion > horaSalidaReal) {
         horaSalidaReal = marcacion;
       }
     }
 
     // 3) Cálculos de tiempos
-    let min_trabajados = 0;
-    let min_atraso = 0;
-    let min_extra = 0;
-    let estado_asistencia = "FALTA";
-
     const jornadaProgMin =
       timeStrToMinutes(turno.hora_salida_prog) -
       timeStrToMinutes(turno.hora_entrada_prog);
 
     const minTolerAtraso = Number(turno.min_toler_atraso || 0);
 
-    // min_trabajados
+    let min_trabajados = 0;
+    let min_atraso = 0;
+    let min_extra = 0;
+
+    // Minutos trabajados solo si ya hay entrada y salida
     if (horaEntradaReal && horaSalidaReal) {
       min_trabajados = diffMinutes(horaEntradaReal, horaSalidaReal);
     }
 
-    // atraso (solo si hay entrada)
+    // Atraso (comparado con hora_entrada_prog + tolerancia)
     if (horaEntradaReal && turno.hora_entrada_prog) {
       const entradaProgFecha = new Date(
         `${fechaStr}T${turno.hora_entrada_prog}`
@@ -109,29 +110,48 @@ async function updateTurnoFromAsistencia(
       }
     }
 
-    // extra
-    if (min_trabajados > 0 && jornadaProgMin > 0) {
-      if (min_trabajados > jornadaProgMin) {
-        min_extra = min_trabajados - jornadaProgMin;
-      }
+    // Minutos extra (trabajó más de la jornada)
+    if (
+      min_trabajados > 0 &&
+      jornadaProgMin > 0 &&
+      min_trabajados > jornadaProgMin
+    ) {
+      min_extra = min_trabajados - jornadaProgMin;
     }
 
-    // 4) Estado de asistencia
-    if (!horaEntradaReal && !horaSalidaReal) {
-      estado_asistencia = "FALTA";
-    } else if (horaEntradaReal && !horaSalidaReal) {
-      estado_asistencia = "SOLO_ENTRADA";
-    } else if (!horaEntradaReal && horaSalidaReal) {
-      estado_asistencia = "SOLO_SALIDA";
-    } else {
-      // Tiene entrada y salida
-      if (jornadaProgMin > 0 && min_trabajados < jornadaProgMin * 0.5) {
-        estado_asistencia = "INCOMPLETO";
-      } else if (min_atraso > 0) {
-        estado_asistencia = "ATRASO";
-      } else {
-        estado_asistencia = "OK";
-      }
+    // 4) Estado de asistencia según tus reglas:
+    //
+    //   - FALTA       -> si no registra ningún registro de asistencia en el turno asignado
+    //                    (esta la pondremos con una rutina aparte para días ya pasados).
+    //
+    //   - INCOMPLETO  -> si tiene marcas pero AÚN NO completa los minutos de trabajo previstos.
+    //
+    //   - ATRASO      -> si completó los minutos de trabajo, pero tuvo atraso.
+    //
+    //   - COMPLETO    -> si completó la jornada y no tuvo atrasos.
+    //
+    const tieneEntrada = !!horaEntradaReal;
+    const tieneSalida = !!horaSalidaReal;
+    const jornadaDefinida = jornadaProgMin > 0;
+    const haIniciado = tieneEntrada || tieneSalida;
+    const haCumplidoJornada =
+      jornadaDefinida && min_trabajados >= jornadaProgMin;
+
+    let estado_asistencia = turno.estado_asistencia || "SIN_MARCA";
+
+    if (!haIniciado) {
+      // Hay turno pero aún ninguna marca: se queda SIN_MARCA (pendiente).
+      // (Luego, si pasa el día sin marcas, una rutina lo convertirá en FALTA.)
+      estado_asistencia = "SIN_MARCA";
+    } else if (!tieneSalida || !jornadaDefinida || !haCumplidoJornada) {
+      // Tiene alguna marca (entrada y/o salida), pero todavía NO cumple la jornada programada
+      estado_asistencia = "INCOMPLETO";
+    } else if (hasCumplidoJornada && min_atraso > 0) {
+      // Cumplió jornada pero con atraso
+      estado_asistencia = "ATRASO";
+    } else if (hasCumplidoJornada && min_atraso === 0) {
+      // Cumplió jornada sin atraso
+      estado_asistencia = "COMPLETO";
     }
 
     // 5) Guardar cambios
@@ -441,10 +461,37 @@ async function eliminarTurnoProgramado(turnoId) {
   return result;
 }
 
+async function marcarFaltasHastaFecha(fechaHasta = null) {
+  // fechaHasta: string 'YYYY-MM-DD' o null (por defecto hoy)
+  const hoy = new Date();
+  const limite = fechaHasta || formatFecha(hoy);
+
+  const sql = `
+    UPDATE neg_t_turnos_diarios t
+    LEFT JOIN neg_t_asistencia a
+      ON a.usuario_id = t.usuario_id
+     AND DATE(a.fecha_hora) = t.fecha
+    SET t.estado_asistencia = 'FALTA'
+    WHERE t.fecha < ?
+      AND t.estado_asistencia = 'SIN_MARCA'
+      AND a.id IS NULL
+  `;
+
+  const [result] = await poolmysql.query(sql, [limite]);
+
+  console.log(
+    `[TURNOS] marcarFaltasHastaFecha(${limite}) → filas modificadas:`,
+    result.affectedRows
+  );
+
+  return result;
+}
+
 module.exports = {
   updateTurnoFromAsistencia,
   generarTurnosDiariosLote,
   seleccionarTurnosDiarios,
-  actualizarTurnoProgramado, // 👈 nuevo
-  eliminarTurnoProgramado, // 👈 nuevo
+  actualizarTurnoProgramado,
+  eliminarTurnoProgramado,
+  marcarFaltasHastaFecha, // 👈 exportamos también esto
 };
