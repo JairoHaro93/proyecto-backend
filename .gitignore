@@ -10,3 +10,5 @@ uploads/
 !.vscode/settings.json
 !.vscode/extensions.json
 .history/*
+PETICIONES_MYSQL/
+PETICIONES_SQLS/
