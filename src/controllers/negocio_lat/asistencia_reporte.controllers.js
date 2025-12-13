@@ -15,32 +15,34 @@ function buildFileName(fecha_desde, fecha_hasta, filasReporte) {
   if (Array.isArray(filasReporte) && filasReporte.length > 0) {
     const nombre = filasReporte[0].nombre_completo || "";
 
-    // Quitar acentos y caracteres raros, dejar algo tipo "juan_perez_garcia"
     const safeNombre = nombre
-      .normalize("NFD") // separa acentos
-      .replace(/[\u0300-\u036f]/g, "") // elimina marcas diacríticas
-      .replace(/\s+/g, "_") // espacios -> guiones bajos
-      .replace(/[^a-zA-Z0-9_]/g, "") // solo letras, números y _
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_]/g, "")
       .toLowerCase();
 
-    if (safeNombre) {
-      base += `_${safeNombre}`;
-    }
+    if (safeNombre) base += `_${safeNombre}`;
   }
 
   return `${base}_${fecha_desde}_a_${fecha_hasta}.xlsx`;
 }
 
+function toHHMM(value) {
+  if (!value) return null;
+  return String(value).slice(0, 5); // "HH:MM"
+}
+
 function timeToMinutes(timeStr) {
   if (!timeStr) return null;
-  const parts = String(timeStr).split(":"); // 'HH:MM' o 'HH:MM:SS'
+  const parts = String(timeStr).split(":");
   const hh = parseInt(parts[0], 10);
   const mm = parseInt(parts[1] || "0", 10);
   if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
   return hh * 60 + mm;
 }
 
-// Usado solo si min_trabajados es null (cálculo por marcas)
+// Fallback solo si min_trabajados viene null
 function calcularMinutosTrabajadosDesdeMarcas(
   hora_entrada_1,
   hora_salida_1,
@@ -58,7 +60,7 @@ function calcularMinutosTrabajadosDesdeMarcas(
   if (e1 != null && s1 != null && s1 > e1) minutos += s1 - e1;
   if (e2 != null && s2 != null && s2 > e2) minutos += s2 - e2;
 
-  // Campo: solo entrada_1 / salida_2
+  // Campo: entrada_1 -> salida_2
   if (minutos === 0 && e1 != null && s2 != null && s2 > e1) {
     minutos = s2 - e1;
   }
@@ -67,7 +69,7 @@ function calcularMinutosTrabajadosDesdeMarcas(
 }
 
 function calcularMinutosTrabajados(row) {
-  if (row.min_trabajados != null) return row.min_trabajados;
+  if (row.min_trabajados != null) return Number(row.min_trabajados) || 0;
   return calcularMinutosTrabajadosDesdeMarcas(
     row.hora_entrada_1,
     row.hora_salida_1,
@@ -77,7 +79,7 @@ function calcularMinutosTrabajados(row) {
 }
 
 function calcularMinutosAtraso(row) {
-  if (row.min_atraso != null) return row.min_atraso;
+  if (row.min_atraso != null) return Number(row.min_atraso) || 0;
 
   const entradaProgMin = timeToMinutes(row.hora_entrada_prog);
   const entradaReal = row.hora_entrada_1 || row.hora_entrada_2 || null;
@@ -93,10 +95,9 @@ function calcularMinutosAtraso(row) {
   return 0;
 }
 
+// (Opcional) métrica informativa, no afecta estados
 function calcularMinutosSalidaTemprana(row) {
   const salidaProgMin = timeToMinutes(row.hora_salida_prog);
-
-  // Preferimos la hora_salida_real del turno; si no hay, usamos la salida_2 de marcas
   const salidaReal = row.hora_salida_real_time || row.hora_salida_2 || null;
   const salidaRealMin = timeToMinutes(salidaReal);
 
@@ -112,7 +113,9 @@ function calcularMinutosSalidaTemprana(row) {
 }
 
 function buildFechaDia(fechaStr) {
-  const date = new Date(fechaStr + "T00:00:00");
+  // Ecuador continental fijo (-05:00)
+  const date = new Date(`${fechaStr}T00:00:00-05:00`);
+
   const fmtDia = new Intl.DateTimeFormat("es-EC", { weekday: "long" });
   const fmtFecha = new Intl.DateTimeFormat("es-EC", {
     day: "2-digit",
@@ -120,11 +123,11 @@ function buildFechaDia(fechaStr) {
     year: "numeric",
   });
 
-  let dia = fmtDia.format(date); // 'lunes'
-  dia = dia.charAt(0).toUpperCase() + dia.slice(1); // 'Lunes'
+  let dia = fmtDia.format(date);
+  dia = dia.charAt(0).toUpperCase() + dia.slice(1);
 
-  const fechaBonita = fmtFecha.format(date); // '01/01/2025'
-  return `${dia} ${fechaBonita}`; // 'Lunes 01/01/2025'
+  const fechaBonita = fmtFecha.format(date);
+  return `${dia} ${fechaBonita}`;
 }
 
 function formatFecha(date) {
@@ -137,21 +140,10 @@ function formatFecha(date) {
 // ==========================
 //   Controller principal
 // ==========================
-//
-// GET /api/asistencia/reporte-excel?fecha_desde=YYYY-MM-DD&fecha_hasta=YYYY-MM-DD&usuario_id=8&departamento_id=2
-//
 async function getReporteAsistenciaExcel(req, res) {
   try {
-    const { fecha_desde, fecha_hasta, usuario_id, departamento_id } = req.query;
+    const { fecha_desde, fecha_hasta, usuario_id } = req.query;
 
-    console.log("📥 Query reporte-excel COMPLETO:", {
-      fecha_desde,
-      fecha_hasta,
-      usuario_id,
-      departamento_id,
-    });
-
-    // Validaciones básicas
     if (!fecha_desde || !fecha_hasta || !usuario_id) {
       return res.status(400).json({
         message:
@@ -159,8 +151,9 @@ async function getReporteAsistenciaExcel(req, res) {
       });
     }
 
-    const desde = new Date(fecha_desde + "T00:00:00");
-    const hasta = new Date(fecha_hasta + "T00:00:00");
+    // Ecuador (-05:00)
+    const desde = new Date(`${fecha_desde}T00:00:00-05:00`);
+    const hasta = new Date(`${fecha_hasta}T00:00:00-05:00`);
 
     if (Number.isNaN(desde.getTime()) || Number.isNaN(hasta.getTime())) {
       return res
@@ -188,26 +181,21 @@ async function getReporteAsistenciaExcel(req, res) {
       return res.status(400).json({ message: "usuario_id debe ser numérico" });
     }
 
-    // 1) Obtener asistencia cruda de BD (turnos + marcas procesadas)
+    // 1) Obtener asistencia cruda (ya viene con 4 marcas)
     const asistenciaCruda = await getAsistenciaCruda({
       usuarioIds: [uid],
       fechaDesde: fecha_desde,
       fechaHasta: fecha_hasta,
-      // Si en el futuro necesitas usar departamento_id en el modelo, puedes pasarlo aquí
-      // departamentoId: departamento_id ? Number(departamento_id) : undefined,
     });
 
-    console.log("📊 asistenciaCruda registros:", asistenciaCruda.length);
-
-    // 2) Preparar info base de usuario (por si no hay turnos en el rango)
-    let nombreBase = null;
-    let cedulaBase = null;
+    // 2) Info base de usuario si no hay nada en el rango
+    let nombreBase = "";
+    let cedulaBase = "";
 
     if (asistenciaCruda.length > 0) {
-      nombreBase = asistenciaCruda[0].nombre_completo;
-      cedulaBase = asistenciaCruda[0].cedula;
+      nombreBase = asistenciaCruda[0].nombre_completo || "";
+      cedulaBase = asistenciaCruda[0].cedula || "";
     } else {
-      // No hubo turnos en el rango → igual sacamos nombre/cedula del usuario
       const [userRows] = await poolmysql.query(
         `
         SELECT
@@ -219,24 +207,23 @@ async function getReporteAsistenciaExcel(req, res) {
         [uid]
       );
       if (userRows.length > 0) {
-        nombreBase = userRows[0].nombre_completo;
-        cedulaBase = userRows[0].cedula;
+        nombreBase = userRows[0].nombre_completo || "";
+        cedulaBase = userRows[0].cedula || "";
       }
     }
 
-    // 3) Indexar asistenciaCruda por fecha
+    // 3) Indexar por fecha (YYYY-MM-DD)
     const rowsPorFecha = new Map();
     for (const row of asistenciaCruda) {
-      // row.fecha viene como 'YYYY-MM-DD'
       rowsPorFecha.set(row.fecha, row);
     }
 
-    // 4) Construir filas del reporte para CADA día del rango
+    // 4) Filas por cada día del rango
     const filasReporte = [];
     let cursor = new Date(desde);
 
     while (cursor.getTime() <= hasta.getTime()) {
-      const fechaStr = formatFecha(cursor); // 'YYYY-MM-DD'
+      const fechaStr = formatFecha(cursor);
       const fecha_dia = buildFechaDia(fechaStr);
 
       const row = rowsPorFecha.get(fechaStr);
@@ -246,74 +233,64 @@ async function getReporteAsistenciaExcel(req, res) {
         const minutos_atrasados = calcularMinutosAtraso(row);
         const minutos_salida_temprana = calcularMinutosSalidaTemprana(row);
 
-        let estado = row.estado_asistencia || "SIN_MARCA";
-
         filasReporte.push({
-          nombre_completo: row.nombre_completo,
-          cedula: row.cedula,
+          nombre_completo: row.nombre_completo || nombreBase,
+          cedula: row.cedula || cedulaBase,
           fecha_dia,
 
-          estado_asistencia: estado,
+          estado_asistencia: row.estado_asistencia || "INCOMPLETO",
 
-          // Programado
-          hora_entrada_prog: row.hora_entrada_prog || null,
-          hora_salida_prog: row.hora_salida_prog || null,
+          hora_entrada_prog: toHHMM(row.hora_entrada_prog),
+          hora_salida_prog: toHHMM(row.hora_salida_prog),
 
-          // Marcas 1 y 2
-          hora_entrada_1: row.hora_entrada_1
-            ? String(row.hora_entrada_1).slice(0, 5)
-            : null,
-          hora_salida_1: row.hora_salida_1
-            ? String(row.hora_salida_1).slice(0, 5)
-            : null,
-          hora_entrada_2: row.hora_entrada_2
-            ? String(row.hora_entrada_2).slice(0, 5)
-            : null,
-          hora_salida_2: row.hora_salida_2
-            ? String(row.hora_salida_2).slice(0, 5)
-            : null,
+          hora_entrada_1: toHHMM(row.hora_entrada_1),
+          hora_salida_1: toHHMM(row.hora_salida_1),
+          hora_entrada_2: toHHMM(row.hora_entrada_2),
+          hora_salida_2: toHHMM(row.hora_salida_2),
 
-          // Ya no enviamos entrada_real / salida_real al Excel
           minutos_atrasados,
           minutos_salida_temprana,
           minutos_trabajados,
         });
       } else {
-        // 🚫 Día SIN turno asignado → "SIN_TURNO"
+        // Día sin turno y sin marcas en el rango: dejamos SIN_TURNO (tal como lo vienes manejando)
         filasReporte.push({
-          nombre_completo: nombreBase || "",
-          cedula: cedulaBase || "",
+          nombre_completo: nombreBase,
+          cedula: cedulaBase,
           fecha_dia,
+
+          estado_asistencia: "SIN_TURNO",
+
+          hora_entrada_prog: null,
+          hora_salida_prog: null,
+
           hora_entrada_1: null,
           hora_salida_1: null,
           hora_entrada_2: null,
           hora_salida_2: null,
+
           minutos_atrasados: 0,
           minutos_salida_temprana: 0,
           minutos_trabajados: 0,
-          estado_asistencia: "SIN_TURNO",
         });
       }
 
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    console.log("🧾 filasReporte length:", filasReporte.length);
-
-    // 5) Generar Excel
+    // 5) Excel
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Asistencia");
+
     worksheet.columns = [
       { header: "Nombre completo", key: "nombre_completo", width: 32 },
       { header: "Cédula", key: "cedula", width: 15 },
       { header: "Fecha (día)", key: "fecha_dia", width: 24 },
       { header: "Estado asistencia", key: "estado_asistencia", width: 18 },
 
-      // Programado
       { header: "Hora entrada prog", key: "hora_entrada_prog", width: 16 },
       { header: "Hora salida prog", key: "hora_salida_prog", width: 16 },
 
-      // Marcas crudas
       { header: "Entrada 1", key: "hora_entrada_1", width: 12 },
       { header: "Salida 1", key: "hora_salida_1", width: 12 },
       { header: "Entrada 2", key: "hora_entrada_2", width: 12 },
@@ -332,7 +309,6 @@ async function getReporteAsistenciaExcel(req, res) {
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
 
     const fileName = buildFileName(fecha_desde, fecha_hasta, filasReporte);
-    console.log("🧾 fileName generado:", fileName);
 
     res.setHeader(
       "Content-Type",
@@ -343,7 +319,7 @@ async function getReporteAsistenciaExcel(req, res) {
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
-    console.error("❌ Error en getReporteAsistenciaExcel COMPLETO:", error);
+    console.error("❌ Error en getReporteAsistenciaExcel:", error);
     res.status(500).json({
       message: "Error interno en reporte-excel",
       error: String(error),

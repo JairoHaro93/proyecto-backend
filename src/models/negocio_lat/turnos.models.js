@@ -1,27 +1,6 @@
 // src/models/negocio_lat/turnos.models.js
 const { poolmysql } = require("../../config/db");
 
-function toDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function diffMinutes(a, b) {
-  if (!a || !b) return 0;
-  return Math.round((b.getTime() - a.getTime()) / 60000);
-}
-
-// "HH:MM:SS" o "HH:MM" -> minutos totales
-function timeStrToMinutes(timeStr) {
-  if (!timeStr) return 0;
-  const [hh, mm] = String(timeStr).split(":");
-  const h = parseInt(hh || "0", 10);
-  const m = parseInt(mm || "0", 10);
-  return h * 60 + m;
-}
-
 // yyyy-mm-dd de un Date
 function formatFecha(date) {
   const y = date.getFullYear();
@@ -30,146 +9,159 @@ function formatFecha(date) {
   return `${y}-${m}-${d}`;
 }
 
-/**
- * Lógica principal:
- *  - Busca el turno diario del usuario en la fecha de la marcación.
- *  - Actualiza entrada/salida real según tipo_marcado.
- *  - Recalcula min_trabajados, min_atraso, min_extra, estado_asistencia.
- */
-async function updateTurnoFromAsistencia(
-  usuario_id,
-  fechaHoraMarcacion,
-  tipo_marcado
-) {
-  try {
-    const fechaStr = formatFecha(fechaHoraMarcacion);
+function formatFechaEcuador(date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guayaquil",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date); // YYYY-MM-DD
+}
 
-    // 1) Buscar turno del día
-    const [rows] = await poolmysql.query(
-      `
-      SELECT *
-      FROM neg_t_turnos_diarios
-      WHERE usuario_id = ? AND fecha = ?
-      LIMIT 1
-    `,
+function timeStrToMinutes(timeStr) {
+  if (!timeStr) return 0;
+  const [hh, mm] = String(timeStr).split(":");
+  return parseInt(hh || "0", 10) * 60 + parseInt(mm || "0", 10);
+}
+
+function dateToMinutesInDayEcuador(dt) {
+  if (!dt) return null;
+  const d = new Date(dt);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Guayaquil",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+
+  const hh = Number(parts.find((p) => p.type === "hour")?.value || 0);
+  const mm = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  return hh * 60 + mm;
+}
+
+function diffMinutes(a, b) {
+  if (!a || !b) return 0;
+  const da = new Date(a);
+  const db = new Date(b);
+  return Math.round((db.getTime() - da.getTime()) / 60000);
+}
+
+async function updateTurnoFromAsistencia(usuario_id, fechaHoraMarcacion) {
+  try {
+    const fechaStr = formatFechaEcuador(fechaHoraMarcacion);
+
+    // 1) turno del día
+    const [rowsTurno] = await poolmysql.query(
+      `SELECT * FROM neg_t_turnos_diarios WHERE usuario_id = ? AND fecha = ? LIMIT 1`,
       [usuario_id, fechaStr]
     );
 
-    if (!rows || rows.length === 0) {
+    if (!rowsTurno || rowsTurno.length === 0) {
+      // OJO: igual se registra asistencia aunque no haya turno.
       console.log(
-        `[TURNOS] Usuario ${usuario_id} no tiene turno definido para ${fechaStr}. No se actualiza turno.`
+        `[TURNOS] No hay turno para usuario=${usuario_id} fecha=${fechaStr}. Se omite reconstrucción.`
       );
       return;
     }
 
-    const turno = rows[0];
+    const turno = rowsTurno[0];
 
-    let horaEntradaReal = toDate(turno.hora_entrada_real);
-    let horaSalidaReal = toDate(turno.hora_salida_real);
+    // 2) primeras 4 marcas del día por cronología (evento crudo)
+    const desde = `${fechaStr} 00:00:00`;
+    const hasta = `${formatFechaEcuador(
+      new Date(new Date(fechaHoraMarcacion).getTime() + 24 * 60 * 60 * 1000)
+    )} 00:00:00`;
 
-    const marcacion = fechaHoraMarcacion; // Date
+    const [marks] = await poolmysql.query(
+      `
+      SELECT id, fecha_hora
+      FROM neg_t_asistencia
+      WHERE usuario_id = ?
+        AND fecha_hora >= ?
+        AND fecha_hora < ?
+      ORDER BY fecha_hora ASC, id ASC
+      LIMIT 4
+      `,
+      [usuario_id, desde, hasta]
+    );
 
-    // 2) Actualizar entrada/salida real según tipo de marcación
-    if (tipo_marcado === "ENTRADA") {
-      // Tomamos la PRIMERA entrada del día
-      if (!horaEntradaReal || marcacion < horaEntradaReal) {
-        horaEntradaReal = marcacion;
-      }
-    } else if (tipo_marcado === "SALIDA") {
-      // Tomamos la ÚLTIMA salida del día
-      if (!horaSalidaReal || marcacion > horaSalidaReal) {
-        horaSalidaReal = marcacion;
-      }
-    }
+    const m1 = marks[0]?.fecha_hora || null;
+    const m2 = marks[1]?.fecha_hora || null;
+    const m3 = marks[2]?.fecha_hora || null;
+    const m4 = marks[3]?.fecha_hora || null;
 
-    // 3) Cálculos de tiempos
+    // 3) calcular min_trabajados según pares disponibles
+    let min_trabajados = 0;
+    if (m1 && m2) min_trabajados += Math.max(0, diffMinutes(m1, m2));
+    if (m3 && m4) min_trabajados += Math.max(0, diffMinutes(m3, m4));
+
+    // 4) atraso contra Entrada1
     const jornadaProgMin =
       timeStrToMinutes(turno.hora_salida_prog) -
       timeStrToMinutes(turno.hora_entrada_prog);
 
-    const minTolerAtraso = Number(turno.min_toler_atraso || 0);
+    const toler = Number(turno.min_toler_atraso || 0);
 
-    let min_trabajados = 0;
     let min_atraso = 0;
+    if (m1 && turno.hora_entrada_prog) {
+      const entradaProgMin = timeStrToMinutes(turno.hora_entrada_prog);
+      const entradaRealMin = dateToMinutesInDayEcuador(m1);
+      const diff = entradaRealMin != null ? entradaRealMin - entradaProgMin : 0;
+      if (diff > toler) min_atraso = diff;
+    }
+
+    // 5) extra
     let min_extra = 0;
-
-    // Minutos trabajados solo si ya hay entrada y salida
-    if (horaEntradaReal && horaSalidaReal) {
-      min_trabajados = diffMinutes(horaEntradaReal, horaSalidaReal);
-    }
-
-    // Atraso (comparado con hora_entrada_prog + tolerancia)
-    if (horaEntradaReal && turno.hora_entrada_prog) {
-      const entradaProgFecha = new Date(
-        `${fechaStr}T${turno.hora_entrada_prog}`
-      );
-      const diffEntrada = diffMinutes(entradaProgFecha, horaEntradaReal);
-
-      if (diffEntrada > minTolerAtraso) {
-        min_atraso = diffEntrada;
-      }
-    }
-
-    // Minutos extra (trabajó más de la jornada)
-    if (
-      min_trabajados > 0 &&
-      jornadaProgMin > 0 &&
-      min_trabajados > jornadaProgMin
-    ) {
+    if (jornadaProgMin > 0 && min_trabajados > jornadaProgMin) {
       min_extra = min_trabajados - jornadaProgMin;
     }
 
-    // 4) Estado de asistencia según tus reglas:
-    //
-    //   - FALTA       -> si no registra ningún registro de asistencia en el turno asignado
-    //                    (esta la pondremos con una rutina aparte para días ya pasados).
-    //
-    //   - INCOMPLETO  -> si tiene marcas pero AÚN NO completa los minutos de trabajo previstos.
-    //
-    //   - ATRASO      -> si completó los minutos de trabajo, pero tuvo atraso.
-    //
-    //   - COMPLETO    -> si completó la jornada y no tuvo atrasos.
-    //
-    const tieneEntrada = !!horaEntradaReal;
-    const tieneSalida = !!horaSalidaReal;
-    const jornadaDefinida = jornadaProgMin > 0;
-    const haIniciado = tieneEntrada || tieneSalida;
-    const haCumplidoJornada =
-      jornadaDefinida && min_trabajados >= jornadaProgMin;
+    // 6) estado (solo: SIN_MARCA / INCOMPLETO / ATRASO / COMPLETO) + faltas se marcan aparte
+    const marksCount = marks.length;
+    let estado_asistencia = "SIN_MARCA";
 
-    let estado_asistencia = turno.estado_asistencia || "SIN_MARCA";
-
-    if (!haIniciado) {
-      // Hay turno pero aún ninguna marca: se queda SIN_MARCA (pendiente).
-      // (Luego, si pasa el día sin marcas, una rutina lo convertirá en FALTA.)
+    if (marksCount === 0) {
       estado_asistencia = "SIN_MARCA";
-    } else if (!tieneSalida || !jornadaDefinida || !haCumplidoJornada) {
-      // Tiene alguna marca (entrada y/o salida), pero todavía NO cumple la jornada programada
-      estado_asistencia = "INCOMPLETO";
-    } else if (hasCumplidoJornada && min_atraso > 0) {
-      // Cumplió jornada pero con atraso
-      estado_asistencia = "ATRASO";
-    } else if (hasCumplidoJornada && min_atraso === 0) {
-      // Cumplió jornada sin atraso
-      estado_asistencia = "COMPLETO";
+    } else {
+      const cumple =
+        jornadaProgMin > 0 ? min_trabajados >= jornadaProgMin : false;
+
+      if (!cumple) {
+        estado_asistencia = "INCOMPLETO";
+      } else if (min_atraso > 0) {
+        estado_asistencia = "ATRASO";
+      } else {
+        estado_asistencia = "COMPLETO";
+      }
     }
 
-    // 5) Guardar cambios
+    // 7) guardar en turno diario (las 4 marcas)
     await poolmysql.query(
       `
       UPDATE neg_t_turnos_diarios
       SET
-        hora_entrada_real   = ?,
-        hora_salida_real    = ?,
-        min_trabajados      = ?,
-        min_atraso          = ?,
-        min_extra           = ?,
-        estado_asistencia   = ?
+        hora_entrada_1 = ?,
+        hora_salida_1  = ?,
+        hora_entrada_2 = ?,
+        hora_salida_2  = ?,
+
+        -- opcional compat: entrada_real = entrada_1, salida_real = última marca disponible
+        hora_entrada_real = ?,
+        hora_salida_real  = ?,
+
+        min_trabajados = ?,
+        min_atraso     = ?,
+        min_extra      = ?,
+        estado_asistencia = ?
       WHERE id = ?
-    `,
+      `,
       [
-        horaEntradaReal || null,
-        horaSalidaReal || null,
+        m1,
+        m2,
+        m3,
+        m4,
+        m1,
+        m4 || m3 || m2 || m1 || null,
         min_trabajados,
         min_atraso,
         min_extra,
@@ -179,11 +171,10 @@ async function updateTurnoFromAsistencia(
     );
 
     console.log(
-      `[TURNOS] Actualizado turno diario usuario=${usuario_id}, fecha=${fechaStr}, tipo=${tipo_marcado} ` +
-        `min_trabajados=${min_trabajados}, min_atraso=${min_atraso}, min_extra=${min_extra}, estado=${estado_asistencia}`
+      `[TURNOS] Reconstruido usuario=${usuario_id} fecha=${fechaStr} marks=${marksCount} estado=${estado_asistencia}`
     );
   } catch (err) {
-    console.error("❌ Error en updateTurnoFromAsistencia:", err.message);
+    console.error("❌ Error en updateTurnoFromAsistencia:", err);
   }
 }
 
@@ -469,15 +460,16 @@ async function marcarFaltasHastaFecha(fechaHasta = null) {
   const limite = fechaHasta || formatFecha(hoy);
 
   const sql = `
-    UPDATE neg_t_turnos_diarios t
-    LEFT JOIN neg_t_asistencia a
-      ON a.usuario_id = t.usuario_id
-     AND DATE(a.fecha_hora) = t.fecha
-    SET t.estado_asistencia = 'FALTA'
-    WHERE t.fecha < ?
-      AND t.estado_asistencia = 'SIN_MARCA'
-      AND a.id IS NULL
-  `;
+  UPDATE neg_t_turnos_diarios t
+  LEFT JOIN neg_t_asistencia a
+    ON a.usuario_id = t.usuario_id
+   AND a.fecha_hora >= CONCAT(t.fecha, ' 00:00:00')
+   AND a.fecha_hora <  CONCAT(DATE_ADD(t.fecha, INTERVAL 1 DAY), ' 00:00:00')
+  SET t.estado_asistencia = 'FALTA'
+  WHERE t.fecha < ?
+    AND t.estado_asistencia = 'SIN_MARCA'
+    AND a.id IS NULL
+`;
 
   const [result] = await poolmysql.query(sql, [limite]);
 
