@@ -3,6 +3,7 @@ const {
   insertAsistencia,
   selectUltimaAsistenciaHoyByUsuario,
   countAsistenciasHoyByUsuario,
+  selectAsistenciaById,
 } = require("../../models/negocio_lat/asistencia.models");
 
 const {
@@ -30,12 +31,10 @@ const postMarcarAsistencia = async (req, res, next) => {
     } = req.body;
 
     if (!lector_codigo) {
-      return res
-        .status(400)
-        .json({
-          ok: false,
-          message: "El campo 'lector_codigo' es obligatorio",
-        });
+      return res.status(400).json({
+        ok: false,
+        message: "El campo 'lector_codigo' es obligatorio",
+      });
     }
 
     // 1) Resolver usuario por huella si no viene usuario_id
@@ -50,12 +49,10 @@ const postMarcarAsistencia = async (req, res, next) => {
 
       const [rows] = await getUsuarioByHuella(lector_codigo, finger_id);
       if (!rows || rows.length === 0) {
-        return res
-          .status(404)
-          .json({
-            ok: false,
-            message: "Huella no registrada para este lector",
-          });
+        return res.status(404).json({
+          ok: false,
+          message: "Huella no registrada para este lector",
+        });
       }
       usuario_id = rows[0].usuario_id;
     }
@@ -108,15 +105,21 @@ const postMarcarAsistencia = async (req, res, next) => {
     };
 
     const [result] = await insertAsistencia(data);
+    const insertId = result.insertId;
 
-    // 5) (Opcional) is_auth: si quieres mantenerlo, puedes basarlo en paridad (1ra/3ra = dentro, 2da/4ta = fuera)
-    //    totalHoy es antes de insertar. La marca insertada es (totalHoy + 1).
+    // (Opcional) is_auth...
     const n = totalHoy + 1;
     const nuevoIsAuth = n % 2 === 1 ? 1 : 0;
     await updateUsuarioAuthFlag(usuario_id, nuevoIsAuth);
 
-    // 6) Reconstruir/actualizar turno del día desde el log (llena entrada1/salida1/entrada2/salida2)
-    await updateTurnoFromAsistencia(usuario_id, ahora);
+    // ✅ Reconstruir turno usando la fecha_hora real guardada en MySQL
+    try {
+      const [[rowInserted]] = await selectAsistenciaById(insertId);
+      const fechaMarcacion = rowInserted?.fecha_hora || new Date();
+      await updateTurnoFromAsistencia(usuario_id, fechaMarcacion);
+    } catch (e) {
+      console.error("⚠️ No se pudo reconstruir turno:", e);
+    }
 
     let usuario = null;
     try {
@@ -128,7 +131,7 @@ const postMarcarAsistencia = async (req, res, next) => {
     return res.status(201).json({
       ok: true,
       message: "Marcación registrada",
-      id: result.insertId,
+      id: insertId,
       usuario_id,
       n_marcacion_hoy: n,
       is_auth: nuevoIsAuth,

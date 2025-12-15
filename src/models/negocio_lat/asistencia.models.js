@@ -40,7 +40,15 @@ const countAsistenciasHoyByUsuario = (usuario_id) => {
   return poolmysql.query(sql, [usuario_id]);
 };
 
+function selectAsistenciaById(id) {
+  return poolmysql.query(
+    `SELECT id, usuario_id, fecha_hora FROM neg_t_asistencia WHERE id = ? LIMIT 1`,
+    [id]
+  );
+}
+
 module.exports = {
+  selectAsistenciaById,
   insertAsistencia,
   selectUltimaAsistenciaHoyByUsuario,
   countAsistenciasHoyByUsuario,
