@@ -478,6 +478,139 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
   }
 }
 
+async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
+  // fechaMarcacion puede ser DATETIME (string) o Date
+  const d =
+    fechaMarcacion instanceof Date ? fechaMarcacion : new Date(fechaMarcacion);
+  if (Number.isNaN(d.getTime())) throw new Error("fechaMarcacion inválida");
+
+  const fechaKey = formatFecha(d); // usa tu helper existente: YYYY-MM-DD
+
+  // 1) Buscar el turno del día
+  const [turnoRows] = await poolmysql.query(
+    `
+    SELECT id, fecha, hora_entrada_prog, hora_salida_prog, min_toler_atraso, tipo_dia
+    FROM neg_t_turnos_diarios
+    WHERE usuario_id = ? AND fecha = ?
+    LIMIT 1
+    `,
+    [usuario_id, fechaKey]
+  );
+
+  if (!turnoRows.length) return { ok: false, reason: "SIN_TURNO" };
+
+  const turno = turnoRows[0];
+
+  // Si el día no es NORMAL, normalmente no quieres reconstruir nada
+  // (si quieres permitirlo, elimina este if)
+  if (turno.tipo_dia && turno.tipo_dia !== "NORMAL") {
+    return { ok: false, reason: `TIPO_DIA_${turno.tipo_dia}` };
+  }
+
+  // 2) Tomar hasta 4 marcaciones del día (ordenadas)
+  const [marks] = await poolmysql.query(
+    `
+    SELECT fecha_hora
+    FROM neg_t_asistencia
+    WHERE usuario_id = ?
+      AND DATE(fecha_hora) = ?
+    ORDER BY fecha_hora ASC
+    LIMIT 4
+    `,
+    [usuario_id, fechaKey]
+  );
+
+  const m = marks
+    .map((r) => new Date(r.fecha_hora))
+    .filter((x) => !Number.isNaN(x.getTime()));
+
+  const entrada1 = m[0] || null;
+  const salida1 = m[1] || null;
+  const entrada2 = m[2] || null;
+  const salida2 = m[3] || null;
+
+  const entradaReal = entrada1;
+  const salidaReal = m.length ? m[m.length - 1] : null;
+
+  // 3) Calcular minutos trabajados (sumando tramos completos)
+  const diffMin = (a, b) => Math.floor((b.getTime() - a.getTime()) / 60000);
+
+  let min_trabajados = 0;
+  if (entrada1 && salida1)
+    min_trabajados += Math.max(0, diffMin(entrada1, salida1));
+  if (entrada2 && salida2)
+    min_trabajados += Math.max(0, diffMin(entrada2, salida2));
+
+  // 4) Calcular atraso vs hora programada + tolerancia
+  let min_atraso = 0;
+  if (entrada1 && turno.hora_entrada_prog) {
+    const horaProg = String(turno.hora_entrada_prog).slice(0, 8); // HH:MM:SS
+    const startProg = new Date(`${fechaKey}T${horaProg}`);
+    if (!Number.isNaN(startProg.getTime())) {
+      const toler = Number(turno.min_toler_atraso || 0);
+      const atraso = diffMin(startProg, entrada1) - toler;
+      min_atraso = Math.max(0, atraso);
+    }
+  }
+
+  // 5) Min extra (opcional): trabajados - programados
+  let min_extra = 0;
+  if (turno.hora_entrada_prog && turno.hora_salida_prog) {
+    const hEnt = String(turno.hora_entrada_prog).slice(0, 8);
+    const hSal = String(turno.hora_salida_prog).slice(0, 8);
+    const a = new Date(`${fechaKey}T${hEnt}`);
+    const b = new Date(`${fechaKey}T${hSal}`);
+    if (!Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime()) && b > a) {
+      const min_prog = diffMin(a, b);
+      min_extra = Math.max(0, min_trabajados - min_prog);
+    }
+  }
+
+  // 6) Estado asistencia según cantidad de marcas
+  // (la UI luego convierte HOY+solo_entrada en "EN CURSO")
+  let estado_asistencia = "SIN_MARCA";
+  if (m.length === 1) estado_asistencia = "SOLO_ENTRADA";
+  else if (m.length === 2) estado_asistencia = "COMPLETO";
+  else if (m.length === 3) estado_asistencia = "INCOMPLETO";
+  else if (m.length >= 4) estado_asistencia = "COMPLETO";
+
+  // 7) Update del turno
+  await poolmysql.query(
+    `
+    UPDATE neg_t_turnos_diarios
+    SET
+      hora_entrada_1 = ?,
+      hora_salida_1  = ?,
+      hora_entrada_2 = ?,
+      hora_salida_2  = ?,
+      hora_entrada_real = ?,
+      hora_salida_real  = ?,
+      min_trabajados = ?,
+      min_atraso     = ?,
+      min_extra      = ?,
+      estado_asistencia = ?,
+      updated_at = NOW()
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [
+      entrada1,
+      salida1,
+      entrada2,
+      salida2,
+      entradaReal,
+      salidaReal,
+      min_trabajados,
+      min_atraso,
+      min_extra,
+      estado_asistencia,
+      turno.id,
+    ]
+  );
+
+  return { ok: true, turno_id: turno.id, estado_asistencia };
+}
+
 module.exports = {
   generarTurnosDiariosLote,
   seleccionarTurnosDiarios,
@@ -487,4 +620,5 @@ module.exports = {
   updateObsHoraAcumuladaHoy,
   updateEstadoHoraAcumuladaTurno,
   asignarDevolucionTurno,
+  updateTurnoFromAsistencia,
 };
