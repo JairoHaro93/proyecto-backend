@@ -212,10 +212,31 @@ async function selectUsuariosParaTurnos({
       D.codigo  AS departamento_codigo,
       D.nombre  AS departamento_nombre,
       D.id      AS departamento_real_id,
-      D.parent_id
+      D.parent_id,
+
+      -- ✅ SALDO (minutos) desde KARDEX
+      COALESCE(HM.saldo_minutos, 0) AS saldo_minutos
+
     FROM sisusuarios AS U
     LEFT JOIN sis_sucursales    AS S ON S.id = U.sucursal_id
     LEFT JOIN sis_departamentos AS D ON D.id = U.departamento_id
+
+    -- ✅ Join al saldo agregado
+    LEFT JOIN (
+      SELECT
+        usuario_id,
+        COALESCE(SUM(
+          CASE
+            WHEN estado <> 'APROBADO' THEN 0
+            WHEN mov_tipo = 'CREDITO' THEN  minutos
+            WHEN mov_tipo = 'DEBITO'  THEN -minutos
+            ELSE 0
+          END
+        ), 0) AS saldo_minutos
+      FROM neg_t_horas_movimientos
+      GROUP BY usuario_id
+    ) HM ON HM.usuario_id = U.id
+
     WHERE 1 = 1
   `;
 
@@ -231,49 +252,27 @@ async function selectUsuariosParaTurnos({
     params.push(jefeUsuarioId);
   }
 
-  // =========================
-  // CASO A: jefe de sucursal + departamento seleccionado en combo
-  //   → ver empleados de ESE departamento (no de sus hijos)
-  // =========================
+  // CASO A: jefe sucursal + departamento seleccionado
   if (departamentoFiltro) {
     sql += " AND U.departamento_id = ?";
     params.push(departamentoFiltro);
   }
-
-  // =========================
-  // CASO B: jefe de departamento (tiene departamentoId)
-  //   → ver empleados de departamentos HIJOS de su depto
-  //     (no puede generarse turnos a sí mismo)
-  // =========================
+  // CASO B: jefe departamento => hijos
   else if (departamentoId) {
     sql += " AND D.parent_id = ?";
     params.push(departamentoId);
   }
-
-  // =========================
-  // CASO C: jefe de sucursal sin departamento seleccionado
-  //   → ver SOLO jefes de departamento (nivel 2)
-  // =========================
+  // CASO C: jefe sucursal sin depto seleccionado => solo jefes depto
   else {
-    // Departamentos de la sucursal cuyo parent_id IS NULL (nivel “hijos directos de sucursal”)
     sql += " AND D.sucursal_id = ? AND D.parent_id IS NULL";
     params.push(sucursalId);
 
-    // Y cuyo jefe_usuario_id ES el usuario listado
     sql += " AND D.jefe_usuario_id = U.id";
   }
 
   sql += " ORDER BY D.id ASC, U.nombre ASC, U.apellido ASC";
 
   const [rows] = await poolmysql.query(sql, params);
-
-  console.log(
-    "[TURNOS] selectUsuariosParaTurnos → filas:",
-    rows.length,
-    "params:",
-    params
-  );
-
   return rows;
 }
 
