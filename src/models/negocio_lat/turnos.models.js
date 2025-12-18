@@ -2,6 +2,57 @@
 const { poolmysql } = require("../../config/db");
 
 // ===============================
+// Helpers
+// ===============================
+function formatFecha(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function enumerarFechas(
+  fechaDesdeStr,
+  fechaHastaStr,
+  excluirFinesSemana = true
+) {
+  if (!fechaDesdeStr || !fechaHastaStr) return [];
+
+  const start = new Date(`${fechaDesdeStr}T00:00:00`);
+  const end = new Date(`${fechaHastaStr}T00:00:00`);
+
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    start > end
+  )
+    return [];
+
+  const fechas = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const day = d.getDay(); // 0=Dom,6=Sab
+    if (excluirFinesSemana && (day === 0 || day === 6)) continue;
+    fechas.push(formatFecha(d));
+  }
+  return fechas;
+}
+
+function toDateLocalFromYmdAndTime(ymd, hhmmss) {
+  const [y, m, d] = String(ymd)
+    .split("-")
+    .map((x) => parseInt(x, 10));
+  const [hh, mm, ss] = String(hhmmss || "00:00:00")
+    .split(":")
+    .map((x) => parseInt(x, 10));
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d, hh || 0, mm || 0, ss || 0);
+}
+
+function diffMin(a, b) {
+  return Math.floor((b.getTime() - a.getTime()) / 60000);
+}
+
+// ===============================
 //   LISTAR TURNOS (ADMIN/JEFES)
 // ===============================
 async function seleccionarTurnosDiarios({
@@ -50,35 +101,6 @@ async function seleccionarTurnosDiarios({
 // ===============================
 //   GENERAR TURNOS (LOTE)
 // ===============================
-
-function formatFecha(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function enumerarFechas(
-  fechaDesdeStr,
-  fechaHastaStr,
-  excluirFinesSemana = true
-) {
-  if (!fechaDesdeStr || !fechaHastaStr) return [];
-
-  const start = new Date(`${fechaDesdeStr}T00:00:00`);
-  const end = new Date(`${fechaHastaStr}T00:00:00`);
-
-  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return [];
-
-  const fechas = [];
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const day = d.getDay(); // 0=Dom,6=Sab
-    if (excluirFinesSemana && (day === 0 || day === 6)) continue;
-    fechas.push(formatFecha(d));
-  }
-  return fechas;
-}
-
 async function generarTurnosDiariosLote({
   usuarioIds = [],
   fechaDesde,
@@ -166,7 +188,7 @@ async function generarTurnosDiariosLote({
   const rowsCount = values.length / 7;
   const rowPlaceholders = Array.from(
     { length: rowsCount },
-    () => "(?, ?, ?, ?, ?, ?, ?, 'SIN_MARCA', 'NO', NULL)"
+    () => "(?, ?, ?, ?, ?, ?, ?, 'SIN_MARCA', 'NORMAL', 'NO', NULL, NULL)"
   );
 
   const sqlInsert = `
@@ -180,8 +202,10 @@ async function generarTurnosDiariosLote({
       min_toler_atraso,
       min_toler_salida,
       estado_asistencia,
+      tipo_dia,
       estado_hora_acumulada,
-      num_horas_acumuladas
+      num_horas_acumuladas,
+      aprobado_por
     )
     VALUES ${rowPlaceholders.join(", ")}
   `;
@@ -208,10 +232,12 @@ async function actualizarTurnoProgramado(
        SET hora_entrada_prog = ?,
            hora_salida_prog  = ?,
            min_toler_atraso  = ?,
-           min_toler_salida  = ?
+           min_toler_salida  = ?,
+           updated_at = NOW()
      WHERE id = ?
        AND fecha >= CURDATE()
        AND estado_asistencia = 'SIN_MARCA'
+       AND (tipo_dia IS NULL OR tipo_dia = 'NORMAL')
     `,
     [
       horaEntradaProg,
@@ -231,6 +257,7 @@ async function eliminarTurnoProgramado(turnoId) {
      WHERE id = ?
        AND fecha >= CURDATE()
        AND estado_asistencia = 'SIN_MARCA'
+       AND (tipo_dia IS NULL OR tipo_dia = 'NORMAL')
     `,
     [turnoId]
   );
@@ -256,8 +283,10 @@ async function selectTurnosByUsuarioRango(usuario_id, desde, hasta) {
       min_extra,
       estado_asistencia,
       observacion,
+      tipo_dia,
       estado_hora_acumulada,
-      num_horas_acumuladas
+      num_horas_acumuladas,
+      aprobado_por
     FROM neg_t_turnos_diarios
     WHERE usuario_id = ?
       AND fecha BETWEEN ? AND ?
@@ -269,6 +298,7 @@ async function selectTurnosByUsuarioRango(usuario_id, desde, hasta) {
 
 // ===============================
 //   OBSERVACIÓN + SOLICITUD HOY
+//   (NO permite si ya está APROBADO)
 // ===============================
 async function updateObsHoraAcumuladaHoy(
   usuario_id,
@@ -287,8 +317,12 @@ async function updateObsHoraAcumuladaHoy(
       num_horas_acumuladas = CASE
         WHEN ? = 1 THEN ?
         ELSE NULL
-      END
-    WHERE usuario_id = ? AND fecha = CURDATE()
+      END,
+      updated_at = NOW()
+    WHERE usuario_id = ?
+      AND fecha = CURDATE()
+      AND (estado_hora_acumulada IS NULL OR estado_hora_acumulada <> 'APROBADO')
+      AND (tipo_dia IS NULL OR tipo_dia = 'NORMAL')
   `;
 
   const [result] = await poolmysql.query(sql, [
@@ -303,9 +337,8 @@ async function updateObsHoraAcumuladaHoy(
 }
 
 // ===============================
-//   APROBAR / RECHAZAR
+//   APROBAR / RECHAZAR  (transacción)
 // ===============================
-
 async function updateEstadoHoraAcumuladaTurno(
   turnoId,
   estado_hora_acumulada,
@@ -315,7 +348,6 @@ async function updateEstadoHoraAcumuladaTurno(
   try {
     await conn.beginTransaction();
 
-    // 1) Leer el turno (bloqueado) incluyendo observacion
     const [rows] = await conn.query(
       `
       SELECT id, usuario_id, fecha, estado_hora_acumulada, num_horas_acumuladas, observacion
@@ -325,12 +357,20 @@ async function updateEstadoHoraAcumuladaTurno(
       `,
       [turnoId]
     );
-
     if (!rows.length) throw new Error("Turno no encontrado");
 
     const turno = rows[0];
 
-    // 2) Update del turno
+    // ✅ solo se procesa si venía en SOLICITUD (regla de negocio)
+    const prev = String(turno.estado_hora_acumulada || "NO")
+      .toUpperCase()
+      .trim();
+    if (prev !== "SOLICITUD") {
+      throw new Error(
+        `No se puede ${estado_hora_acumulada}: el turno está en estado ${prev}`
+      );
+    }
+
     await conn.query(
       `
       UPDATE neg_t_turnos_diarios
@@ -343,15 +383,12 @@ async function updateEstadoHoraAcumuladaTurno(
       [estado_hora_acumulada, aprobado_por, turnoId]
     );
 
-    // 3) Insertar movimiento SOLO si pasa a APROBADO y antes no estaba APROBADO
+    // Insert kardex solo si APROBADO
     const pasaAprobado = estado_hora_acumulada === "APROBADO";
-    const yaEstabaAprobado = turno.estado_hora_acumulada === "APROBADO";
     const horas = Number(turno.num_horas_acumuladas || 0);
 
-    if (pasaAprobado && !yaEstabaAprobado && horas > 0) {
+    if (pasaAprobado && horas > 0) {
       const minutos = horas * 60;
-
-      // misma observación del turno (recortada a 255 por si es TEXT)
       const obs = (turno.observacion ?? "").toString().slice(0, 255);
 
       await conn.query(
@@ -375,12 +412,14 @@ async function updateEstadoHoraAcumuladaTurno(
   }
 }
 
+// ===============================
+//   ASIGNAR DEVOLUCIÓN (DEBITO 8h)
+// ===============================
 async function asignarDevolucionTurno(turnoId, aprobado_por) {
   const conn = await poolmysql.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 1) Leer turno a afectar (bloqueado)
     const [rows] = await conn.query(
       `
       SELECT id, usuario_id, fecha, tipo_dia, observacion, hora_entrada_real, hora_salida_real
@@ -390,29 +429,29 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
       `,
       [turnoId]
     );
-
     if (!rows.length) throw new Error("Turno no encontrado");
+
     const turno = rows[0];
 
-    // Validaciones básicas
-    if (turno.tipo_dia !== "NORMAL") {
+    if (
+      String(turno.tipo_dia || "NORMAL")
+        .toUpperCase()
+        .trim() !== "NORMAL"
+    ) {
       throw new Error(
         `No se puede asignar DEVOLUCIÓN: el turno ya es ${turno.tipo_dia}`
       );
     }
-
     if (turno.hora_entrada_real || turno.hora_salida_real) {
       throw new Error(
         "No se puede asignar DEVOLUCIÓN: el turno ya tiene marcas reales"
       );
     }
 
-    // 2) Bloquear usuario para evitar carreras (muy recomendado)
     await conn.query(`SELECT id FROM sisusuarios WHERE id = ? FOR UPDATE`, [
       turno.usuario_id,
     ]);
 
-    // 3) Calcular saldo actual (solo movimientos APROBADO)
     const [saldoRows] = await conn.query(
       `
       SELECT COALESCE(SUM(
@@ -436,20 +475,18 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
       );
     }
 
-    // 4) Marcar el turno como DEVOLUCION
     await conn.query(
       `
-  UPDATE neg_t_turnos_diarios
-  SET tipo_dia = 'DEVOLUCION',
-      aprobado_por = ?,
-      updated_at = NOW()
-  WHERE id = ?
-  LIMIT 1
-  `,
+      UPDATE neg_t_turnos_diarios
+      SET tipo_dia = 'DEVOLUCION',
+          aprobado_por = ?,
+          updated_at = NOW()
+      WHERE id = ?
+      LIMIT 1
+      `,
       [aprobado_por, turnoId]
     );
 
-    // 5) Insertar DEBITO en kardex (observación = la misma del turno)
     const obs = (turno.observacion ?? "").toString().slice(0, 255);
 
     await conn.query(
@@ -464,7 +501,6 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
 
     await conn.commit();
 
-    // saldo nuevo (opcional para devolver al frontend)
     return {
       ok: true,
       saldo_anterior_min: saldoMin,
@@ -478,18 +514,24 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
   }
 }
 
-async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
-  // fechaMarcacion puede ser DATETIME (string) o Date
+// ===============================
+//   RECONSTRUIR TURNO DESDE ASISTENCIA
+//   ✅ ATRASO si min_atraso > 0 (aunque cumpla minutos)
+//   ✅ OK solo si cumple minutos y NO hay atraso
+// ===============================
+async function updateTurnoFromAsistencia(
+  usuario_id,
+  fechaMarcacion /*, tipoFinal */
+) {
   const d =
     fechaMarcacion instanceof Date ? fechaMarcacion : new Date(fechaMarcacion);
   if (Number.isNaN(d.getTime())) throw new Error("fechaMarcacion inválida");
 
-  const fechaKey = formatFecha(d); // usa tu helper existente: YYYY-MM-DD
+  const fechaKey = formatFecha(d);
 
-  // 1) Buscar el turno del día
   const [turnoRows] = await poolmysql.query(
     `
-    SELECT id, fecha, hora_entrada_prog, hora_salida_prog, min_toler_atraso, tipo_dia
+    SELECT id, fecha, hora_entrada_prog, hora_salida_prog, min_toler_atraso, min_toler_salida, tipo_dia
     FROM neg_t_turnos_diarios
     WHERE usuario_id = ? AND fecha = ?
     LIMIT 1
@@ -501,20 +543,20 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
 
   const turno = turnoRows[0];
 
-  // Si el día no es NORMAL, normalmente no quieres reconstruir nada
-  // (si quieres permitirlo, elimina este if)
-  if (turno.tipo_dia && turno.tipo_dia !== "NORMAL") {
+  if (
+    turno.tipo_dia &&
+    String(turno.tipo_dia).toUpperCase().trim() !== "NORMAL"
+  ) {
     return { ok: false, reason: `TIPO_DIA_${turno.tipo_dia}` };
   }
 
-  // 2) Tomar hasta 4 marcaciones del día (ordenadas)
   const [marks] = await poolmysql.query(
     `
     SELECT fecha_hora
     FROM neg_t_asistencia
     WHERE usuario_id = ?
       AND DATE(fecha_hora) = ?
-    ORDER BY fecha_hora ASC
+    ORDER BY fecha_hora ASC, id ASC
     LIMIT 4
     `,
     [usuario_id, fechaKey]
@@ -532,49 +574,56 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   const entradaReal = entrada1;
   const salidaReal = m.length ? m[m.length - 1] : null;
 
-  // 3) Calcular minutos trabajados (sumando tramos completos)
-  const diffMin = (a, b) => Math.floor((b.getTime() - a.getTime()) / 60000);
-
   let min_trabajados = 0;
   if (entrada1 && salida1)
     min_trabajados += Math.max(0, diffMin(entrada1, salida1));
   if (entrada2 && salida2)
     min_trabajados += Math.max(0, diffMin(entrada2, salida2));
 
-  // 4) Calcular atraso vs hora programada + tolerancia
+  // atraso con tolerancia
   let min_atraso = 0;
   if (entrada1 && turno.hora_entrada_prog) {
-    const horaProg = String(turno.hora_entrada_prog).slice(0, 8); // HH:MM:SS
-    const startProg = new Date(`${fechaKey}T${horaProg}`);
-    if (!Number.isNaN(startProg.getTime())) {
+    const prog = String(turno.hora_entrada_prog).slice(0, 8); // HH:MM:SS
+    const startProg = toDateLocalFromYmdAndTime(fechaKey, prog);
+    if (startProg) {
       const toler = Number(turno.min_toler_atraso || 0);
       const atraso = diffMin(startProg, entrada1) - toler;
       min_atraso = Math.max(0, atraso);
     }
   }
 
-  // 5) Min extra (opcional): trabajados - programados
+  // min extra
   let min_extra = 0;
+  let min_prog = 0;
   if (turno.hora_entrada_prog && turno.hora_salida_prog) {
     const hEnt = String(turno.hora_entrada_prog).slice(0, 8);
     const hSal = String(turno.hora_salida_prog).slice(0, 8);
-    const a = new Date(`${fechaKey}T${hEnt}`);
-    const b = new Date(`${fechaKey}T${hSal}`);
-    if (!Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime()) && b > a) {
-      const min_prog = diffMin(a, b);
+    const a = toDateLocalFromYmdAndTime(fechaKey, hEnt);
+    const b = toDateLocalFromYmdAndTime(fechaKey, hSal);
+    if (a && b && b > a) {
+      min_prog = diffMin(a, b);
       min_extra = Math.max(0, min_trabajados - min_prog);
     }
   }
 
-  // 6) Estado asistencia según cantidad de marcas
-  // (la UI luego convierte HOY+solo_entrada en "EN CURSO")
-  let estado_asistencia = "SIN_MARCA";
-  if (m.length === 1) estado_asistencia = "SOLO_ENTRADA";
-  else if (m.length === 2) estado_asistencia = "COMPLETO";
-  else if (m.length === 3) estado_asistencia = "INCOMPLETO";
-  else if (m.length >= 4) estado_asistencia = "COMPLETO";
+  // ✅ criterio de cumplimiento (considera tolerancia salida)
+  const tolerSalida = Number(turno.min_toler_salida || 0);
+  const min_requeridos = Math.max(0, (min_prog || 0) - tolerSalida);
+  const cumpleMinutos =
+    min_prog > 0 ? min_trabajados >= min_requeridos : m.length >= 2;
 
-  // 7) Update del turno
+  // Estado por marcas + reglas de negocio
+  let estado_asistencia = "SIN_MARCA";
+
+  if (m.length === 0) estado_asistencia = "SIN_MARCA";
+  else if (m.length === 1) estado_asistencia = "SOLO_ENTRADA";
+  else if (m.length === 3) estado_asistencia = "INCOMPLETO";
+  else {
+    // 2 o 4 marcas
+    if (!cumpleMinutos) estado_asistencia = "INCOMPLETO";
+    else estado_asistencia = min_atraso > 0 ? "ATRASO" : "OK";
+  }
+
   await poolmysql.query(
     `
     UPDATE neg_t_turnos_diarios

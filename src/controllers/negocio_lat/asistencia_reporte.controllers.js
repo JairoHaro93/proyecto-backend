@@ -1,13 +1,9 @@
-// controllers/negocio_lat/asistencia_reporte.controllers.js
+// src/controllers/negocio_lat/asistencia_reporte.controllers.js
 const ExcelJS = require("exceljs");
 const {
   getAsistenciaCruda,
 } = require("../../models/negocio_lat/asistencia_reporte.model");
 const { poolmysql } = require("../../config/db");
-
-// ==========================
-// Helpers generales
-// ==========================
 
 function buildFileName(fecha_desde, fecha_hasta, filasReporte) {
   let base = "reporte";
@@ -30,7 +26,7 @@ function buildFileName(fecha_desde, fecha_hasta, filasReporte) {
 
 function toHHMM(value) {
   if (!value) return null;
-  return String(value).slice(0, 5); // "HH:MM"
+  return String(value).slice(0, 5);
 }
 
 function timeToMinutes(timeStr) {
@@ -42,7 +38,6 @@ function timeToMinutes(timeStr) {
   return hh * 60 + mm;
 }
 
-// Fallback solo si min_trabajados viene null
 function calcularMinutosTrabajadosDesdeMarcas(
   hora_entrada_1,
   hora_salida_1,
@@ -55,12 +50,9 @@ function calcularMinutosTrabajadosDesdeMarcas(
   const s2 = timeToMinutes(hora_salida_2);
 
   let minutos = 0;
-
-  // Oficina: mañana + tarde
   if (e1 != null && s1 != null && s1 > e1) minutos += s1 - e1;
   if (e2 != null && s2 != null && s2 > e2) minutos += s2 - e2;
 
-  // Campo: entrada_1 -> salida_2
   if (minutos === 0 && e1 != null && s2 != null && s2 > e1) {
     minutos = s2 - e1;
   }
@@ -95,7 +87,6 @@ function calcularMinutosAtraso(row) {
   return 0;
 }
 
-// (Opcional) métrica informativa, no afecta estados
 function calcularMinutosSalidaTemprana(row) {
   const salidaProgMin = timeToMinutes(row.hora_salida_prog);
   const salidaReal = row.hora_salida_real_time || row.hora_salida_2 || null;
@@ -108,12 +99,10 @@ function calcularMinutosSalidaTemprana(row) {
   ) {
     return salidaProgMin - salidaRealMin;
   }
-
   return 0;
 }
 
 function buildFechaDia(fechaStr) {
-  // Ecuador continental fijo (-05:00)
   const date = new Date(`${fechaStr}T00:00:00-05:00`);
 
   const fmtDia = new Intl.DateTimeFormat("es-EC", { weekday: "long" });
@@ -137,9 +126,6 @@ function formatFecha(date) {
   return `${y}-${m}-${d}`;
 }
 
-// ==========================
-//   Controller principal
-// ==========================
 async function getReporteAsistenciaExcel(req, res) {
   try {
     const { fecha_desde, fecha_hasta, usuario_id } = req.query;
@@ -151,7 +137,6 @@ async function getReporteAsistenciaExcel(req, res) {
       });
     }
 
-    // Ecuador (-05:00)
     const desde = new Date(`${fecha_desde}T00:00:00-05:00`);
     const hasta = new Date(`${fecha_hasta}T00:00:00-05:00`);
 
@@ -160,20 +145,21 @@ async function getReporteAsistenciaExcel(req, res) {
         .status(400)
         .json({ message: "Fechas inválidas, use formato YYYY-MM-DD" });
     }
-
     if (hasta < desde) {
-      return res.status(400).json({
-        message: "fecha_hasta no puede ser menor que fecha_desde",
-      });
+      return res
+        .status(400)
+        .json({ message: "fecha_hasta no puede ser menor que fecha_desde" });
     }
 
     const diffMs = hasta.getTime() - desde.getTime();
     const diffDias = diffMs / (1000 * 60 * 60 * 24) + 1;
     if (diffDias > 31) {
-      return res.status(400).json({
-        message:
-          "El rango máximo permitido para el reporte de asistencia es de 31 días.",
-      });
+      return res
+        .status(400)
+        .json({
+          message:
+            "El rango máximo permitido para el reporte de asistencia es de 31 días.",
+        });
     }
 
     const uid = Number(usuario_id);
@@ -181,14 +167,12 @@ async function getReporteAsistenciaExcel(req, res) {
       return res.status(400).json({ message: "usuario_id debe ser numérico" });
     }
 
-    // 1) Obtener asistencia cruda (ya viene con 4 marcas)
     const asistenciaCruda = await getAsistenciaCruda({
       usuarioIds: [uid],
       fechaDesde: fecha_desde,
       fechaHasta: fecha_hasta,
     });
 
-    // 2) Info base de usuario si no hay nada en el rango
     let nombreBase = "";
     let cedulaBase = "";
 
@@ -212,13 +196,9 @@ async function getReporteAsistenciaExcel(req, res) {
       }
     }
 
-    // 3) Indexar por fecha (YYYY-MM-DD)
     const rowsPorFecha = new Map();
-    for (const row of asistenciaCruda) {
-      rowsPorFecha.set(row.fecha, row);
-    }
+    for (const row of asistenciaCruda) rowsPorFecha.set(row.fecha, row);
 
-    // 4) Filas por cada día del rango
     const filasReporte = [];
     let cursor = new Date(desde);
 
@@ -238,7 +218,7 @@ async function getReporteAsistenciaExcel(req, res) {
           cedula: row.cedula || cedulaBase,
           fecha_dia,
 
-          estado_asistencia: row.estado_asistencia || "INCOMPLETO",
+          estado_asistencia: row.estado_asistencia || "SIN_MARCA",
 
           hora_entrada_prog: toHHMM(row.hora_entrada_prog),
           hora_salida_prog: toHHMM(row.hora_salida_prog),
@@ -253,7 +233,6 @@ async function getReporteAsistenciaExcel(req, res) {
           minutos_trabajados,
         });
       } else {
-        // Día sin turno y sin marcas en el rango: dejamos SIN_TURNO (tal como lo vienes manejando)
         filasReporte.push({
           nombre_completo: nombreBase,
           cedula: cedulaBase,
@@ -278,7 +257,6 @@ async function getReporteAsistenciaExcel(req, res) {
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    // 5) Excel
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Asistencia");
 
@@ -320,13 +298,13 @@ async function getReporteAsistenciaExcel(req, res) {
     res.end();
   } catch (error) {
     console.error("❌ Error en getReporteAsistenciaExcel:", error);
-    res.status(500).json({
-      message: "Error interno en reporte-excel",
-      error: String(error),
-    });
+    res
+      .status(500)
+      .json({
+        message: "Error interno en reporte-excel",
+        error: String(error),
+      });
   }
 }
 
-module.exports = {
-  getReporteAsistenciaExcel,
-};
+module.exports = { getReporteAsistenciaExcel };

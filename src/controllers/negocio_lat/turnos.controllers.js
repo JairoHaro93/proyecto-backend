@@ -1,4 +1,5 @@
 // src/controllers/negocio_lat/turnos.controllers.js
+const { poolmysql } = require("../../config/db");
 const {
   generarTurnosDiariosLote,
   seleccionarTurnosDiarios,
@@ -162,7 +163,8 @@ const putActualizarTurno = async (req, res, next) => {
     if (!result.affectedRows) {
       return res.status(409).json({
         ok: false,
-        message: "No se puede editar: fecha pasada o ya tiene marcaciones.",
+        message:
+          "No se puede editar: fecha pasada, no es NORMAL, o ya tiene marcaciones.",
       });
     }
 
@@ -185,7 +187,8 @@ const deleteTurno = async (req, res, next) => {
     if (!result.affectedRows) {
       return res.status(409).json({
         ok: false,
-        message: "No se puede eliminar: fecha pasada o ya tiene marcaciones.",
+        message:
+          "No se puede eliminar: fecha pasada, no es NORMAL, o ya tiene marcaciones.",
       });
     }
 
@@ -242,6 +245,7 @@ const getMiHorarioSemana = async (req, res, next) => {
           fecha: ymd,
           tiene_turno: false,
           estado_asistencia: "SIN_TURNO",
+          tipo_dia: "NORMAL",
           estado_hora_acumulada: "NO",
           num_horas_acumuladas: null,
         });
@@ -253,7 +257,10 @@ const getMiHorarioSemana = async (req, res, next) => {
           hora_salida_prog: t.hora_salida_prog,
           hora_entrada_real: t.hora_entrada_real,
           hora_salida_real: t.hora_salida_real,
+
           estado_asistencia: t.estado_asistencia,
+          tipo_dia: t.tipo_dia ?? "NORMAL",
+
           min_trabajados: t.min_trabajados,
           min_atraso: t.min_atraso,
           min_extra: t.min_extra,
@@ -280,6 +287,8 @@ const getMiHorarioSemana = async (req, res, next) => {
 /**
  * PUT /api/turnos/mi-horario/observacion
  * body: { observacion, solicitar_hora_acumulada, num_horas_acumuladas }
+ *
+ * ✅ NO permite modificar si estado_hora_acumulada = APROBADO
  */
 const putObservacionTurnoHoy = async (req, res, next) => {
   try {
@@ -309,9 +318,46 @@ const putObservacionTurnoHoy = async (req, res, next) => {
     });
 
     if (!result.affectedRows) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No existe turno para HOY" });
+      // Diferenciamos: no turno hoy vs aprobado vs tipo_dia no NORMAL
+      const [rows] = await poolmysql.query(
+        `SELECT estado_hora_acumulada, tipo_dia
+         FROM neg_t_turnos_diarios
+         WHERE usuario_id = ? AND fecha = CURDATE()
+         LIMIT 1`,
+        [usuario_id]
+      );
+
+      if (!rows.length) {
+        return res
+          .status(404)
+          .json({ success: false, message: "No existe turno para HOY" });
+      }
+
+      const st = String(rows[0].estado_hora_acumulada || "NO")
+        .toUpperCase()
+        .trim();
+      const tipo = String(rows[0].tipo_dia || "NORMAL")
+        .toUpperCase()
+        .trim();
+
+      if (st === "APROBADO") {
+        return res.status(409).json({
+          success: false,
+          message: "No se puede modificar: la solicitud ya está APROBADA",
+        });
+      }
+
+      if (tipo !== "NORMAL") {
+        return res.status(409).json({
+          success: false,
+          message: `No se puede modificar: el día es ${tipo}`,
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: "No se pudo guardar la observación",
+      });
     }
 
     return res.json({ success: true, message: "Guardado" });
@@ -339,10 +385,7 @@ const putEstadoHoraAcumuladaTurno = async (req, res, next) => {
       });
     }
 
-    // 👇 id del usuario que aprueba (depende de cómo lo setea tu checkToken)
-    const aprobadoPor =
-      req.usuario_id || req.user?.id || req.usuario?.id || req.auth?.id;
-
+    const aprobadoPor = resolveUserId(req);
     if (!aprobadoPor) {
       return res.status(401).json({
         success: false,
@@ -359,24 +402,30 @@ const putEstadoHoraAcumuladaTurno = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Estado de horas acumuladas actualizado",
-      affectedRows: result.affectedRows,
+      result,
     });
   } catch (error) {
     console.error("❌ putEstadoHoraAcumuladaTurno error:", error);
-    next(error);
+    res.status(400).json({ success: false, message: error.message || "Error" });
   }
 };
 
-// req.user.id debe venir de tu checkToken
-async function putAsignarDevolucion(req, res, next) {
+/**
+ * PUT /api/turnos/devolucion/:id
+ * asigna DEVOLUCION y debita 8h
+ */
+async function putAsignarDevolucion(req, res) {
   try {
     const { id } = req.params; // turnoId
-    const aprobado_por = req.user.id;
+    const aprobado_por = resolveUserId(req);
+
+    if (!aprobado_por) {
+      return res.status(401).json({ message: "No autorizado" });
+    }
 
     const r = await asignarDevolucionTurno(id, aprobado_por);
     res.status(200).json({ message: "✅ DEVOLUCIÓN asignada", ...r });
   } catch (e) {
-    // 400 si es validación de negocio
     res.status(400).json({ message: e.message });
   }
 }
