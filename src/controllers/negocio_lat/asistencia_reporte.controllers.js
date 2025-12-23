@@ -154,12 +154,10 @@ async function getReporteAsistenciaExcel(req, res) {
     const diffMs = hasta.getTime() - desde.getTime();
     const diffDias = diffMs / (1000 * 60 * 60 * 24) + 1;
     if (diffDias > 31) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "El rango máximo permitido para el reporte de asistencia es de 31 días.",
-        });
+      return res.status(400).json({
+        message:
+          "El rango máximo permitido para el reporte de asistencia es de 31 días.",
+      });
     }
 
     const uid = Number(usuario_id);
@@ -298,12 +296,10 @@ async function getReporteAsistenciaExcel(req, res) {
     res.end();
   } catch (error) {
     console.error("❌ Error en getReporteAsistenciaExcel:", error);
-    res
-      .status(500)
-      .json({
-        message: "Error interno en reporte-excel",
-        error: String(error),
-      });
+    res.status(500).json({
+      message: "Error interno en reporte-excel",
+      error: String(error),
+    });
   }
 }
 

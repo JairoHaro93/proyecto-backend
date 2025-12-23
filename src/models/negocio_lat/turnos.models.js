@@ -519,19 +519,66 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
 //   ✅ ATRASO si min_atraso > 0 (aunque cumpla minutos)
 //   ✅ OK solo si cumple minutos y NO hay atraso
 // ===============================
-async function updateTurnoFromAsistencia(
-  usuario_id,
-  fechaMarcacion /*, tipoFinal */
-) {
+async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
+  // fechaMarcacion puede ser DATETIME (string) o Date
   const d =
     fechaMarcacion instanceof Date ? fechaMarcacion : new Date(fechaMarcacion);
   if (Number.isNaN(d.getTime())) throw new Error("fechaMarcacion inválida");
 
-  const fechaKey = formatFecha(d);
+  const fechaKey = formatFecha(d); // YYYY-MM-DD (usa tu helper existente)
 
+  const diffMin = (a, b) => Math.floor((b.getTime() - a.getTime()) / 60000);
+
+  const parseTimeToHHMMSS = (t) => {
+    if (!t) return null;
+    const s = String(t).trim();
+    if (!s) return null;
+    // acepta "HH:mm" o "HH:mm:ss"
+    return s.length >= 8 ? s.slice(0, 8) : `${s}:00`;
+  };
+
+  const makeLocalDT = (ymd, timeVal) => {
+    const hhmmss = parseTimeToHHMMSS(timeVal);
+    if (!hhmmss) return null;
+    // sin "Z" => Date local (coherente con tu lógica actual)
+    const dt = new Date(`${ymd}T${hhmmss}`);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  };
+
+  const overlapMinutes = (a, b, wStart, wEnd) => {
+    if (!a || !b || !wStart || !wEnd) return 0;
+    const start = a > wStart ? a : wStart;
+    const end = b < wEnd ? b : wEnd;
+    if (end <= start) return 0;
+    return diffMin(start, end);
+  };
+
+  // Determina jornada según "span" del horario programado:
+  // - 9h span  -> 8h trabajo + 1h almuerzo
+  // - 10h span -> 8h trabajo + 2h almuerzo
+  // - 13h span -> 12h trabajo + 1h almuerzo
+  const inferWorkLunch = (wStart, wEnd) => {
+    const span = diffMin(wStart, wEnd);
+    if (!Number.isFinite(span) || span <= 0) return { work: 0, lunch: 0 };
+
+    // reglas simples por span
+    // >= 12h+1h (~780) => 12h work
+    const work = span >= 750 ? 720 : span >= 450 ? 480 : span; // 12h o 8h o lo que sea
+    const lunch = Math.max(0, span - work);
+    return { work, lunch, span };
+  };
+
+  // 1) Buscar el turno del día (incluye tolerancias y tipo_dia)
   const [turnoRows] = await poolmysql.query(
     `
-    SELECT id, fecha, hora_entrada_prog, hora_salida_prog, min_toler_atraso, min_toler_salida, tipo_dia
+    SELECT
+      id,
+      fecha,
+      hora_entrada_prog,
+      hora_salida_prog,
+      min_toler_atraso,
+      min_toler_salida,
+      tipo_dia
     FROM neg_t_turnos_diarios
     WHERE usuario_id = ? AND fecha = ?
     LIMIT 1
@@ -540,23 +587,21 @@ async function updateTurnoFromAsistencia(
   );
 
   if (!turnoRows.length) return { ok: false, reason: "SIN_TURNO" };
-
   const turno = turnoRows[0];
 
-  if (
-    turno.tipo_dia &&
-    String(turno.tipo_dia).toUpperCase().trim() !== "NORMAL"
-  ) {
+  // Si no es NORMAL, no recalculamos asistencia
+  if (turno.tipo_dia && String(turno.tipo_dia).toUpperCase() !== "NORMAL") {
     return { ok: false, reason: `TIPO_DIA_${turno.tipo_dia}` };
   }
 
+  // 2) Tomar hasta 4 marcaciones del día (ordenadas)
   const [marks] = await poolmysql.query(
     `
     SELECT fecha_hora
     FROM neg_t_asistencia
     WHERE usuario_id = ?
       AND DATE(fecha_hora) = ?
-    ORDER BY fecha_hora ASC, id ASC
+    ORDER BY fecha_hora ASC
     LIMIT 4
     `,
     [usuario_id, fechaKey]
@@ -574,56 +619,112 @@ async function updateTurnoFromAsistencia(
   const entradaReal = entrada1;
   const salidaReal = m.length ? m[m.length - 1] : null;
 
-  let min_trabajados = 0;
-  if (entrada1 && salida1)
-    min_trabajados += Math.max(0, diffMin(entrada1, salida1));
-  if (entrada2 && salida2)
-    min_trabajados += Math.max(0, diffMin(entrada2, salida2));
+  // Ventana programada
+  const progStart = makeLocalDT(fechaKey, turno.hora_entrada_prog);
+  const progEnd = makeLocalDT(fechaKey, turno.hora_salida_prog);
 
-  // atraso con tolerancia
-  let min_atraso = 0;
-  if (entrada1 && turno.hora_entrada_prog) {
-    const prog = String(turno.hora_entrada_prog).slice(0, 8); // HH:MM:SS
-    const startProg = toDateLocalFromYmdAndTime(fechaKey, prog);
-    if (startProg) {
-      const toler = Number(turno.min_toler_atraso || 0);
-      const atraso = diffMin(startProg, entrada1) - toler;
-      min_atraso = Math.max(0, atraso);
-    }
+  // Si no hay horario programado válido, no podemos calificar estricto
+  if (!progStart || !progEnd || progEnd <= progStart) {
+    return { ok: false, reason: "HORARIO_PROG_INVALIDO" };
   }
 
-  // min extra
-  let min_extra = 0;
-  let min_prog = 0;
-  if (turno.hora_entrada_prog && turno.hora_salida_prog) {
-    const hEnt = String(turno.hora_entrada_prog).slice(0, 8);
-    const hSal = String(turno.hora_salida_prog).slice(0, 8);
-    const a = toDateLocalFromYmdAndTime(fechaKey, hEnt);
-    const b = toDateLocalFromYmdAndTime(fechaKey, hSal);
-    if (a && b && b > a) {
-      min_prog = diffMin(a, b);
-      min_extra = Math.max(0, min_trabajados - min_prog);
-    }
-  }
-
-  // ✅ criterio de cumplimiento (considera tolerancia salida)
+  const tolerAtraso = Number(turno.min_toler_atraso || 0);
   const tolerSalida = Number(turno.min_toler_salida || 0);
-  const min_requeridos = Math.max(0, (min_prog || 0) - tolerSalida);
-  const cumpleMinutos =
-    min_prog > 0 ? min_trabajados >= min_requeridos : m.length >= 2;
 
-  // Estado por marcas + reglas de negocio
+  const { work: workObjetivoMin, lunch: lunchObjetivoMin } = inferWorkLunch(
+    progStart,
+    progEnd
+  );
+
+  // 3) Calcular minutos trabajados reales (INFO)
+  //    - Si hay 4 marcas: suma tramos
+  //    - Si hay 2 marcas: resta almuerzo objetivo (no contamos almuerzo como trabajo)
+  let min_trabajados = 0;
+
+  if (m.length >= 4) {
+    if (entrada1 && salida1)
+      min_trabajados += Math.max(0, diffMin(entrada1, salida1));
+    if (entrada2 && salida2)
+      min_trabajados += Math.max(0, diffMin(entrada2, salida2));
+  } else if (m.length >= 2) {
+    min_trabajados = Math.max(
+      0,
+      diffMin(entrada1, salidaReal) - lunchObjetivoMin
+    );
+  } else {
+    min_trabajados = 0;
+  }
+
+  // 4) Calcular minutos trabajados DENTRO de la ventana programada (para estado estricto)
+  //    OJO: aquí NO cuenta tiempo antes o después del horario.
+  let workedInWindow = 0;
+
+  if (m.length >= 4) {
+    workedInWindow += overlapMinutes(entrada1, salida1, progStart, progEnd);
+    workedInWindow += overlapMinutes(entrada2, salida2, progStart, progEnd);
+  } else if (m.length >= 2) {
+    workedInWindow = overlapMinutes(entrada1, salidaReal, progStart, progEnd);
+    // como no hay marcas de almuerzo, descontamos el almuerzo objetivo
+    workedInWindow = Math.max(0, workedInWindow - lunchObjetivoMin);
+  } else {
+    workedInWindow = 0;
+  }
+
+  // 5) Atraso (estricto): llegar tarde NO se compensa con almuerzo corto ni quedarse más
+  let min_atraso = 0;
+  if (entrada1) {
+    const atraso = diffMin(progStart, entrada1) - tolerAtraso;
+    min_atraso = Math.max(0, atraso);
+  }
+
+  // 6) Salida temprana (estricto): salir antes NO se compensa llegando antes
+  let min_salida_temprana = 0;
+  if (salidaReal) {
+    const temprana = diffMin(salidaReal, progEnd) - tolerSalida; // positivo si salió antes
+    min_salida_temprana = Math.max(0, temprana);
+  }
+
+  // 7) Min extra (solo informativo, pero NO ayuda al estado)
+  //    Estricto: solo cuenta como "extra" si cumplió ventana (no atraso, no salida temprana, y trabajó lo objetivo en ventana)
+  let min_extra = 0;
+  const cumpleVentana =
+    workedInWindow >= workObjetivoMin &&
+    min_atraso === 0 &&
+    min_salida_temprana === 0;
+
+  if (cumpleVentana) {
+    min_extra = Math.max(0, min_trabajados - workObjetivoMin);
+  } else {
+    min_extra = 0;
+  }
+
+  // 8) Estado asistencia (OFICIAL estricto)
   let estado_asistencia = "SIN_MARCA";
 
-  if (m.length === 0) estado_asistencia = "SIN_MARCA";
-  else if (m.length === 1) estado_asistencia = "SOLO_ENTRADA";
-  else if (m.length === 3) estado_asistencia = "INCOMPLETO";
-  else {
-    // 2 o 4 marcas
-    if (!cumpleMinutos) estado_asistencia = "INCOMPLETO";
-    else estado_asistencia = min_atraso > 0 ? "ATRASO" : "OK";
+  if (m.length === 0) {
+    estado_asistencia = "SIN_MARCA";
+  } else if (m.length === 1) {
+    estado_asistencia = "SOLO_ENTRADA";
+  } else if (m.length === 3) {
+    // 3 marcas siempre es inconsistente => INCOMPLETO
+    estado_asistencia = "INCOMPLETO";
+  } else {
+    // 2 o 4 marcas:
+    // - primero exigimos cumplir el trabajo en ventana
+    // - luego atraso (si trabajó lo suficiente pero llegó tarde => ATRASO)
+    // - luego salida temprana (si salió antes => INCOMPLETO)
+    if (workedInWindow < workObjetivoMin) {
+      estado_asistencia = "INCOMPLETO";
+    } else if (min_salida_temprana > 0) {
+      estado_asistencia = "INCOMPLETO";
+    } else if (min_atraso > 0) {
+      estado_asistencia = "ATRASO";
+    } else {
+      estado_asistencia = "OK"; // ✅ NO guardes "COMPLETO" en DB, usa OK
+    }
   }
 
+  // 9) Update del turno
   await poolmysql.query(
     `
     UPDATE neg_t_turnos_diarios
@@ -657,7 +758,17 @@ async function updateTurnoFromAsistencia(
     ]
   );
 
-  return { ok: true, turno_id: turno.id, estado_asistencia };
+  return {
+    ok: true,
+    turno_id: turno.id,
+    estado_asistencia,
+    meta: {
+      workObjetivoMin,
+      lunchObjetivoMin,
+      workedInWindow,
+      min_salida_temprana,
+    },
+  };
 }
 
 module.exports = {
