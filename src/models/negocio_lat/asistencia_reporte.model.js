@@ -5,6 +5,20 @@ function inPlaceholders(arr = []) {
   return arr.map(() => "?").join(", ");
 }
 
+/**
+ * Devuelve filas por (usuario_id, fecha) dentro del rango.
+ * Fuente principal: neg_t_turnos_diarios (programado + estado + marcas reconstruidas)
+ * Fuente secundaria: neg_t_asistencia (si hubo marcas pero NO hubo turno => SIN_TURNO)
+ *
+ * Campos que usa el Excel:
+ *  - fecha (YYYY-MM-DD)
+ *  - estado_asistencia
+ *  - hora_entrada_prog, hora_salida_prog
+ *  - hora_entrada_1, hora_salida_1, hora_entrada_2, hora_salida_2 (HH:MM:SS)
+ *  - hora_salida_real_time (HH:MM:SS) opcional
+ *  - min_trabajados, min_atraso, min_extra (si existen)
+ *  - observacion
+ */
 async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
   usuarioIds = (usuarioIds || [])
     .map((x) => Number(x))
@@ -44,13 +58,10 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
       GROUP BY usuario_id, fecha
     )
 
-    -- A) Días CON TURNO
+    -- A) Días CON TURNO (principal)
     SELECT
       t.usuario_id,
       DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha,
-
-      u.ci AS cedula,
-      CONCAT(u.nombre, ' ', u.apellido) AS nombre_completo,
 
       CASE
         WHEN (t.tipo_dia IS NOT NULL AND t.tipo_dia <> 'NORMAL') THEN t.tipo_dia
@@ -62,6 +73,7 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
       t.hora_entrada_prog,
       t.hora_salida_prog,
 
+      -- Marcas: prioridad a lo reconstruido en turno; si está NULL, tomamos del log pivot
       COALESCE(DATE_FORMAT(t.hora_entrada_1, '%H:%i:%s'), mp.hora_entrada_1) AS hora_entrada_1,
       COALESCE(DATE_FORMAT(t.hora_salida_1,  '%H:%i:%s'), mp.hora_salida_1)  AS hora_salida_1,
       COALESCE(DATE_FORMAT(t.hora_entrada_2, '%H:%i:%s'), mp.hora_entrada_2) AS hora_entrada_2,
@@ -71,9 +83,9 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
 
       t.min_trabajados,
       t.min_atraso,
-      t.min_extra
+      t.min_extra,
+      t.observacion AS observacion
     FROM neg_t_turnos_diarios t
-    JOIN sisusuarios u ON u.id = t.usuario_id
     LEFT JOIN marks_pivot mp
       ON mp.usuario_id = t.usuario_id
      AND mp.fecha = t.fecha
@@ -83,13 +95,10 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
 
     UNION ALL
 
-    -- B) Días SIN TURNO pero CON MARCAS
+    -- B) Días SIN TURNO pero CON MARCAS (secundario)
     SELECT
       mp.usuario_id,
       DATE_FORMAT(mp.fecha, '%Y-%m-%d') AS fecha,
-
-      u.ci AS cedula,
-      CONCAT(u.nombre, ' ', u.apellido) AS nombre_completo,
 
       'SIN_TURNO' AS estado_asistencia,
       NULL AS hora_entrada_prog,
@@ -104,9 +113,9 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
 
       NULL AS min_trabajados,
       NULL AS min_atraso,
-      NULL AS min_extra
+      NULL AS min_extra,
+      NULL AS observacion
     FROM marks_pivot mp
-    JOIN sisusuarios u ON u.id = mp.usuario_id
     LEFT JOIN neg_t_turnos_diarios t
       ON t.usuario_id = mp.usuario_id
      AND t.fecha = mp.fecha
