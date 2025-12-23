@@ -18,10 +18,11 @@ function safeFilePart(text) {
   return s;
 }
 
-function buildFileName(mes, nombreBase) {
+function buildFileName(mes, nombreBase, uid) {
   let base = "reporte";
-  const safeNombre = safeFilePart(nombreBase);
+  const safeNombre = safeFilePart(nombreBase || "");
   if (safeNombre) base += `_${safeNombre}`;
+  else base += `_usuario_${uid}`;
   return `${base}_${mes}.xlsx`;
 }
 
@@ -161,7 +162,7 @@ function parseMesToRange(mes) {
 
 // ==========================
 // MULTAS (frecuencia por rango en el mes, separado por atraso y salida temprana)
-// Reglas (según lo acordado):
+// Reglas:
 // - 1-5: desde 2da vez en adelante => $2.00
 // - 6-10: 1ra vez => $2.50, 2da+ => $5.00
 // - 11+:  1ra vez => $10.00, 2da+ => $20.00
@@ -178,7 +179,6 @@ function multaPorFrecuencia(rangoKey, nuevoCount) {
   if (!rangoKey) return 0;
 
   if (rangoKey === "1-5") {
-    // desde 2da vez
     return nuevoCount >= 2 ? 2.0 : 0;
   }
   if (rangoKey === "6-10") {
@@ -207,7 +207,6 @@ function calcularMultaDia({ minAtraso, minSalidaTemprana }, freq) {
     total += multaPorFrecuencia(rS, freq.salida[rS]);
   }
 
-  // Redondeo a 2 decimales por seguridad
   return Math.round(total * 100) / 100;
 }
 
@@ -236,33 +235,36 @@ async function getReporteAsistenciaExcel(req, res) {
       return res.status(400).json({ message: "usuario_id debe ser numérico" });
     }
 
-    // 1) Base del usuario (SIEMPRE)
-    let nombreBase = "";
-    let cedulaBase = "";
-    {
-      const [userRows] = await poolmysql.query(
-        `
-        SELECT
-          ci AS cedula,
-          CONCAT(nombre, ' ', apellido) AS nombre_completo
-        FROM sisusuarios
-        WHERE id = ?
-        `,
-        [uid]
-      );
-
-      if (userRows && userRows.length > 0) {
-        nombreBase = userRows[0].nombre_completo || "";
-        cedulaBase = userRows[0].cedula || "";
-      }
-    }
-
-    // 2) Datos crudos (rango del mes)
+    // 1) Datos crudos (rango del mes)
     const asistenciaCruda = await getAsistenciaCruda({
       usuarioIds: [uid],
       fechaDesde: range.fechaDesde,
       fechaHasta: range.fechaHasta,
     });
+
+    // 2) Base del usuario (preferimos sisusuarios; fallback a asistenciaCruda)
+    let nombreBase = "";
+    let cedulaBase = "";
+
+    const [userRows] = await poolmysql.query(
+      `
+      SELECT
+        ci AS cedula,
+        CONCAT(nombre, ' ', apellido) AS nombre_completo
+      FROM sisusuarios
+      WHERE id = ?
+      `,
+      [uid]
+    );
+
+    if (userRows && userRows.length > 0) {
+      nombreBase = userRows[0].nombre_completo || "";
+      cedulaBase = userRows[0].cedula || "";
+    } else if (asistenciaCruda && asistenciaCruda.length > 0) {
+      // fallback (por si tu query cruda ya trae nombre/cedula)
+      nombreBase = asistenciaCruda[0].nombre_completo || "";
+      cedulaBase = asistenciaCruda[0].cedula || "";
+    }
 
     // 3) Map por fecha
     const rowsPorFecha = new Map();
@@ -274,7 +276,6 @@ async function getReporteAsistenciaExcel(req, res) {
     const desdeDate = new Date(`${range.fechaDesde}T00:00:00-05:00`);
     const hastaDate = new Date(`${range.fechaHasta}T00:00:00-05:00`);
 
-    // Contadores de frecuencia por rango (separado por tipo)
     const freq = {
       atraso: { "1-5": 0, "6-10": 0, "11+": 0 },
       salida: { "1-5": 0, "6-10": 0, "11+": 0 },
@@ -320,7 +321,6 @@ async function getReporteAsistenciaExcel(req, res) {
           observacion: row.observacion || null,
         });
       } else {
-        // Día sin turno y sin marcas
         filasReporte.push({
           fecha_dia,
           estado_asistencia: "SIN_TURNO",
@@ -351,32 +351,32 @@ async function getReporteAsistenciaExcel(req, res) {
 
     worksheet.columns = [
       { header: "Fecha (día)", key: "fecha_dia", width: 24 },
-      { header: "Estado asistencia", key: "estado_asistencia", width: 18 },
+      { header: "Estado\nasistencia", key: "estado_asistencia", width: 14 },
 
-      { header: "Entrada programada", key: "hora_entrada_prog", width: 18 },
-      { header: "Salida programada", key: "hora_salida_prog", width: 18 },
+      { header: "Entrada\nprogramada", key: "hora_entrada_prog", width: 12 },
+      { header: "Salida\nprogramada", key: "hora_salida_prog", width: 12 },
 
-      { header: "Entrada 1", key: "hora_entrada_1", width: 12 },
-      { header: "Salida 1", key: "hora_salida_1", width: 12 },
-      { header: "Entrada 2", key: "hora_entrada_2", width: 12 },
-      { header: "Salida 2", key: "hora_salida_2", width: 12 },
+      { header: "Entrada\n1", key: "hora_entrada_1", width: 10 },
+      { header: "Salida\n1", key: "hora_salida_1", width: 10 },
+      { header: "Entrada\n2", key: "hora_entrada_2", width: 10 },
+      { header: "Salida\n2", key: "hora_salida_2", width: 10 },
 
-      { header: "Min atraso", key: "minutos_atrasados", width: 12 },
+      { header: "Min\natraso", key: "minutos_atrasados", width: 10 },
       {
-        header: "Min. salida temprana",
+        header: "Min.\nsalida temprana",
         key: "minutos_salida_temprana",
-        width: 18,
+        width: 14,
       },
-      { header: "Minutos trabajados", key: "minutos_trabajados", width: 16 },
+      { header: "Minutos\ntrabajados", key: "minutos_trabajados", width: 14 },
 
-      { header: "Multas ($)", key: "multa", width: 12 },
-      { header: "Observación", key: "observacion", width: 50 },
+      { header: "Multas\n($)", key: "multa", width: 10 },
+      { header: "Observación", key: "observacion", width: 45 },
     ];
 
-    // Header en fila 1, data desde fila 2
+    // data (header en fila 1, data desde fila 2)
     worksheet.addRows(filasReporte);
 
-    // ====== Insertar cabecera superior (4 filas arriba) ======
+    // ====== Cabecera superior (4 filas arriba) ======
     const totalCols = worksheet.columns.length;
     const lastCol = excelColName(totalCols);
 
@@ -394,9 +394,10 @@ async function getReporteAsistenciaExcel(req, res) {
     ];
     const rowBlank = [...Array(totalCols).fill("")];
 
-    // Inserta 4 filas al inicio (mueve header a fila 5)
+    // Inserta 4 filas al inicio (mueve header original a fila 5)
     worksheet.spliceRows(1, 0, rowTitulo, rowNombre, rowCedula, rowBlank);
 
+    // Merge title rows
     worksheet.mergeCells(`A1:${lastCol}1`);
     worksheet.mergeCells(`A2:${lastCol}2`);
     worksheet.mergeCells(`A3:${lastCol}3`);
@@ -415,36 +416,47 @@ async function getReporteAsistenciaExcel(req, res) {
     worksheet.getRow(2).height = 18;
     worksheet.getRow(3).height = 18;
 
-    // Congelar: 4 filas de título + 1 fila de encabezados (fila 5)
+    // Header row (después del splice)
+    const headerRowIndex = 5;
+    const hdr = worksheet.getRow(headerRowIndex);
+    hdr.height = 30;
+    hdr.font = { bold: true };
+    hdr.alignment = {
+      vertical: "middle",
+      horizontal: "center",
+      wrapText: true,
+    };
+
+    // Congelar: 4 filas de título + encabezados (fila 5)
     worksheet.views = [{ state: "frozen", ySplit: 5 }];
 
-    // ====== Total Multas (autosuma) ======
-    // Después del splice:
-    // - Encabezados están en fila 5
-    // - Data inicia fila 6
-    const headerRow = 5;
-    const dataStart = headerRow + 1;
-    const dataEnd = headerRow + filasReporte.length;
-
-    // Columna "multa" (por índice)
+    // Formato moneda para columna multas (incluye filas de datos + total)
     const multaColIndex =
       worksheet.columns.findIndex((c) => c.key === "multa") + 1;
+    if (multaColIndex > 0) {
+      worksheet.getColumn(multaColIndex).numFmt = '"$"#,##0.00';
+    }
+
+    // ====== Total Multas (autosuma segura) ======
+    const dataStartRow = headerRowIndex + 1; // 6
+    const dataEndRow = dataStartRow + filasReporte.length - 1;
+
     const multaColLetter = excelColName(multaColIndex);
 
-    const totalRow = worksheet.addRow({
-      fecha_dia: "TOTAL MULTAS",
-      multa: {
-        formula: `SUM(${multaColLetter}${dataStart}:${multaColLetter}${dataEnd})`,
-      },
-    });
+    // Agregamos fila al final y ponemos fórmula válida (SUM en inglés, comas)
+    const totalRow = worksheet.addRow([]);
+    totalRow.getCell(1).value = "TOTAL MULTAS";
+    totalRow.getCell(1).font = { bold: true };
 
+    totalRow.getCell(multaColIndex).value = {
+      formula: `SUM(${multaColLetter}${dataStartRow}:${multaColLetter}${dataEndRow})`,
+      result: 0,
+    };
     totalRow.font = { bold: true };
     totalRow.alignment = { vertical: "middle" };
 
-    // Opcional: formato moneda (si quieres)
-    // worksheet.getColumn("multa").numFmt = '"$"#,##0.00;[Red]\-"$"#,##0.00';
-
-    const fileName = buildFileName(mes, nombreBase);
+    // Nombre del archivo
+    const fileName = buildFileName(mes, nombreBase, uid);
 
     res.setHeader(
       "Content-Type",
