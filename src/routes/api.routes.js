@@ -11,6 +11,10 @@ router.use("/asistencia", require("./api/negocio_lat/asistencia.router"));
 router.use("/huellas", require("./api/negocio_lat/huellas.router"));
 router.use("/timbres", require("./api/negocio_lat/timbres.routes"));
 router.use("/turnos", require("./api/negocio_lat/turnos.router"));
+router.use(
+  "/justificacion",
+  require("./api/negocio_lat/justificaciones_turno.routes")
+);
 router.use("/departamentos", require("./api/sistema/departamentos.routes"));
 router.use("/sucursales", require("./api/sistema/sucursales.routes"));
 

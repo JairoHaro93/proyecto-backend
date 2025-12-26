@@ -3,6 +3,11 @@ const ExcelJS = require("exceljs");
 const {
   getAsistenciaCruda,
 } = require("../../models/negocio_lat/asistencia_reporte.model");
+
+const {
+  selectPendientesJustificaciones,
+} = require("../../models/negocio_lat/justificaciones_turno.model");
+
 const { poolmysql } = require("../../config/db");
 
 // ==========================
@@ -233,6 +238,21 @@ async function getReporteAsistenciaExcel(req, res) {
     const uid = Number(usuario_id);
     if (Number.isNaN(uid)) {
       return res.status(400).json({ message: "usuario_id debe ser numérico" });
+    }
+
+    // ✅ 0) Condición previa: no permitir reporte si hay justificaciones pendientes
+    const pendientes = await selectPendientesJustificaciones({
+      desde: range.fechaDesde,
+      hasta: range.fechaHasta,
+      usuario_id: uid,
+    });
+
+    if (pendientes.length) {
+      return res.status(409).json({
+        message:
+          "⛔ No se puede generar el reporte: existen justificaciones PENDIENTES en el mes seleccionado.",
+        pendientes,
+      });
     }
 
     // 1) Datos crudos (rango del mes)

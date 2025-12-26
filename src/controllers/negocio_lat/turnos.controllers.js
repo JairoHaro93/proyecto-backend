@@ -417,13 +417,13 @@ const putEstadoHoraAcumuladaTurno = async (req, res, next) => {
 async function putAsignarDevolucion(req, res) {
   try {
     const { id } = req.params; // turnoId
-    const aprobado_por = resolveUserId(req);
+    const hora_acum_aprobado_por = resolveUserId(req);
 
-    if (!aprobado_por) {
+    if (!hora_acum_aprobado_por) {
       return res.status(401).json({ message: "No autorizado" });
     }
 
-    const r = await asignarDevolucionTurno(id, aprobado_por);
+    const r = await asignarDevolucionTurno(id, hora_acum_aprobado_por);
     res.status(200).json({ message: "✅ DEVOLUCIÓN asignada", ...r });
   } catch (e) {
     res.status(400).json({ message: e.message });

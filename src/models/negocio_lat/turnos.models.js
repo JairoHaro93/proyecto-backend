@@ -52,6 +52,32 @@ function diffMin(a, b) {
   return Math.floor((b.getTime() - a.getTime()) / 60000);
 }
 
+// acepta 15, "15", "01:30"
+function parseMinutos(input) {
+  if (input === null || input === undefined || input === "") return null;
+
+  if (typeof input === "number" && Number.isFinite(input))
+    return Math.trunc(input);
+
+  const s = String(input).trim();
+  if (!s) return null;
+
+  // HH:MM
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (m) {
+    const hh = parseInt(m[1], 10);
+    const mm = parseInt(m[2], 10);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+    return hh * 60 + mm;
+  }
+
+  // minutos simples
+  const n = Number(s);
+  if (Number.isFinite(n)) return Math.trunc(n);
+
+  return null;
+}
+
 // ===============================
 //   LISTAR TURNOS (ADMIN/JEFES)
 // ===============================
@@ -205,7 +231,7 @@ async function generarTurnosDiariosLote({
       tipo_dia,
       estado_hora_acumulada,
       num_horas_acumuladas,
-      aprobado_por
+      hora_acum_aprobado_por
     )
     VALUES ${rowPlaceholders.join(", ")}
   `;
@@ -286,7 +312,18 @@ async function selectTurnosByUsuarioRango(usuario_id, desde, hasta) {
       tipo_dia,
       estado_hora_acumulada,
       num_horas_acumuladas,
-      aprobado_por
+      hora_acum_aprobado_por,
+
+      -- ✅ Justificaciones (si existen en tu tabla)
+      just_atraso_estado,
+      just_atraso_motivo,
+      just_atraso_minutos,
+      just_atraso_jefe_id,
+      just_salida_estado,
+      just_salida_motivo,
+      just_salida_minutos,
+      just_salida_jefe_id
+
     FROM neg_t_turnos_diarios
     WHERE usuario_id = ?
       AND fecha BETWEEN ? AND ?
@@ -337,12 +374,12 @@ async function updateObsHoraAcumuladaHoy(
 }
 
 // ===============================
-//   APROBAR / RECHAZAR  (transacción)
+//   APROBAR / RECHAZAR HORAS ACUMULADAS  (transacción)
 // ===============================
 async function updateEstadoHoraAcumuladaTurno(
   turnoId,
   estado_hora_acumulada,
-  aprobado_por
+  hora_acum_aprobado_por
 ) {
   const conn = await poolmysql.getConnection();
   try {
@@ -361,7 +398,7 @@ async function updateEstadoHoraAcumuladaTurno(
 
     const turno = rows[0];
 
-    // ✅ solo se procesa si venía en SOLICITUD (regla de negocio)
+    // ✅ solo se procesa si venía en SOLICITUD
     const prev = String(turno.estado_hora_acumulada || "NO")
       .toUpperCase()
       .trim();
@@ -375,12 +412,12 @@ async function updateEstadoHoraAcumuladaTurno(
       `
       UPDATE neg_t_turnos_diarios
       SET estado_hora_acumulada = ?,
-          aprobado_por = ?,
+          hora_acum_aprobado_por = ?,
           updated_at = NOW()
       WHERE id = ?
       LIMIT 1
       `,
-      [estado_hora_acumulada, aprobado_por, turnoId]
+      [estado_hora_acumulada, hora_acum_aprobado_por, turnoId]
     );
 
     // Insert kardex solo si APROBADO
@@ -394,11 +431,18 @@ async function updateEstadoHoraAcumuladaTurno(
       await conn.query(
         `
         INSERT INTO neg_t_horas_movimientos
-          (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, aprobado_por, observacion)
+          (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion)
         VALUES
           (?, 'CREDITO', 'HORA_EXTRA', ?, ?, ?, 'APROBADO', ?, ?)
         `,
-        [turno.usuario_id, minutos, turno.fecha, turno.id, aprobado_por, obs]
+        [
+          turno.usuario_id,
+          minutos,
+          turno.fecha,
+          turno.id,
+          hora_acum_aprobado_por,
+          obs,
+        ]
       );
     }
 
@@ -415,7 +459,7 @@ async function updateEstadoHoraAcumuladaTurno(
 // ===============================
 //   ASIGNAR DEVOLUCIÓN (DEBITO 8h)
 // ===============================
-async function asignarDevolucionTurno(turnoId, aprobado_por) {
+async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
   const conn = await poolmysql.getConnection();
   try {
     await conn.beginTransaction();
@@ -479,12 +523,12 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
       `
       UPDATE neg_t_turnos_diarios
       SET tipo_dia = 'DEVOLUCION',
-          aprobado_por = ?,
+          hora_acum_aprobado_por = ?,
           updated_at = NOW()
       WHERE id = ?
       LIMIT 1
       `,
-      [aprobado_por, turnoId]
+      [hora_acum_aprobado_por, turnoId]
     );
 
     const obs = (turno.observacion ?? "").toString().slice(0, 255);
@@ -492,11 +536,11 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
     await conn.query(
       `
       INSERT INTO neg_t_horas_movimientos
-        (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, aprobado_por, observacion)
+        (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion)
       VALUES
         (?, 'DEBITO', 'DEVOLUCION', 480, ?, ?, 'APROBADO', ?, ?)
       `,
-      [turno.usuario_id, turno.fecha, turno.id, aprobado_por, obs]
+      [turno.usuario_id, turno.fecha, turno.id, hora_acum_aprobado_por, obs]
     );
 
     await conn.commit();
@@ -520,28 +564,23 @@ async function asignarDevolucionTurno(turnoId, aprobado_por) {
 //   ✅ OK solo si cumple minutos y NO hay atraso
 // ===============================
 async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
-  // fechaMarcacion puede ser DATETIME (string) o Date
   const d =
     fechaMarcacion instanceof Date ? fechaMarcacion : new Date(fechaMarcacion);
   if (Number.isNaN(d.getTime())) throw new Error("fechaMarcacion inválida");
 
-  const fechaKey = formatFecha(d); // YYYY-MM-DD (usa tu helper existente)
-
-  const diffMin = (a, b) => Math.floor((b.getTime() - a.getTime()) / 60000);
+  const fechaKey = formatFecha(d);
 
   const parseTimeToHHMMSS = (t) => {
     if (!t) return null;
     const s = String(t).trim();
     if (!s) return null;
-    // acepta "HH:mm" o "HH:mm:ss"
     return s.length >= 8 ? s.slice(0, 8) : `${s}:00`;
   };
 
   const makeLocalDT = (ymd, timeVal) => {
     const hhmmss = parseTimeToHHMMSS(timeVal);
     if (!hhmmss) return null;
-    // sin "Z" => Date local (coherente con tu lógica actual)
-    const dt = new Date(`${ymd}T${hhmmss}`);
+    const dt = new Date(`${ymd}T${hhmmss}`); // local
     return Number.isNaN(dt.getTime()) ? null : dt;
   };
 
@@ -553,22 +592,16 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     return diffMin(start, end);
   };
 
-  // Determina jornada según "span" del horario programado:
-  // - 9h span  -> 8h trabajo + 1h almuerzo
-  // - 10h span -> 8h trabajo + 2h almuerzo
-  // - 13h span -> 12h trabajo + 1h almuerzo
   const inferWorkLunch = (wStart, wEnd) => {
     const span = diffMin(wStart, wEnd);
-    if (!Number.isFinite(span) || span <= 0) return { work: 0, lunch: 0 };
-
-    // reglas simples por span
-    // >= 12h+1h (~780) => 12h work
-    const work = span >= 750 ? 720 : span >= 450 ? 480 : span; // 12h o 8h o lo que sea
+    if (!Number.isFinite(span) || span <= 0)
+      return { work: 0, lunch: 0, span: 0 };
+    const work = span >= 750 ? 720 : span >= 450 ? 480 : span;
     const lunch = Math.max(0, span - work);
     return { work, lunch, span };
   };
 
-  // 1) Buscar el turno del día (incluye tolerancias y tipo_dia)
+  // 1) Buscar turno
   const [turnoRows] = await poolmysql.query(
     `
     SELECT
@@ -589,12 +622,11 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   if (!turnoRows.length) return { ok: false, reason: "SIN_TURNO" };
   const turno = turnoRows[0];
 
-  // Si no es NORMAL, no recalculamos asistencia
   if (turno.tipo_dia && String(turno.tipo_dia).toUpperCase() !== "NORMAL") {
     return { ok: false, reason: `TIPO_DIA_${turno.tipo_dia}` };
   }
 
-  // 2) Tomar hasta 4 marcaciones del día (ordenadas)
+  // 2) Marcaciones (hasta 4)
   const [marks] = await poolmysql.query(
     `
     SELECT fecha_hora
@@ -619,11 +651,9 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   const entradaReal = entrada1;
   const salidaReal = m.length ? m[m.length - 1] : null;
 
-  // Ventana programada
   const progStart = makeLocalDT(fechaKey, turno.hora_entrada_prog);
   const progEnd = makeLocalDT(fechaKey, turno.hora_salida_prog);
 
-  // Si no hay horario programado válido, no podemos calificar estricto
   if (!progStart || !progEnd || progEnd <= progStart) {
     return { ok: false, reason: "HORARIO_PROG_INVALIDO" };
   }
@@ -636,11 +666,8 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     progEnd
   );
 
-  // 3) Calcular minutos trabajados reales (INFO)
-  //    - Si hay 4 marcas: suma tramos
-  //    - Si hay 2 marcas: resta almuerzo objetivo (no contamos almuerzo como trabajo)
+  // 3) min trabajados (info)
   let min_trabajados = 0;
-
   if (m.length >= 4) {
     if (entrada1 && salida1)
       min_trabajados += Math.max(0, diffMin(entrada1, salida1));
@@ -655,74 +682,56 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     min_trabajados = 0;
   }
 
-  // 4) Calcular minutos trabajados DENTRO de la ventana programada (para estado estricto)
-  //    OJO: aquí NO cuenta tiempo antes o después del horario.
+  // 4) trabajado dentro de ventana
   let workedInWindow = 0;
-
   if (m.length >= 4) {
     workedInWindow += overlapMinutes(entrada1, salida1, progStart, progEnd);
     workedInWindow += overlapMinutes(entrada2, salida2, progStart, progEnd);
   } else if (m.length >= 2) {
     workedInWindow = overlapMinutes(entrada1, salidaReal, progStart, progEnd);
-    // como no hay marcas de almuerzo, descontamos el almuerzo objetivo
     workedInWindow = Math.max(0, workedInWindow - lunchObjetivoMin);
   } else {
     workedInWindow = 0;
   }
 
-  // 5) Atraso (estricto): llegar tarde NO se compensa con almuerzo corto ni quedarse más
+  // 5) atraso (estricto)
   let min_atraso = 0;
   if (entrada1) {
     const atraso = diffMin(progStart, entrada1) - tolerAtraso;
     min_atraso = Math.max(0, atraso);
   }
 
-  // 6) Salida temprana (estricto): salir antes NO se compensa llegando antes
+  // 6) salida temprana (estricto)
   let min_salida_temprana = 0;
   if (salidaReal) {
-    const temprana = diffMin(salidaReal, progEnd) - tolerSalida; // positivo si salió antes
+    const temprana = diffMin(salidaReal, progEnd) - tolerSalida;
     min_salida_temprana = Math.max(0, temprana);
   }
 
-  // 7) Min extra (solo informativo, pero NO ayuda al estado)
-  //    Estricto: solo cuenta como "extra" si cumplió ventana (no atraso, no salida temprana, y trabajó lo objetivo en ventana)
+  // 7) min_extra (solo informativo)
   let min_extra = 0;
   const cumpleVentana =
     workedInWindow >= workObjetivoMin &&
     min_atraso === 0 &&
     min_salida_temprana === 0;
+  if (cumpleVentana) min_extra = Math.max(0, min_trabajados - workObjetivoMin);
 
-  if (cumpleVentana) {
-    min_extra = Math.max(0, min_trabajados - workObjetivoMin);
-  } else {
-    min_extra = 0;
-  }
-
-  // 8) Estado asistencia (OFICIAL con ATRASO > INCOMPLETO)
+  // 8) estado asistencia (ATRASO > INCOMPLETO)
   let estado_asistencia = "SIN_MARCA";
-
   if (m.length === 0) {
     estado_asistencia = "SIN_MARCA";
   } else if (m.length === 1) {
     estado_asistencia = "SOLO_ENTRADA";
   } else if (m.length === 3) {
-    estado_asistencia = "INCOMPLETO"; // 3 marcas sigue siendo inconsistente
+    estado_asistencia = "INCOMPLETO";
   } else {
-    // 2 o 4 marcas
-
-    // ✅ ATRASO con mayor peso (si llegó tarde, se marca ATRASO)
-    if (min_atraso > 0) {
-      estado_asistencia = "ATRASO";
-    } else if (min_salida_temprana > 0) {
-      estado_asistencia = "INCOMPLETO";
-    } else if (workedInWindow < workObjetivoMin) {
-      estado_asistencia = "INCOMPLETO";
-    } else {
-      estado_asistencia = "OK";
-    }
+    if (min_atraso > 0) estado_asistencia = "ATRASO";
+    else if (min_salida_temprana > 0) estado_asistencia = "INCOMPLETO";
+    else if (workedInWindow < workObjetivoMin) estado_asistencia = "INCOMPLETO";
+    else estado_asistencia = "OK";
   }
 
-  // 9) Update del turno
+  // 9) Update turno
   await poolmysql.query(
     `
     UPDATE neg_t_turnos_diarios
@@ -769,6 +778,162 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   };
 }
 
+// ===============================
+//   RESOLVER JUSTIFICACIÓN + MOVIMIENTO (DEBITO)
+//   - APRUEBA: crea DEBITO en neg_t_horas_movimientos
+//   - RECHAZA: solo actualiza el turno
+//   REQUIERE que mov_concepto acepte: 'JUST_ATRASO' y 'JUST_SALIDA'
+// ===============================
+async function resolverJustificacionTurno(
+  turnoId,
+  key,
+  estado,
+  minutos,
+  jefeId
+) {
+  if (!["atraso", "salida"].includes(key)) throw new Error("key inválida");
+
+  const est = String(estado || "")
+    .toUpperCase()
+    .trim();
+  if (!["APROBADA", "RECHAZADA"].includes(est))
+    throw new Error("Estado inválido. Usa APROBADA o RECHAZADA.");
+
+  const conn = await poolmysql.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1) Bloquea turno
+    const [rows] = await conn.query(
+      `
+      SELECT
+        id, usuario_id, fecha,
+        just_atraso_estado, just_atraso_motivo,
+        just_salida_estado, just_salida_motivo
+      FROM neg_t_turnos_diarios
+      WHERE id = ?
+      FOR UPDATE
+      `,
+      [turnoId]
+    );
+    if (!rows.length) throw new Error("Turno no encontrado");
+    const turno = rows[0];
+
+    const colEstado =
+      key === "atraso" ? "just_atraso_estado" : "just_salida_estado";
+    const colMotivo =
+      key === "atraso" ? "just_atraso_motivo" : "just_salida_motivo";
+    const colMin =
+      key === "atraso" ? "just_atraso_minutos" : "just_salida_minutos";
+    const colJefe =
+      key === "atraso" ? "just_atraso_jefe_id" : "just_salida_jefe_id";
+
+    const prev = String(turno[colEstado] || "NO")
+      .toUpperCase()
+      .trim();
+    if (prev !== "PENDIENTE") {
+      throw new Error(
+        `No se puede resolver: la justificación está en estado ${prev}`
+      );
+    }
+
+    // 2) Minutos obligatorios si aprueba (y >0 por CHECK minutos > 0)
+    let minFinal = null;
+    if (est === "APROBADA") {
+      minFinal = parseMinutos(minutos);
+      if (!Number.isInteger(minFinal) || minFinal < 1 || minFinal > 600) {
+        throw new Error(
+          "Minutos inválidos: envía minutos >=1 (ej: 15 o 01:30) y <= 600."
+        );
+      }
+    }
+
+    // 3) Actualiza turno
+    await conn.query(
+      `
+      UPDATE neg_t_turnos_diarios
+      SET
+        ${colEstado} = ?,
+        ${colMin}    = ?,
+        ${colJefe}   = ?,
+        updated_at = NOW()
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [est, minFinal, jefeId, turnoId]
+    );
+
+    // 4) Si APROBADA => crea DEBITO en kardex
+    if (est === "APROBADA") {
+      const motivo = String(turno[colMotivo] || "").slice(0, 255);
+
+      // Bloquea usuario (serializa saldo)
+      await conn.query(`SELECT id FROM sisusuarios WHERE id = ? FOR UPDATE`, [
+        turno.usuario_id,
+      ]);
+
+      // Verifica saldo
+      const [saldoRows] = await conn.query(
+        `
+        SELECT COALESCE(SUM(
+          CASE
+            WHEN estado <> 'APROBADO' THEN 0
+            WHEN mov_tipo = 'CREDITO' THEN  minutos
+            WHEN mov_tipo = 'DEBITO'  THEN -minutos
+            ELSE 0
+          END
+        ), 0) AS saldo_minutos
+        FROM neg_t_horas_movimientos
+        WHERE usuario_id = ?
+        `,
+        [turno.usuario_id]
+      );
+
+      const saldoMin = Number(saldoRows?.[0]?.saldo_minutos || 0);
+      if (saldoMin < minFinal) {
+        throw new Error(
+          `Saldo insuficiente para descontar ${minFinal} min (saldo: ${saldoMin} min)`
+        );
+      }
+
+      const movConcepto = key === "atraso" ? "JUST_ATRASO" : "JUST_SALIDA";
+
+      // Upsert (idempotente por UNIQUE turno_id + mov_tipo + mov_concepto)
+      await conn.query(
+        `
+        INSERT INTO neg_t_horas_movimientos
+          (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion)
+        VALUES
+          (?, 'DEBITO', ?, ?, ?, ?, 'APROBADO', ?, ?)
+        ON DUPLICATE KEY UPDATE
+          minutos = VALUES(minutos),
+          estado  = VALUES(estado),
+          hora_acum_aprobado_por = VALUES(hora_acum_aprobado_por),
+          observacion = VALUES(observacion),
+          updated_at = NOW()
+        `,
+        [
+          turno.usuario_id,
+          movConcepto,
+          minFinal,
+          turno.fecha,
+          turno.id,
+          jefeId,
+          motivo,
+        ]
+      );
+    }
+
+    await conn.commit();
+    return { ok: true };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
   generarTurnosDiariosLote,
   seleccionarTurnosDiarios,
@@ -779,4 +944,5 @@ module.exports = {
   updateEstadoHoraAcumuladaTurno,
   asignarDevolucionTurno,
   updateTurnoFromAsistencia,
+  resolverJustificacionTurno,
 };
