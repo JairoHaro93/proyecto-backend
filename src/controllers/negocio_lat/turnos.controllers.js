@@ -242,6 +242,7 @@ const getMiHorarioSemana = async (req, res, next) => {
 
       if (!t) {
         semana.push({
+          id: null,
           fecha: ymd,
           tiene_turno: false,
           estado_asistencia: "SIN_TURNO",
@@ -250,7 +251,11 @@ const getMiHorarioSemana = async (req, res, next) => {
           num_horas_acumuladas: null,
         });
       } else {
+        // ✅ dentro del else (cuando sí existe t)
         semana.push({
+          // 🔥 CLAVE: enviar el id del turno (para que Flutter pueda llamar /turnos/:id/justificaciones/*)
+          id: t.id,
+
           fecha: ymd,
           tiene_turno: true,
           hora_entrada_prog: t.hora_entrada_prog,
@@ -269,6 +274,17 @@ const getMiHorarioSemana = async (req, res, next) => {
 
           estado_hora_acumulada: t.estado_hora_acumulada ?? "NO",
           num_horas_acumuladas: t.num_horas_acumuladas ?? null,
+
+          // ✅ JUSTIFICACIONES (ya vienen desde SQL)
+          just_atraso_estado: t.just_atraso_estado ?? "NO",
+          just_atraso_motivo: t.just_atraso_motivo ?? null,
+          just_atraso_minutos: t.just_atraso_minutos ?? null,
+          just_atraso_jefe_id: t.just_atraso_jefe_id ?? null,
+
+          just_salida_estado: t.just_salida_estado ?? "NO",
+          just_salida_motivo: t.just_salida_motivo ?? null,
+          just_salida_minutos: t.just_salida_minutos ?? null,
+          just_salida_jefe_id: t.just_salida_jefe_id ?? null,
         });
       }
     }
