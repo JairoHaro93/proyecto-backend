@@ -698,7 +698,7 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     min_extra = 0;
   }
 
-  // 8) Estado asistencia (OFICIAL) => INCOMPLETO = NO CUMPLE HORAS
+  // 8) Estado asistencia (OFICIAL con ATRASO > INCOMPLETO)
   let estado_asistencia = "SIN_MARCA";
 
   if (m.length === 0) {
@@ -706,17 +706,17 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   } else if (m.length === 1) {
     estado_asistencia = "SOLO_ENTRADA";
   } else if (m.length === 3) {
-    // 3 marcas: no puedes validar bien las horas (falta una marca)
-    estado_asistencia = "INCOMPLETO";
+    estado_asistencia = "INCOMPLETO"; // 3 marcas sigue siendo inconsistente
   } else {
-    // 2 o 4 marcas:
-    // ✅ primero: si no cumple horas => INCOMPLETO
-    // ✅ si cumple horas y llegó tarde => ATRASO
-    // ✅ si cumple horas y no llegó tarde => OK
-    if (min_trabajados < workObjetivoMin) {
-      estado_asistencia = "INCOMPLETO";
-    } else if (min_atraso > 0) {
+    // 2 o 4 marcas
+
+    // ✅ ATRASO con mayor peso (si llegó tarde, se marca ATRASO)
+    if (min_atraso > 0) {
       estado_asistencia = "ATRASO";
+    } else if (min_salida_temprana > 0) {
+      estado_asistencia = "INCOMPLETO";
+    } else if (workedInWindow < workObjetivoMin) {
+      estado_asistencia = "INCOMPLETO";
     } else {
       estado_asistencia = "OK";
     }
