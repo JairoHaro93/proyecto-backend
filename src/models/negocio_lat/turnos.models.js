@@ -458,6 +458,7 @@ async function updateEstadoHoraAcumuladaTurno(
 
 // ===============================
 //   ASIGNAR DEVOLUCIÓN (DEBITO 8h)
+//   ✅ Ahora permite saldo NEGATIVO (deuda sin tope)
 // ===============================
 async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
   const conn = await poolmysql.getConnection();
@@ -492,10 +493,12 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
       );
     }
 
+    // Bloquea usuario (serializa operaciones)
     await conn.query(`SELECT id FROM sisusuarios WHERE id = ? FOR UPDATE`, [
       turno.usuario_id,
     ]);
 
+    // (Opcional) calcular saldo anterior para devolverlo como info
     const [saldoRows] = await conn.query(
       `
       SELECT COALESCE(SUM(
@@ -513,11 +516,9 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
     );
 
     const saldoMin = Number(saldoRows?.[0]?.saldo_minutos || 0);
-    if (saldoMin < 480) {
-      throw new Error(
-        `Saldo insuficiente para DEVOLUCIÓN (saldo: ${saldoMin} min, requiere: 480 min)`
-      );
-    }
+
+    // ✅ ANTES: aquí bloqueabas si saldoMin < 480
+    // ✅ AHORA: no bloqueamos, puede quedar negativo (deuda sin tope)
 
     await conn.query(
       `
@@ -548,7 +549,7 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
     return {
       ok: true,
       saldo_anterior_min: saldoMin,
-      saldo_nuevo_min: saldoMin - 480,
+      saldo_nuevo_min: saldoMin - 480, // ✅ puede ser negativo
     };
   } catch (err) {
     await conn.rollback();
@@ -782,7 +783,7 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
 //   RESOLVER JUSTIFICACIÓN + MOVIMIENTO (DEBITO)
 //   - APRUEBA: crea DEBITO en neg_t_horas_movimientos
 //   - RECHAZA: solo actualiza el turno
-//   REQUIERE que mov_concepto acepte: 'JUST_ATRASO' y 'JUST_SALIDA'
+//   ✅ Ahora permite saldo NEGATIVO (deuda sin tope)
 // ===============================
 async function resolverJustificacionTurno(
   turnoId,
@@ -867,34 +868,13 @@ async function resolverJustificacionTurno(
     if (est === "APROBADA") {
       const motivo = String(turno[colMotivo] || "").slice(0, 255);
 
-      // Bloquea usuario (serializa saldo)
+      // Bloquea usuario (serializa operaciones)
       await conn.query(`SELECT id FROM sisusuarios WHERE id = ? FOR UPDATE`, [
         turno.usuario_id,
       ]);
 
-      // Verifica saldo
-      const [saldoRows] = await conn.query(
-        `
-        SELECT COALESCE(SUM(
-          CASE
-            WHEN estado <> 'APROBADO' THEN 0
-            WHEN mov_tipo = 'CREDITO' THEN  minutos
-            WHEN mov_tipo = 'DEBITO'  THEN -minutos
-            ELSE 0
-          END
-        ), 0) AS saldo_minutos
-        FROM neg_t_horas_movimientos
-        WHERE usuario_id = ?
-        `,
-        [turno.usuario_id]
-      );
-
-      const saldoMin = Number(saldoRows?.[0]?.saldo_minutos || 0);
-      if (saldoMin < minFinal) {
-        throw new Error(
-          `Saldo insuficiente para descontar ${minFinal} min (saldo: ${saldoMin} min)`
-        );
-      }
+      // ✅ ANTES: aquí verificabas saldo y bloqueabas si no alcanzaba
+      // ✅ AHORA: NO se valida saldo, puede quedar negativo (deuda sin tope)
 
       const movConcepto = key === "atraso" ? "JUST_ATRASO" : "JUST_SALIDA";
 
