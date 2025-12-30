@@ -22,6 +22,7 @@
     "mssql": "^11.0.1",
     "multer": "^2.0.1",
     "mysql2": "^3.11.5",
+    "pdfkit": "^0.17.2",
     "socket.io": "^4.8.1",
     "telnet-client": "^2.2.6"
   },

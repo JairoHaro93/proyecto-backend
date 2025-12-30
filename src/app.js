@@ -5,6 +5,7 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs");
 const dotenv = require("dotenv");
 const { poolmysql, poolsql } = require("./config/db");
 
@@ -37,20 +38,21 @@ const corsOptions = {
     "Accept",
     "Authorization",
   ],
-  exposedHeaders: ["X-Session-Expires"], // 👈 importante
+  exposedHeaders: ["X-Session-Expires"],
 };
 
 /*
+// ✅ Si quieres usar allowlist desde ENV (recomendado)
 app.use(cors(corsOptions));
-// Preflight explícito (evita 404/500 en OPTIONS)
 app.options("*", cors(corsOptions));
 */
 
+// ✅ Tu CORS actual fijo (déjalo así si te funciona)
 app.use(
   cors({
     origin: "http://localhost:4200", // o tu dominio real
     credentials: true,
-    exposedHeaders: ["Content-Disposition"], // 👈 CLAVE
+    exposedHeaders: ["Content-Disposition"], // útil para downloads
   })
 );
 
@@ -77,12 +79,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// ----- DOCS (PDF Vacaciones) -----
+// PDFs serán PRIVADOS => NO se sirven como estáticos.
+// Solo creamos la carpeta de destino.
+const DOCS_ROOT = path.resolve(
+  process.env.RUTA_DOCS_ROOT || process.env.RUTA_DESTINO || "uploads"
+);
+const DOCS_VAC = process.env.RUTA_DOCS_VACACIONES || "docs/pdfs/vacaciones";
+const VAC_DIR = path.join(DOCS_ROOT, DOCS_VAC);
+
+if (!fs.existsSync(VAC_DIR)) fs.mkdirSync(VAC_DIR, { recursive: true });
+console.log("[docs] vacaciones:", VAC_DIR);
+
 // ----- Parsers -----
 app.use(cookieParser());
 app.use(express.json());
 
 // ----- Rutas API -----
-// Nuevo router de imágenes estandarizado
+// Router de imágenes estandarizado
 app.use("/api/images", require("./routes/api/negocio_lat/images.router"));
 
 // Resto de rutas del proyecto

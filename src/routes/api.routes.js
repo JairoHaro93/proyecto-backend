@@ -15,6 +15,9 @@ router.use(
   "/justificacion",
   require("./api/negocio_lat/justificaciones_turno.routes")
 );
+
+router.use("/files", checkToken, require("./api/sistema/files.routes"));
+
 router.use("/departamentos", require("./api/sistema/departamentos.routes"));
 router.use("/sucursales", require("./api/sistema/sucursales.routes"));
 
@@ -43,5 +46,11 @@ router.use(
 router.use("/images", require("./api/negocio_lat/images.router"));
 router.use("/cajas", require("./api/negocio_lat/cajas.router"));
 router.use("/olt", require("./api/negocio_lat/olt.router"));
+
+router.use(
+  "/vacaciones",
+  checkToken,
+  require("./api/negocio_lat/vacaciones.router")
+);
 
 module.exports = router;
