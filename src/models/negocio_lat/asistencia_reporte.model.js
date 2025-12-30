@@ -10,14 +10,8 @@ function inPlaceholders(arr = []) {
  * Fuente principal: neg_t_turnos_diarios (programado + estado + marcas reconstruidas)
  * Fuente secundaria: neg_t_asistencia (si hubo marcas pero NO hubo turno => SIN_TURNO)
  *
- * Campos que usa el Excel:
- *  - fecha (YYYY-MM-DD)
- *  - estado_asistencia
- *  - hora_entrada_prog, hora_salida_prog
- *  - hora_entrada_1, hora_salida_1, hora_entrada_2, hora_salida_2 (HH:MM:SS)
- *  - hora_salida_real_time (HH:MM:SS) opcional
- *  - min_trabajados, min_atraso, min_extra (si existen)
- *  - observacion
+ * IMPORTANTE PARA EXCEL (multas):
+ *  - Debe incluir campos just_* para saber si se perdona atraso/salida.
  */
 async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
   usuarioIds = (usuarioIds || [])
@@ -84,7 +78,19 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
       t.min_trabajados,
       t.min_atraso,
       t.min_extra,
-      t.observacion AS observacion
+      t.observacion AS observacion,
+
+      -- ✅ JUSTIFICACIONES (CLAVE para no multar si está APROBADA)
+      t.just_atraso_estado,
+      t.just_atraso_motivo,
+      t.just_atraso_minutos,
+      t.just_atraso_jefe_id,
+
+      t.just_salida_estado,
+      t.just_salida_motivo,
+      t.just_salida_minutos,
+      t.just_salida_jefe_id
+
     FROM neg_t_turnos_diarios t
     LEFT JOIN marks_pivot mp
       ON mp.usuario_id = t.usuario_id
@@ -114,7 +120,19 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
       NULL AS min_trabajados,
       NULL AS min_atraso,
       NULL AS min_extra,
-      NULL AS observacion
+      NULL AS observacion,
+
+      -- ✅ mismas columnas que arriba (para UNION)
+      NULL AS just_atraso_estado,
+      NULL AS just_atraso_motivo,
+      NULL AS just_atraso_minutos,
+      NULL AS just_atraso_jefe_id,
+
+      NULL AS just_salida_estado,
+      NULL AS just_salida_motivo,
+      NULL AS just_salida_minutos,
+      NULL AS just_salida_jefe_id
+
     FROM marks_pivot mp
     LEFT JOIN neg_t_turnos_diarios t
       ON t.usuario_id = mp.usuario_id
@@ -125,10 +143,11 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
   `;
 
   const params = [
-    ...usuarioIds,
+    ...usuarioIds, // IN marks_raw
     fechaDesde,
     fechaHasta,
-    ...usuarioIds,
+
+    ...usuarioIds, // IN select A
     fechaDesde,
     fechaHasta,
   ];
