@@ -558,11 +558,10 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
     conn.release();
   }
 }
-
 // ===============================
 //   RECONSTRUIR TURNO DESDE ASISTENCIA
-//   ✅ ATRASO si min_atraso > 0 (aunque cumpla minutos)
-//   ✅ OK solo si cumple minutos y NO hay atraso
+//   ✅ Jornada/almuerzo se infiere del HORARIO PROGRAMADO (entrada/salida)
+//   ✅ ATRASO con redondeo CEIL (55 seg => 1 min)
 // ===============================
 async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   const d =
@@ -585,19 +584,35 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     return Number.isNaN(dt.getTime()) ? null : dt;
   };
 
+  const diffMinFloor = (a, b) =>
+    Math.floor((b.getTime() - a.getTime()) / 60000);
+
+  // ✅ Para atraso/salida temprana: cualquier fracción cuenta como 1 min
+  const diffMinCeil = (a, b) => Math.ceil((b.getTime() - a.getTime()) / 60000);
+
   const overlapMinutes = (a, b, wStart, wEnd) => {
     if (!a || !b || !wStart || !wEnd) return 0;
     const start = a > wStart ? a : wStart;
     const end = b < wEnd ? b : wEnd;
     if (end <= start) return 0;
-    return diffMin(start, end);
+    return diffMinFloor(start, end);
   };
 
-  const inferWorkLunch = (wStart, wEnd) => {
-    const span = diffMin(wStart, wEnd);
+  // ✅ Jornada objetivo + almuerzo inferidos del span programado
+  // Reglas:
+  // - Turno corto (<= 6h): jornada = span, almuerzo = 0
+  // - Turno largo (>= 11h30): jornada = 12h (720), almuerzo = span - 720
+  // - Normal: jornada = 8h (480), almuerzo = span - 480
+  const inferJornadaYAlmuerzo = (progStart, progEnd) => {
+    const span = diffMinFloor(progStart, progEnd);
     if (!Number.isFinite(span) || span <= 0)
       return { work: 0, lunch: 0, span: 0 };
-    const work = span >= 750 ? 720 : span >= 450 ? 480 : span;
+
+    if (span <= 360) {
+      return { work: span, lunch: 0, span };
+    }
+
+    const work = span >= 690 ? 720 : 480; // 11h30 = umbral a jornada 12h
     const lunch = Math.max(0, span - work);
     return { work, lunch, span };
   };
@@ -662,28 +677,30 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   const tolerAtraso = Number(turno.min_toler_atraso || 0);
   const tolerSalida = Number(turno.min_toler_salida || 0);
 
-  const { work: workObjetivoMin, lunch: lunchObjetivoMin } = inferWorkLunch(
-    progStart,
-    progEnd
-  );
+  const {
+    work: workObjetivoMin,
+    lunch: lunchObjetivoMin,
+    span,
+  } = inferJornadaYAlmuerzo(progStart, progEnd);
 
-  // 3) min trabajados (info)
+  // 3) min_trabajados (informativo)
   let min_trabajados = 0;
   if (m.length >= 4) {
     if (entrada1 && salida1)
-      min_trabajados += Math.max(0, diffMin(entrada1, salida1));
+      min_trabajados += Math.max(0, diffMinFloor(entrada1, salida1));
     if (entrada2 && salida2)
-      min_trabajados += Math.max(0, diffMin(entrada2, salida2));
+      min_trabajados += Math.max(0, diffMinFloor(entrada2, salida2));
   } else if (m.length >= 2) {
+    // si no hay 4 marcas, asumimos 1 solo almuerzo según horario programado
     min_trabajados = Math.max(
       0,
-      diffMin(entrada1, salidaReal) - lunchObjetivoMin
+      diffMinFloor(entrada1, salidaReal) - lunchObjetivoMin
     );
   } else {
     min_trabajados = 0;
   }
 
-  // 4) trabajado dentro de ventana
+  // 4) trabajado dentro de ventana programada (para decisión)
   let workedInWindow = 0;
   if (m.length >= 4) {
     workedInWindow += overlapMinutes(entrada1, salida1, progStart, progEnd);
@@ -695,21 +712,21 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     workedInWindow = 0;
   }
 
-  // 5) atraso (estricto)
+  // 5) atraso (CEIL) - con tolerancia
   let min_atraso = 0;
   if (entrada1) {
-    const atraso = diffMin(progStart, entrada1) - tolerAtraso;
+    const atraso = diffMinCeil(progStart, entrada1) - tolerAtraso;
     min_atraso = Math.max(0, atraso);
   }
 
-  // 6) salida temprana (estricto)
+  // 6) salida temprana (CEIL) - con tolerancia
   let min_salida_temprana = 0;
   if (salidaReal) {
-    const temprana = diffMin(salidaReal, progEnd) - tolerSalida;
+    const temprana = diffMinCeil(salidaReal, progEnd) - tolerSalida;
     min_salida_temprana = Math.max(0, temprana);
   }
 
-  // 7) min_extra (solo informativo)
+  // 7) min_extra (informativo)
   let min_extra = 0;
   const cumpleVentana =
     workedInWindow >= workObjetivoMin &&
@@ -717,7 +734,7 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     min_salida_temprana === 0;
   if (cumpleVentana) min_extra = Math.max(0, min_trabajados - workObjetivoMin);
 
-  // 8) estado asistencia (ATRASO > INCOMPLETO)
+  // 8) estado asistencia
   let estado_asistencia = "SIN_MARCA";
   if (m.length === 0) {
     estado_asistencia = "SIN_MARCA";
@@ -726,6 +743,7 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   } else if (m.length === 3) {
     estado_asistencia = "INCOMPLETO";
   } else {
+    // ✅ prioridad: ATRASO primero
     if (min_atraso > 0) estado_asistencia = "ATRASO";
     else if (min_salida_temprana > 0) estado_asistencia = "INCOMPLETO";
     else if (workedInWindow < workObjetivoMin) estado_asistencia = "INCOMPLETO";
@@ -771,6 +789,7 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     turno_id: turno.id,
     estado_asistencia,
     meta: {
+      span_prog_min: span,
       workObjetivoMin,
       lunchObjetivoMin,
       workedInWindow,

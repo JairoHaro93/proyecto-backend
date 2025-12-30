@@ -118,7 +118,7 @@ const postGenerarTurnos = async (req, res, next) => {
       sucursal: sucursal || null,
       horaEntradaProg: hora_entrada_prog,
       horaSalidaProg: hora_salida_prog,
-      minTolerAtraso: min_toler_atraso ?? 0,
+      minTolerAtraso: min_toler_atraso ?? 1, //TIEMPO PARA TOLERANCIA DE ATRASO
       minTolerSalida: min_toler_salida ?? 0,
       excluirFinesSemana: excluir_fines_semana !== false,
       sobrescribirExistentes: !!sobrescribir_existentes,
