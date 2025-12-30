@@ -78,6 +78,10 @@ function calcularMinutosTrabajados(row) {
   );
 }
 
+// ✅ Para atrasos/salida temprana en reporte:
+// - Si tu turno ya guarda min_atraso/min_salida_temprana en BD, úsalo.
+// - Si no existe, calcula “simple” por comparación de HH:mm.
+// Nota: Aquí NO recomputamos con CEIL/segundos porque el cálculo real ya debe venir desde updateTurnoFromAsistencia.
 function calcularMinutosAtraso(row) {
   if (row.min_atraso != null) return Number(row.min_atraso) || 0;
 
@@ -166,11 +170,7 @@ function parseMesToRange(mes) {
 }
 
 // ==========================
-// MULTAS (frecuencia por rango en el mes, separado por atraso y salida temprana)
-// Reglas:
-// - 1-5: desde 2da vez en adelante => $2.00
-// - 6-10: 1ra vez => $2.50, 2da+ => $5.00
-// - 11+:  1ra vez => $10.00, 2da+ => $20.00
+// MULTAS
 // ==========================
 function rangoMulta(minutos) {
   const m = Number(minutos || 0);
@@ -215,6 +215,19 @@ function calcularMultaDia({ minAtraso, minSalidaTemprana }, freq) {
   return Math.round(total * 100) / 100;
 }
 
+// ✅ Justificaciones
+function normEstado(v) {
+  return String(v || "NO")
+    .trim()
+    .toUpperCase();
+}
+
+// Acepta APROBADA o APROBADO por si algún lado lo guarda distinto
+function esAprobadaJust(v) {
+  const s = normEstado(v);
+  return s === "APROBADA" || s === "APROBADO";
+}
+
 // ==========================
 // Controller
 // ==========================
@@ -240,7 +253,7 @@ async function getReporteAsistenciaExcel(req, res) {
       return res.status(400).json({ message: "usuario_id debe ser numérico" });
     }
 
-    // ✅ 0) Condición previa: no permitir reporte si hay justificaciones pendientes
+    // ✅ 0) No permitir reporte si hay justificaciones pendientes
     const pendientes = await selectPendientesJustificaciones({
       desde: range.fechaDesde,
       hasta: range.fechaHasta,
@@ -255,14 +268,14 @@ async function getReporteAsistenciaExcel(req, res) {
       });
     }
 
-    // 1) Datos crudos (rango del mes)
+    // 1) Datos crudos
     const asistenciaCruda = await getAsistenciaCruda({
       usuarioIds: [uid],
       fechaDesde: range.fechaDesde,
       fechaHasta: range.fechaHasta,
     });
 
-    // 2) Base del usuario (preferimos sisusuarios; fallback a asistenciaCruda)
+    // 2) Base del usuario
     let nombreBase = "";
     let cedulaBase = "";
 
@@ -281,7 +294,6 @@ async function getReporteAsistenciaExcel(req, res) {
       nombreBase = userRows[0].nombre_completo || "";
       cedulaBase = userRows[0].cedula || "";
     } else if (asistenciaCruda && asistenciaCruda.length > 0) {
-      // fallback (por si tu query cruda ya trae nombre/cedula)
       nombreBase = asistenciaCruda[0].nombre_completo || "";
       cedulaBase = asistenciaCruda[0].cedula || "";
     }
@@ -290,7 +302,7 @@ async function getReporteAsistenciaExcel(req, res) {
     const rowsPorFecha = new Map();
     for (const row of asistenciaCruda) rowsPorFecha.set(row.fecha, row);
 
-    // 4) Construir filas del reporte (todo el mes)
+    // 4) Filas del reporte (todo el mes)
     const filasReporte = [];
 
     const desdeDate = new Date(`${range.fechaDesde}T00:00:00-05:00`);
@@ -310,13 +322,29 @@ async function getReporteAsistenciaExcel(req, res) {
 
       if (row) {
         const minutos_trabajados = calcularMinutosTrabajados(row);
-        const minutos_atrasados = calcularMinutosAtraso(row);
-        const minutos_salida_temprana = calcularMinutosSalidaTemprana(row);
+
+        // ✅ minutos “reales”
+        const minutos_atrasados_real = calcularMinutosAtraso(row);
+        const minutos_salida_temprana_real = calcularMinutosSalidaTemprana(row);
+
+        // ✅ estados de justificación (si tu query los trae)
+        const justAtrasoEstado = normEstado(row.just_atraso_estado);
+        const justSalidaEstado = normEstado(row.just_salida_estado);
+
+        // ✅ PARA MULTA:
+        // si está APROBADA => NO cuenta (0 min) y NO incrementa frecuencia
+        const minAtrasoParaMulta = esAprobadaJust(justAtrasoEstado)
+          ? 0
+          : minutos_atrasados_real;
+
+        const minSalidaParaMulta = esAprobadaJust(justSalidaEstado)
+          ? 0
+          : minutos_salida_temprana_real;
 
         const multa = calcularMultaDia(
           {
-            minAtraso: minutos_atrasados,
-            minSalidaTemprana: minutos_salida_temprana,
+            minAtraso: minAtrasoParaMulta,
+            minSalidaTemprana: minSalidaParaMulta,
           },
           freq
         );
@@ -333,8 +361,14 @@ async function getReporteAsistenciaExcel(req, res) {
           hora_entrada_2: toHHMM(row.hora_entrada_2),
           hora_salida_2: toHHMM(row.hora_salida_2),
 
-          minutos_atrasados,
-          minutos_salida_temprana,
+          // ✅ Transparencia: mostramos minutos reales
+          minutos_atrasados: minutos_atrasados_real,
+          minutos_salida_temprana: minutos_salida_temprana_real,
+
+          // ✅ y mostramos el estado de autorización
+          just_atraso_estado: justAtrasoEstado,
+          just_salida_estado: justSalidaEstado,
+
           minutos_trabajados,
 
           multa,
@@ -355,6 +389,10 @@ async function getReporteAsistenciaExcel(req, res) {
 
           minutos_atrasados: 0,
           minutos_salida_temprana: 0,
+
+          just_atraso_estado: "NO",
+          just_salida_estado: "NO",
+
           minutos_trabajados: 0,
 
           multa: 0,
@@ -382,18 +420,21 @@ async function getReporteAsistenciaExcel(req, res) {
       { header: "Salida\n2", key: "hora_salida_2", width: 10 },
 
       { header: "Min\natraso", key: "minutos_atrasados", width: 10 },
+      { header: "Just\natraso", key: "just_atraso_estado", width: 10 },
+
       {
         header: "Min.\nsalida temprana",
         key: "minutos_salida_temprana",
         width: 14,
       },
+      { header: "Just\nsalida", key: "just_salida_estado", width: 10 },
+
       { header: "Minutos\ntrabajados", key: "minutos_trabajados", width: 14 },
 
       { header: "Multas\n($)", key: "multa", width: 10 },
       { header: "Observación", key: "observacion", width: 45 },
     ];
 
-    // data (header en fila 1, data desde fila 2)
     worksheet.addRows(filasReporte);
 
     // ====== Cabecera superior (4 filas arriba) ======
@@ -414,10 +455,8 @@ async function getReporteAsistenciaExcel(req, res) {
     ];
     const rowBlank = [...Array(totalCols).fill("")];
 
-    // Inserta 4 filas al inicio (mueve header original a fila 5)
     worksheet.spliceRows(1, 0, rowTitulo, rowNombre, rowCedula, rowBlank);
 
-    // Merge title rows
     worksheet.mergeCells(`A1:${lastCol}1`);
     worksheet.mergeCells(`A2:${lastCol}2`);
     worksheet.mergeCells(`A3:${lastCol}3`);
@@ -436,7 +475,6 @@ async function getReporteAsistenciaExcel(req, res) {
     worksheet.getRow(2).height = 18;
     worksheet.getRow(3).height = 18;
 
-    // Header row (después del splice)
     const headerRowIndex = 5;
     const hdr = worksheet.getRow(headerRowIndex);
     hdr.height = 30;
@@ -447,23 +485,20 @@ async function getReporteAsistenciaExcel(req, res) {
       wrapText: true,
     };
 
-    // Congelar: 4 filas de título + encabezados (fila 5)
     worksheet.views = [{ state: "frozen", ySplit: 5 }];
 
-    // Formato moneda para columna multas (incluye filas de datos + total)
+    // Formato moneda para columna multas
     const multaColIndex =
       worksheet.columns.findIndex((c) => c.key === "multa") + 1;
     if (multaColIndex > 0) {
       worksheet.getColumn(multaColIndex).numFmt = '"$"#,##0.00';
     }
 
-    // ====== Total Multas (autosuma segura) ======
+    // ====== Total Multas ======
     const dataStartRow = headerRowIndex + 1; // 6
     const dataEndRow = dataStartRow + filasReporte.length - 1;
-
     const multaColLetter = excelColName(multaColIndex);
 
-    // Agregamos fila al final y ponemos fórmula válida (SUM en inglés, comas)
     const totalRow = worksheet.addRow([]);
     totalRow.getCell(1).value = "TOTAL MULTAS";
     totalRow.getCell(1).font = { bold: true };
@@ -475,7 +510,6 @@ async function getReporteAsistenciaExcel(req, res) {
     totalRow.font = { bold: true };
     totalRow.alignment = { vertical: "middle" };
 
-    // Nombre del archivo
     const fileName = buildFileName(mes, nombreBase, uid);
 
     res.setHeader(
