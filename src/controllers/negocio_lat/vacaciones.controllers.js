@@ -488,6 +488,20 @@ const fechaCorte = toYMD(config.fecha_corte);
     const fechas = listYMDInRange(fecha_desde, fecha_hasta);
     const backups = [];
 
+
+
+    // 1) si el front la manda, úsala
+const sucursalBody = String(req.body?.sucursal || "").trim() || null;
+
+// 2) si no, intenta inferirla por turnos previos del trabajador (o del jefe como fallback)
+const sucursalInferida =
+  sucursalBody ||
+  (await Vac.getSucursalRecienteFromTurnos(conn, usuarioId)) ||
+  (await Vac.getSucursalRecienteFromTurnos(conn, Number(req.user.id))) ||
+  null;
+
+
+
     for (const f of fechas) {
       const t = mapTurnos.get(f);
       if (t) {
@@ -504,11 +518,15 @@ const fechaCorte = toYMD(config.fecha_corte);
           tipoDia: "VACACIONES",
         });
       } else {
-        const turnoId = await Vac.insertTurnoVacacion(conn, {
-          usuarioId,
-          fecha: f,
-          sucursal: null,
-        });
+        const suc = trabajador?.sucursal_nombre || trabajador?.sucursal_codigo || null;
+
+const turnoId = await Vac.insertTurnoVacacion(conn, {
+  usuarioId,
+  fecha: f,
+  sucursal: sucursalInferida,
+});
+
+
         backups.push({
           vacacion_id: asignacionId,
           usuario_id: usuarioId,

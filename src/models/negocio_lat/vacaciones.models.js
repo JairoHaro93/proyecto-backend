@@ -250,7 +250,27 @@ async function updateTurnoTipoDia(conn, { turnoId, tipoDia }) {
   );
 }
 
+async function inferSucursalUsuario(conn, usuarioId, fecha) {
+  const [rows] = await conn.query(
+    `
+    SELECT sucursal
+    FROM neg_t_turnos_diarios
+    WHERE usuario_id = ?
+      AND sucursal IS NOT NULL AND sucursal <> ''
+      AND fecha <= ?
+    ORDER BY fecha DESC
+    LIMIT 1
+    `,
+    [usuarioId, fecha]
+  );
+  return rows?.[0]?.sucursal || null;
+}
+
 async function insertTurnoVacacion(conn, { usuarioId, fecha, sucursal = null }) {
+  if (!sucursal) {
+    sucursal = await inferSucursalUsuario(conn, usuarioId, fecha);
+  }
+
   const [res] = await conn.query(
     `
     INSERT INTO neg_t_turnos_diarios (
@@ -270,8 +290,10 @@ async function insertTurnoVacacion(conn, { usuarioId, fecha, sucursal = null }) 
     `,
     [usuarioId, fecha, sucursal]
   );
+
   return res.insertId;
 }
+
 
 async function getTurnoById(conn, turnoId) {
   const [rows] = await conn.query(
@@ -336,6 +358,26 @@ async function getActaFileIdByAsignacion(asignacionId) {
   return rows?.[0]?.file_id || null;
 }
 
+
+async function getSucursalRecienteFromTurnos(conn, usuarioId) {
+  const [rows] = await conn.query(
+    `
+    SELECT sucursal
+    FROM neg_t_turnos_diarios
+    WHERE usuario_id = ?
+      AND sucursal IS NOT NULL
+      AND sucursal <> ''
+    ORDER BY fecha DESC
+    LIMIT 1
+    `,
+    [usuarioId]
+  );
+
+  return rows?.[0]?.sucursal || null;
+}
+
+
+
 module.exports = {
   getConfig,
   getUsuarioBaseById,
@@ -362,4 +404,8 @@ module.exports = {
   insertFile,
   insertFileLink,
   getActaFileIdByAsignacion,
+
+  getSucursalRecienteFromTurnos
+
+  
 };

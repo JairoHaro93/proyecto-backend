@@ -101,10 +101,11 @@ async function seleccionarTurnosDiarios({
     WHERE 1=1
   `;
 
-  if (sucursal) {
-    sql += " AND t.sucursal = ?";
-    params.push(sucursal);
-  }
+ if (sucursal) {
+  sql += " AND (t.sucursal = ? OR (t.sucursal IS NULL AND t.tipo_dia = 'VACACIONES'))";
+  params.push(sucursal);
+}
+
   if (fechaDesde) {
     sql += " AND t.fecha >= ?";
     params.push(fechaDesde);
