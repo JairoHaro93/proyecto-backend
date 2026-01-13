@@ -13,6 +13,33 @@ function ymdOk(s) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.trim());
 }
 
+function toYMD(value) {
+  if (!value) return null;
+
+  // ya viene bien
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim();
+  }
+
+  // si viene como Date desde MySQL, usar UTC para evitar corrimiento por zona horaria
+  if (value instanceof Date) {
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(value.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  // fallback (por si viene raro)
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+
+
 function parseECDate(ymd) {
   // fija -05:00 para evitar corrimientos
   return new Date(`${ymd}T00:00:00-05:00`);
@@ -109,7 +136,8 @@ async function computeSaldo(usuarioId, refDate = new Date()) {
   const config = await Vac.getConfig();
   if (!config) throw new Error("vac_config no configurado");
 
-  const fechaCorte = String(config.fecha_corte); // YYYY-MM-DD
+const fechaCorte = toYMD(config.fecha_corte);
+
   const user = await Vac.getUsuarioBaseById(usuarioId);
   if (!user) return null;
 
@@ -289,7 +317,8 @@ async function previewAsignacion(req, res) {
     }
 
     const config = await Vac.getConfig();
-    const fechaCorte = String(config.fecha_corte);
+   const fechaCorte = toYMD(config.fecha_corte);
+
 
     if (fecha_desde < fechaCorte) {
       return res
@@ -372,7 +401,8 @@ async function createAsignacion(req, res) {
     }
 
     const config = await Vac.getConfig();
-    const fechaCorte = String(config.fecha_corte);
+const fechaCorte = toYMD(config.fecha_corte);
+
 
     if (fecha_desde < fechaCorte) {
       return res

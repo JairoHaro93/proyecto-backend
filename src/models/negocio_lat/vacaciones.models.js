@@ -250,14 +250,23 @@ async function updateTurnoTipoDia(conn, { turnoId, tipoDia }) {
   );
 }
 
-async function insertTurnoVacacion(
-  conn,
-  { usuarioId, fecha, sucursal = null }
-) {
+async function insertTurnoVacacion(conn, { usuarioId, fecha, sucursal = null }) {
   const [res] = await conn.query(
     `
-    INSERT INTO neg_t_turnos_diarios (usuario_id, fecha, sucursal, tipo_dia)
-    VALUES (?, ?, ?, 'VACACIONES')
+    INSERT INTO neg_t_turnos_diarios (
+      usuario_id, fecha, sucursal,
+      hora_entrada_prog, hora_salida_prog,
+      min_toler_atraso, min_toler_salida,
+      estado_asistencia,
+      tipo_dia
+    )
+    VALUES (
+      ?, ?, ?,
+      '00:00:00', '00:00:00',
+      0, 0,
+      'SIN_MARCA',
+      'VACACIONES'
+    )
     `,
     [usuarioId, fecha, sucursal]
   );
