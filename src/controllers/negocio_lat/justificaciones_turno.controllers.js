@@ -104,36 +104,53 @@ const postSolicitarSalida = async (req, res, next) => {
   }
 };
 
-// ==========================
-// Resolver (jefe) — con minutos + DEBITO en kardex (si APROBADA)
-// ==========================
+// controllers/negocio_lat/justificaciones_turno.controllers.js
+
 const putResolverAtraso = async (req, res, next) => {
   try {
     const jefeId = Number(getUserId(req));
     const turnoId = Number(req.params.id);
     const { estado, minutos } = req.body || {};
 
-    if (!jefeId) {
-      return res.status(401).json({ message: "No autenticado." });
-    }
-    if (!turnoId) {
+    if (!jefeId) return res.status(401).json({ message: "No autenticado." });
+    if (!turnoId)
       return res.status(400).json({ message: "ID de turno inválido." });
-    }
 
-    if (!["APROBADA", "RECHAZADA"].includes(String(estado).toUpperCase())) {
+    const estadoUp = String(estado || "")
+      .toUpperCase()
+      .trim();
+    if (!["APROBADA", "RECHAZADA"].includes(estadoUp)) {
       return res
         .status(400)
         .json({ message: "Estado inválido. Use APROBADA o RECHAZADA." });
     }
 
+    // ✅ minutos opcionales: si no viene, queda null
+    const hasMinutos =
+      minutos !== undefined &&
+      minutos !== null &&
+      String(minutos).trim() !== "";
+
     let minParsed = null;
 
-    if (String(estado).toUpperCase() === "APROBADA") {
+    if (estadoUp === "APROBADA" && hasMinutos) {
       minParsed = parseMinutos(minutos);
-      if (!validarMinutos(minParsed)) {
+
+      // si envían 0 lo tratamos como "sin movimiento" => null
+      if (minParsed === 0) minParsed = null;
+
+      // 🚨 aquí falta validar cuando vino algo pero no se pudo parsear
+      if (minParsed === null && String(minutos).trim() !== "0") {
         return res.status(400).json({
           message:
-            "Minutos inválidos. En APROBADA debe enviar minutos > 0 (ej: 15 o 01:30).",
+            "Minutos inválidos. En APROBADA omita minutos (sin penalización) o envíe un número/HH:MM válido (ej: 15 o 01:30).",
+        });
+      }
+
+      if (minParsed !== null && !validarMinutos(minParsed)) {
+        return res.status(400).json({
+          message:
+            "Minutos inválidos. Puede omitir minutos o enviar minutos > 0 (ej: 15 o 01:30).",
         });
       }
     }
@@ -141,18 +158,17 @@ const putResolverAtraso = async (req, res, next) => {
     await resolverJustificacionTurno(
       turnoId,
       "atraso",
-      String(estado).toUpperCase(),
-      minParsed,
+      estadoUp,
+      minParsed, // ✅ puede ser null
       jefeId
     );
 
     return res.json({
       ok: true,
-      message: `✅ Justificación de atraso ${String(estado).toUpperCase()}.`,
+      message: `✅ Justificación de atraso ${estadoUp}.`,
       minutos: minParsed,
     });
   } catch (e) {
-    // si tu modelo lanza errores de negocio, aquí puedes mapear a 409
     if (String(e?.message || "").includes("PENDIENTE")) {
       return res.status(409).json({ message: e.message });
     }
@@ -166,27 +182,45 @@ const putResolverSalida = async (req, res, next) => {
     const turnoId = Number(req.params.id);
     const { estado, minutos } = req.body || {};
 
-    if (!jefeId) {
-      return res.status(401).json({ message: "No autenticado." });
-    }
-    if (!turnoId) {
+    if (!jefeId) return res.status(401).json({ message: "No autenticado." });
+    if (!turnoId)
       return res.status(400).json({ message: "ID de turno inválido." });
-    }
 
-    if (!["APROBADA", "RECHAZADA"].includes(String(estado).toUpperCase())) {
+    const estadoUp = String(estado || "")
+      .toUpperCase()
+      .trim();
+    if (!["APROBADA", "RECHAZADA"].includes(estadoUp)) {
       return res
         .status(400)
         .json({ message: "Estado inválido. Use APROBADA o RECHAZADA." });
     }
 
+    // ✅ minutos opcionales
+    const hasMinutos =
+      minutos !== undefined &&
+      minutos !== null &&
+      String(minutos).trim() !== "";
+
     let minParsed = null;
 
-    if (String(estado).toUpperCase() === "APROBADA") {
+    if (estadoUp === "APROBADA" && hasMinutos) {
       minParsed = parseMinutos(minutos);
-      if (!validarMinutos(minParsed)) {
+
+      // si envían 0 lo tratamos como "sin movimiento" => null
+      if (minParsed === 0) minParsed = null;
+
+      // 🚨 aquí falta validar cuando vino algo pero no se pudo parsear
+      if (minParsed === null && String(minutos).trim() !== "0") {
         return res.status(400).json({
           message:
-            "Minutos inválidos. En APROBADA debe enviar minutos > 0 (ej: 10 o 00:45).",
+            "Minutos inválidos. En APROBADA omita minutos (sin penalización) o envíe un número/HH:MM válido (ej: 15 o 01:30).",
+        });
+      }
+
+      if (minParsed !== null && !validarMinutos(minParsed)) {
+        return res.status(400).json({
+          message:
+            "Minutos inválidos. Puede omitir minutos o enviar minutos > 0 (ej: 15 o 01:30).",
         });
       }
     }
@@ -194,14 +228,14 @@ const putResolverSalida = async (req, res, next) => {
     await resolverJustificacionTurno(
       turnoId,
       "salida",
-      String(estado).toUpperCase(),
-      minParsed,
+      estadoUp,
+      minParsed, // ✅ puede ser null
       jefeId
     );
 
     return res.json({
       ok: true,
-      message: `✅ Justificación de salida ${String(estado).toUpperCase()}.`,
+      message: `✅ Justificación de salida ${estadoUp}.`,
       minutos: minParsed,
     });
   } catch (e) {

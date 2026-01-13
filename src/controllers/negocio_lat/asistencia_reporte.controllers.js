@@ -331,6 +331,28 @@ async function getReporteAsistenciaExcel(req, res) {
         const justAtrasoEstado = normEstado(row.just_atraso_estado);
         const justSalidaEstado = normEstado(row.just_salida_estado);
 
+        // ✅ Estado para mostrar en Excel
+        const estadoBase = String(row.estado_asistencia || "")
+          .toUpperCase()
+          .trim();
+
+        const justAprobAtraso =
+          esAprobadaJust(justAtrasoEstado) && minutos_atrasados_real > 0;
+
+        const justAprobSalida =
+          esAprobadaJust(justSalidaEstado) && minutos_salida_temprana_real > 0;
+
+        // Solo “convertimos” si el turno estaba como ATRASO o INCOMPLETO
+        // y la justificación aprobada aplica a ese problema.
+        let estadoReporte = estadoBase;
+
+        if (
+          (estadoBase === "ATRASO" || estadoBase === "INCOMPLETO") &&
+          (justAprobAtraso || justAprobSalida)
+        ) {
+          estadoReporte = "COMPLETO (JUST)";
+        }
+
         // ✅ PARA MULTA:
         // si está APROBADA => NO cuenta (0 min) y NO incrementa frecuencia
         const minAtrasoParaMulta = esAprobadaJust(justAtrasoEstado)
@@ -351,7 +373,7 @@ async function getReporteAsistenciaExcel(req, res) {
 
         filasReporte.push({
           fecha_dia,
-          estado_asistencia: row.estado_asistencia || "INCOMPLETO",
+          estado_asistencia: estadoReporte || "INCOMPLETO",
 
           hora_entrada_prog: toHHMM(row.hora_entrada_prog),
           hora_salida_prog: toHHMM(row.hora_salida_prog),

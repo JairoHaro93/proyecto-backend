@@ -101,10 +101,11 @@ async function seleccionarTurnosDiarios({
     WHERE 1=1
   `;
 
- if (sucursal) {
-  sql += " AND (t.sucursal = ? OR (t.sucursal IS NULL AND t.tipo_dia = 'VACACIONES'))";
-  params.push(sucursal);
-}
+  if (sucursal) {
+    sql +=
+      " AND (t.sucursal = ? OR (t.sucursal IS NULL AND t.tipo_dia = 'VACACIONES'))";
+    params.push(sucursal);
+  }
 
   if (fechaDesde) {
     sql += " AND t.fecha >= ?";
@@ -799,136 +800,72 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   };
 }
 
-// ===============================
-//   RESOLVER JUSTIFICACIÓN + MOVIMIENTO (DEBITO)
-//   - APRUEBA: crea DEBITO en neg_t_horas_movimientos
-//   - RECHAZA: solo actualiza el turno
-//   ✅ Ahora permite saldo NEGATIVO (deuda sin tope)
-// ===============================
 async function resolverJustificacionTurno(
   turnoId,
-  key,
+  tipo,
   estado,
   minutos,
   jefeId
 ) {
-  if (!["atraso", "salida"].includes(key)) throw new Error("key inválida");
+  const tipoKey = String(tipo).toLowerCase() === "salida" ? "salida" : "atraso";
+  const estadoUp = String(estado).toUpperCase();
 
-  const est = String(estado || "")
-    .toUpperCase()
-    .trim();
-  if (!["APROBADA", "RECHAZADA"].includes(est))
-    throw new Error("Estado inválido. Usa APROBADA o RECHAZADA.");
+  const minsRaw = minutos == null ? null : Number(minutos);
+  const mins = minsRaw === 0 ? null : minsRaw; // ✅ 0 => NULL
+
+  const colEstado =
+    tipoKey === "atraso" ? "just_atraso_estado" : "just_salida_estado";
+  const colMin =
+    tipoKey === "atraso" ? "just_atraso_minutos" : "just_salida_minutos";
+  const colJefe =
+    tipoKey === "atraso" ? "just_atraso_jefe_id" : "just_salida_jefe_id";
 
   const conn = await poolmysql.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 1) Bloquea turno
     const [rows] = await conn.query(
-      `
-      SELECT
-        id, usuario_id, fecha,
-        just_atraso_estado, just_atraso_motivo,
-        just_salida_estado, just_salida_motivo
-      FROM neg_t_turnos_diarios
-      WHERE id = ?
-      FOR UPDATE
-      `,
+      `SELECT id, usuario_id, ${colEstado} AS st
+       FROM neg_t_turnos_diarios
+       WHERE id = ? FOR UPDATE`,
       [turnoId]
     );
-    if (!rows.length) throw new Error("Turno no encontrado");
-    const turno = rows[0];
-
-    const colEstado =
-      key === "atraso" ? "just_atraso_estado" : "just_salida_estado";
-    const colMotivo =
-      key === "atraso" ? "just_atraso_motivo" : "just_salida_motivo";
-    const colMin =
-      key === "atraso" ? "just_atraso_minutos" : "just_salida_minutos";
-    const colJefe =
-      key === "atraso" ? "just_atraso_jefe_id" : "just_salida_jefe_id";
-
-    const prev = String(turno[colEstado] || "NO")
-      .toUpperCase()
-      .trim();
-    if (prev !== "PENDIENTE") {
-      throw new Error(
-        `No se puede resolver: la justificación está en estado ${prev}`
-      );
+    if (!rows.length) throw new Error("Turno no encontrado.");
+    if (String(rows[0].st || "").toUpperCase() !== "PENDIENTE") {
+      throw new Error("La justificación no está PENDIENTE.");
     }
 
-    // 2) Minutos obligatorios si aprueba (y >0 por CHECK minutos > 0)
-    let minFinal = null;
-    if (est === "APROBADA") {
-      minFinal = parseMinutos(minutos);
-      if (!Number.isInteger(minFinal) || minFinal < 1 || minFinal > 600) {
-        throw new Error(
-          "Minutos inválidos: envía minutos >=1 (ej: 15 o 01:30) y <= 600."
-        );
-      }
-    }
+    const usuarioId = rows[0].usuario_id;
 
-    // 3) Actualiza turno
     await conn.query(
       `
       UPDATE neg_t_turnos_diarios
-      SET
-        ${colEstado} = ?,
-        ${colMin}    = ?,
-        ${colJefe}   = ?,
-        updated_at = NOW()
+      SET ${colEstado} = ?,
+          ${colMin}    = ?,
+          ${colJefe}   = ?,
+          updated_at   = NOW()
       WHERE id = ?
-      LIMIT 1
       `,
-      [est, minFinal, jefeId, turnoId]
+      [estadoUp, mins, jefeId, turnoId]
     );
 
-    // 4) Si APROBADA => crea DEBITO en kardex
-    if (est === "APROBADA") {
-      const motivo = String(turno[colMotivo] || "").slice(0, 255);
-
-      // Bloquea usuario (serializa operaciones)
-      await conn.query(`SELECT id FROM sisusuarios WHERE id = ? FOR UPDATE`, [
-        turno.usuario_id,
-      ]);
-
-      // ✅ ANTES: aquí verificabas saldo y bloqueabas si no alcanzaba
-      // ✅ AHORA: NO se valida saldo, puede quedar negativo (deuda sin tope)
-
-      const movConcepto = key === "atraso" ? "JUST_ATRASO" : "JUST_SALIDA";
-
-      // Upsert (idempotente por UNIQUE turno_id + mov_tipo + mov_concepto)
+    if (estadoUp === "APROBADA" && mins != null && mins > 0) {
       await conn.query(
         `
         INSERT INTO neg_t_horas_movimientos
-          (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion)
+          (usuario_id, mov_tipo, minutos, estado, origen, referencia_id, created_at)
         VALUES
-          (?, 'DEBITO', ?, ?, ?, ?, 'APROBADO', ?, ?)
-        ON DUPLICATE KEY UPDATE
-          minutos = VALUES(minutos),
-          estado  = VALUES(estado),
-          hora_acum_aprobado_por = VALUES(hora_acum_aprobado_por),
-          observacion = VALUES(observacion),
-          updated_at = NOW()
+          (?, 'DEBITO', ?, 'APROBADO', ?, ?, NOW())
         `,
-        [
-          turno.usuario_id,
-          movConcepto,
-          minFinal,
-          turno.fecha,
-          turno.id,
-          jefeId,
-          motivo,
-        ]
+        [usuarioId, mins, `JUST_${tipoKey.toUpperCase()}`, turnoId]
       );
     }
 
     await conn.commit();
-    return { ok: true };
-  } catch (err) {
+    return true;
+  } catch (e) {
     await conn.rollback();
-    throw err;
+    throw e;
   } finally {
     conn.release();
   }
