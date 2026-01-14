@@ -393,8 +393,8 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
       });
 
     // Meta: 3 filas (arriba derecha)
-    const meta1 = String(data?.meta?.version || "Versión-01");
-    const meta2 = String(data?.meta?.codigo || "Ver01-FO-TH-04A");
+    const meta1 = String(data?.meta?.version || "Versión-02");
+    const meta2 = String(data?.meta?.codigo || "Ver02-FO-TH-03A");
     const meta3 = String(data?.meta?.pagina || "Página 1 de 1");
 
     const r1 = headerH / 3;
@@ -1029,8 +1029,8 @@ async function createAsignacion(req, res) {
       logoAbsPath,
       data: {
         meta: {
-          version: "Versión-01",
-          codigo: "Ver01-FO-TH-04A",
+          version: "Versión-02",
+          codigo: "Ver02-FO-TH-03A",
           pagina: "Página 1 de 1",
         },
 
