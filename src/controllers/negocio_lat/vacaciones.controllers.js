@@ -1017,10 +1017,17 @@ async function createAsignacion(req, res) {
     const rutaRelativa = `${relDir}/${fileName}`;
     absPdfPath = path.join(docsRoot, rutaRelativa);
 
-    // Logo (si no existe, se queda null y el PDF sale igual)
-    const logoAbsPath = process.env.RUTA_LOGO_REDECOM
-      ? path.resolve(process.env.RUTA_LOGO_REDECOM || "src/assets/logo.png")
-      : null;
+    // Logo: usa ENV si existe, si no, usa el logo del proyecto (ruta real por __dirname)
+    let logoAbsPath = process.env.RUTA_LOGO_REDECOM
+      ? path.resolve(process.env.RUTA_LOGO_REDECOM)
+      : path.resolve(__dirname, "../../assets/logo.png"); // <- desde src/controllers/negocio_lat
+
+    if (!fs.existsSync(logoAbsPath)) {
+      console.warn("⚠️ Logo NO encontrado:", logoAbsPath);
+      logoAbsPath = null; // el PDF se genera igual, solo sin logo
+    } else {
+      console.log("✅ Logo encontrado:", logoAbsPath);
+    }
 
     const tiempoOrg = tiempoEnOrganizacion(trabajador?.fecha_cont, stamp);
 
