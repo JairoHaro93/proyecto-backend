@@ -38,12 +38,11 @@ function tiempoEnOrganizacion(fechaContYMD, refDate = new Date()) {
   const yLabel = years === 1 ? "año" : "años";
   const mLabel = remMonths === 1 ? "mes" : "meses";
 
-  if (years > 0 && remMonths > 0) return `${years} ${yLabel} ${remMonths} ${mLabel}`;
+  if (years > 0 && remMonths > 0)
+    return `${years} ${yLabel} ${remMonths} ${mLabel}`;
   if (years > 0) return `${years} ${yLabel}`;
   return `${remMonths} ${mLabel}`;
 }
-
-
 
 function toYMD(value) {
   if (!value) return null;
@@ -254,7 +253,10 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
     ) => {
       let s = size;
       doc.font(font);
-      while (s > min && doc.widthOfString(String(text || ""), { size: s }) > maxW)
+      while (
+        s > min &&
+        doc.widthOfString(String(text || ""), { size: s }) > maxW
+      )
         s -= 0.25;
       return s;
     };
@@ -284,7 +286,10 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
     };
 
     const checkbox = (x, y, label, checked = false) => {
-      doc.font("Helvetica").fontSize(7.5).text(label, x, y, { lineBreak: false });
+      doc
+        .font("Helvetica")
+        .fontSize(7.5)
+        .text(label, x, y, { lineBreak: false });
       const lw = doc.widthOfString(label, { size: 7.5 });
       const bx = x + lw + mm(2);
       const by = y - mm(2);
@@ -324,7 +329,7 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
     );
 
     const col = data.colaborador || {};
-    
+
     const nombres = String(col.nombres_completos || "");
     const fechaIngreso = String(col.fecha_ingreso || "");
     const tiempoOrg = String(col.tiempo_organizacion || "");
@@ -387,13 +392,24 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
         align: "center",
       });
 
-    // Meta: 2 filas
-    hline(xMeta, y + headerH / 2, M + (W - 2 * M));
+    // Meta: 3 filas (arriba derecha)
+    const meta1 = String(data?.meta?.version || "Versión-01");
+    const meta2 = String(data?.meta?.codigo || "Ver01-FO-TH-04A");
+    const meta3 = String(data?.meta?.pagina || "Página 1 de 1");
+
+    const r1 = headerH / 3;
+    const r2 = (headerH * 2) / 3;
+
+    // líneas que dividen las 3 filas
+    hline(xMeta, y + r1, M + (W - 2 * M));
+    hline(xMeta, y + r2, M + (W - 2 * M));
+
     doc
       .font("Helvetica")
-      .fontSize(7.5)
-      .text("Ver - 01", xMeta, y + mm(2.2), { width: colMeta, align: "center" })
-      .text("Pag. 1 de 1", xMeta, y + headerH / 2 + mm(2.2), {
+      .fontSize(7.3)
+      .text(meta1, xMeta, y + mm(1.8), { width: colMeta, align: "center" })
+      .text(meta2, xMeta, y + r1 + mm(1.6), { width: colMeta, align: "center" })
+      .text(meta3, xMeta, y + r2 + mm(1.6), {
         width: colMeta,
         align: "center",
       });
@@ -435,10 +451,16 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
       y += rowH;
     };
 
-    draw40_60("Fecha de Elaboración:", fechaElab, "Nombres Completos:", nombres, {
-      leftLabelW: mm(30),
-      rightLabelW: mm(34),
-    });
+    draw40_60(
+      "Fecha de Elaboración:",
+      fechaElab,
+      "Nombres Completos:",
+      nombres,
+      {
+        leftLabelW: mm(30),
+        rightLabelW: mm(34),
+      }
+    );
 
     draw40_60(
       "Fecha de Ingreso a la Compañía:",
@@ -472,17 +494,26 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
     vline(x2, y, y + rangeH);
     vline(x3, y, y + rangeH);
 
-    doc.font("Helvetica-Bold").fontSize(8).text("DESDE:", x1 + mm(2), y + mm(2));
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("DESDE:", x1 + mm(2), y + mm(2));
     drawFit(desde, x1 + mm(2), y + mm(7), midW - mm(4), { size: 8.5 });
 
-    doc.font("Helvetica-Bold").fontSize(8).text("HASTA:", x2 + mm(2), y + mm(2));
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("HASTA:", x2 + mm(2), y + mm(2));
     drawFit(hasta, x2 + mm(2), y + mm(7), midW - mm(4), { size: 8.5 });
 
     doc
       .font("Helvetica-Bold")
       .fontSize(8)
       .text("No. solicitud:", x3 + mm(2), y + mm(2));
-    doc.font("Helvetica-Bold").fontSize(9.5).text(noSolicitud, x3 + mm(2), y + mm(7));
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(9.5)
+      .text(noSolicitud, x3 + mm(2), y + mm(7));
 
     y += rangeH + gapY;
 
@@ -506,14 +537,20 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
 
     const saldoRow = (i, label, value) => {
       const top = y + (i - 1) * r;
-      doc.font("Helvetica").fontSize(8).text(label, rx0, top + mm(3), {
-        width: splitVal - rx0,
-        align: "center",
-      });
-      doc.font("Helvetica-Bold").fontSize(9.5).text(String(value), splitVal, top + mm(2.6), {
-        width: rx1 - splitVal,
-        align: "center",
-      });
+      doc
+        .font("Helvetica")
+        .fontSize(8)
+        .text(label, rx0, top + mm(3), {
+          width: splitVal - rx0,
+          align: "center",
+        });
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(9.5)
+        .text(String(value), splitVal, top + mm(2.6), {
+          width: rx1 - splitVal,
+          align: "center",
+        });
     };
 
     saldoRow(1, "Saldo anterior a la solicitud", saldoAnt);
@@ -541,7 +578,10 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
       .text("Nombre de quien le reemplazaría:", rx, y + mm(2));
     hline(rx + mm(56), y + mm(4.2), M + (W - 2 * M) - mm(3));
 
-    doc.font("Helvetica-Bold").fontSize(8).text("Tareas pendientes", rx, y + mm(7));
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("Tareas pendientes", rx, y + mm(7));
     hline(rx + mm(30), y + mm(9.2), M + (W - 2 * M) - mm(3));
 
     y += repH + gapY;
@@ -557,27 +597,33 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
 
     y += obsH + gapY;
 
-// ================= FIRMAS =================
-rect(M, y, W - 2 * M, sigH);
-const mid = M + (W - 2 * M) / 2;
-vline(mid, y, y + sigH);
+    // ================= FIRMAS =================
+    rect(M, y, W - 2 * M, sigH);
+    const mid = M + (W - 2 * M) / 2;
+    vline(mid, y, y + sigH);
 
-// Línea de firma más abajo (más espacio para firmar arriba)
-const lineY = y + sigH - mm(6.2);
-hline(M + mm(10), lineY, mid - mm(10));
-hline(mid + mm(10), lineY, M + (W - 2 * M) - mm(10));
+    // Línea de firma más abajo (más espacio para firmar arriba)
+    const lineY = y + sigH - mm(6.2);
+    hline(M + mm(10), lineY, mid - mm(10));
+    hline(mid + mm(10), lineY, M + (W - 2 * M) - mm(10));
 
-// Texto más pegado al borde inferior
-doc.font("Helvetica").fontSize(8).text("Firma del Colaborador/a", M, y + sigH - mm(3.8), {
-  width: (W - 2 * M) / 2,
-  align: "center",
-});
-doc.font("Helvetica").fontSize(8).text("Firma del jefe/a inmediato/a", mid, y + sigH - mm(3.8), {
-  width: (W - 2 * M) / 2,
-  align: "center",
-});
+    // Texto más pegado al borde inferior
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .text("Firma del Colaborador/a", M, y + sigH - mm(3.8), {
+        width: (W - 2 * M) / 2,
+        align: "center",
+      });
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .text("Firma del jefe/a inmediato/a", mid, y + sigH - mm(3.8), {
+        width: (W - 2 * M) / 2,
+        align: "center",
+      });
 
-y += sigH;
+    y += sigH;
 
     // ================= REGISTRADO =================
     rect(M, y, W - 2 * M, regH);
@@ -599,40 +645,44 @@ y += sigH;
 
     y += regH + gapY;
 
- // ================= FOOTER TALENTO HUMANO =================
-rect(M, y, W - 2 * M, footerH);
-vline(mid, y, y + footerH);
+    // ================= FOOTER TALENTO HUMANO =================
+    rect(M, y, W - 2 * M, footerH);
+    vline(mid, y, y + footerH);
 
-// Línea de firma más abajo (más espacio para firmar arriba)
-const lineY2 = y + footerH - mm(6.5);
-hline(M + mm(10), lineY2, mid - mm(10));
-hline(mid + mm(10), lineY2, M + (W - 2 * M) - mm(10));
+    // Línea de firma más abajo (más espacio para firmar arriba)
+    const lineY2 = y + footerH - mm(6.5);
+    hline(M + mm(10), lineY2, mid - mm(10));
+    hline(mid + mm(10), lineY2, M + (W - 2 * M) - mm(10));
 
-// Texto más pegado al borde inferior
-doc.font("Helvetica").fontSize(8).text("Fecha de registro Talento Humano", M, y + footerH - mm(4.0), {
-  width: (W - 2 * M) / 2,
-  align: "center",
-});
-doc.font("Helvetica").fontSize(8).text("f. Jefe/a Talento Humano", mid, y + footerH - mm(4.0), {
-  width: (W - 2 * M) / 2,
-  align: "center",
-});
-
+    // Texto más pegado al borde inferior
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .text("Fecha de registro Talento Humano", M, y + footerH - mm(4.0), {
+        width: (W - 2 * M) / 2,
+        align: "center",
+      });
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .text("f. Jefe/a Talento Humano", mid, y + footerH - mm(4.0), {
+        width: (W - 2 * M) / 2,
+        align: "center",
+      });
 
     doc.end();
 
     stream.on("finish", resolve);
     stream.on("error", reject);
   });
-
-  
 }
 
 // ---------- Controllers ----------
 async function getVacConfig(req, res) {
   try {
     const config = await Vac.getConfig();
-    if (!config) return res.status(404).json({ message: "vac_config no existe" });
+    if (!config)
+      return res.status(404).json({ message: "vac_config no existe" });
     return res.json(config);
   } catch (e) {
     console.error("❌ getVacConfig:", e);
@@ -678,7 +728,9 @@ async function listAsignaciones(req, res) {
   try {
     const usuarioId = Number(req.query.usuario_id);
     if (Number.isNaN(usuarioId)) {
-      return res.status(400).json({ message: "usuario_id es obligatorio y numérico" });
+      return res
+        .status(400)
+        .json({ message: "usuario_id es obligatorio y numérico" });
     }
 
     const estado = String(req.query.estado || "TODAS").toUpperCase();
@@ -720,7 +772,9 @@ async function previewAsignacion(req, res) {
       });
     }
     if (fecha_desde > fecha_hasta) {
-      return res.status(400).json({ message: "Rango inválido: fecha_desde > fecha_hasta" });
+      return res
+        .status(400)
+        .json({ message: "Rango inválido: fecha_desde > fecha_hasta" });
     }
 
     const dias = daysInclusive(fecha_desde, fecha_hasta);
@@ -735,7 +789,9 @@ async function previewAsignacion(req, res) {
     const tienePermisoDevol = conflictos.filter((x) =>
       ["PERMISO", "DEVOLUCION"].includes(String(x.tipo_dia || ""))
     );
-    const tieneVac = conflictos.filter((x) => String(x.tipo_dia || "") === "VACACIONES");
+    const tieneVac = conflictos.filter(
+      (x) => String(x.tipo_dia || "") === "VACACIONES"
+    );
 
     if (tienePermisoDevol.length) {
       return res.status(409).json({
@@ -778,32 +834,37 @@ async function createAsignacion(req, res) {
   let absPdfPath = null;
 
   try {
-    const { usuario_id, fecha_desde, fecha_hasta, observacion } = req.body || {};
+    const { usuario_id, fecha_desde, fecha_hasta, observacion } =
+      req.body || {};
     const usuarioId = Number(usuario_id);
 
-    if (Number.isNaN(usuarioId))
+    // ========== Validaciones ==========
+    if (Number.isNaN(usuarioId)) {
       return res.status(400).json({ message: "usuario_id inválido" });
+    }
     if (!ymdOk(fecha_desde) || !ymdOk(fecha_hasta)) {
-      return res.status(400).json({
-        message: "fecha_desde/fecha_hasta inválidas (YYYY-MM-DD)",
-      });
+      return res
+        .status(400)
+        .json({ message: "fecha_desde/fecha_hasta inválidas (YYYY-MM-DD)" });
     }
 
     const config = await Vac.getConfig();
     const fechaCorte = toYMD(config.fecha_corte);
 
     if (fecha_desde < fechaCorte) {
-      return res.status(400).json({
-        message: `No permitido antes de fecha_corte (${fechaCorte})`,
-      });
+      return res
+        .status(400)
+        .json({ message: `No permitido antes de fecha_corte (${fechaCorte})` });
     }
     if (fecha_desde > fecha_hasta) {
-      return res.status(400).json({ message: "Rango inválido: fecha_desde > fecha_hasta" });
+      return res
+        .status(400)
+        .json({ message: "Rango inválido: fecha_desde > fecha_hasta" });
     }
 
     const dias = daysInclusive(fecha_desde, fecha_hasta);
 
-    // Conflictos
+    // ========== Conflictos ==========
     const conflictos = await Vac.selectConflictosEnRango(conn, {
       usuarioId,
       desde: fecha_desde,
@@ -813,7 +874,9 @@ async function createAsignacion(req, res) {
     const tienePermisoDevol = conflictos.filter((x) =>
       ["PERMISO", "DEVOLUCION"].includes(String(x.tipo_dia || ""))
     );
-    const tieneVac = conflictos.filter((x) => String(x.tipo_dia || "") === "VACACIONES");
+    const tieneVac = conflictos.filter(
+      (x) => String(x.tipo_dia || "") === "VACACIONES"
+    );
 
     if (tienePermisoDevol.length) {
       return res.status(409).json({
@@ -828,21 +891,40 @@ async function createAsignacion(req, res) {
       });
     }
 
-    // Saldos (antes/después)
+    // ========== Saldos (antes/después) ==========
     const saldoAntes = await computeSaldo(usuarioId, new Date());
-    if (!saldoAntes) return res.status(404).json({ message: "Usuario no existe" });
+    if (!saldoAntes) {
+      return res.status(404).json({ message: "Usuario no existe" });
+    }
 
     const saldoRealDesp = format2(saldoAntes.saldo_real - dias);
     const saldoVisibleDesp = format2(Math.max(0, saldoRealDesp));
 
-    // Datos base
+    // ========== Datos base ==========
     const trabajador = await Vac.getUsuarioBaseById(usuarioId, conn);
     const jefe = await Vac.getUsuarioBaseById(Number(req.user.id), conn);
 
+    if (!trabajador) {
+      return res.status(404).json({ message: "Usuario no existe" });
+    }
+
+    // ========== Transacción ==========
     await conn.beginTransaction();
 
-    // 1) Crear vac_asignaciones
+    // ✅ Consecutivo por año (debe ser atómico / con lock dentro de nextSolicitudConsecutivo)
+    const stamp = new Date();
+    const anioSol = stamp.getFullYear();
+
+    const consec = await Vac.nextSolicitudConsecutivo(conn, anioSol);
+    const noSolicitud = `SV-${anioSol}-${String(consec).padStart(3, "0")}`;
+
+    // 1) Crear vac_asignaciones (IMPORTANTE: tu modelo insertAsignacion debe insertar sol_* si ya los agregaste)
     const asignacionId = await Vac.insertAsignacion(conn, {
+      // <-- si tu tabla ya tiene estos campos, perfecto:
+      sol_anio: anioSol,
+      sol_consecutivo: consec,
+      sol_numero: noSolicitud,
+
       usuario_id: usuarioId,
       jefe_id: Number(req.user.id),
       fecha_desde,
@@ -871,18 +953,19 @@ async function createAsignacion(req, res) {
     const fechas = listYMDInRange(fecha_desde, fecha_hasta);
     const backups = [];
 
-    // 1) si el front la manda, úsala
+    // sucursal: si el front manda, usarla; si no, inferir (o usar la del trabajador)
     const sucursalBody = String(req.body?.sucursal || "").trim() || null;
 
-    // 2) si no, intenta inferirla
     const sucursalInferida =
       sucursalBody ||
+      trabajador?.sucursal_nombre || // si tu query trae sucursal_nombre (JOIN a sis_sucursales)
       (await Vac.getSucursalRecienteFromTurnos(conn, usuarioId)) ||
       (await Vac.getSucursalRecienteFromTurnos(conn, Number(req.user.id))) ||
       null;
 
     for (const f of fechas) {
       const t = mapTurnos.get(f);
+
       if (t) {
         backups.push({
           vacacion_id: asignacionId,
@@ -892,6 +975,7 @@ async function createAsignacion(req, res) {
           turno_existia: 1,
           tipo_dia_anterior: t.tipo_dia || "NORMAL",
         });
+
         await Vac.updateTurnoTipoDia(conn, {
           turnoId: t.id,
           tipoDia: "VACACIONES",
@@ -916,51 +1000,44 @@ async function createAsignacion(req, res) {
 
     await Vac.insertBackupsBatch(conn, backups);
 
-    // 3) Generar PDF + guardar files + file_links
+    // 3) PDF + files + file_links
     const docsRoot = path.resolve(
       process.env.RUTA_DOCS_ROOT || process.env.RUTA_DESTINO || "uploads"
     );
     const relDir = process.env.RUTA_DOCS_VACACIONES || "docs/pdfs/vacaciones";
 
-    const stamp = new Date();
     const y = stamp.getFullYear();
-    const tiempoOrg = tiempoEnOrganizacion(trabajador?.fecha_cont, stamp);
-
     const mo = String(stamp.getMonth() + 1).padStart(2, "0");
     const da = String(stamp.getDate()).padStart(2, "0");
     const hh = String(stamp.getHours()).padStart(2, "0");
     const mi = String(stamp.getMinutes()).padStart(2, "0");
     const ss = String(stamp.getSeconds()).padStart(2, "0");
 
-    const fileName = `acta_vac_${asignacionId}_${y}${mo}${da}_${hh}${mi}${ss}.pdf`;
+    const fileName = `solicitud_vac_${asignacionId}_${y}${mo}${da}_${hh}${mi}${ss}.pdf`;
     const rutaRelativa = `${relDir}/${fileName}`;
-
     absPdfPath = path.join(docsRoot, rutaRelativa);
 
-    // Consecutivo temporal (luego lo conectamos a DB para incremental por año)
-    const noSolicitudTmp = `SV-${y}-${String(asignacionId).padStart(3, "0")}`;
+    // Logo (si no existe, se queda null y el PDF sale igual)
+    const logoAbsPath = process.env.RUTA_LOGO_REDECOM
+      ? path.resolve(process.env.RUTA_LOGO_REDECOM)
+      : null;
 
-    // Logo: por ahora lo dejamos null (cuando quieras lo conectamos)
-  // Logo (ruta absoluta)
-const logoAbsPath = path.resolve(
-  process.env.RUTA_LOGO_REDECOM || "src/assets/logo.png"
-);
-
+    const tiempoOrg = tiempoEnOrganizacion(trabajador?.fecha_cont, stamp);
 
     await pdfWriteSolicitudV19({
       absPath: absPdfPath,
       logoAbsPath,
       data: {
-        no_solicitud: noSolicitudTmp,
+        no_solicitud: noSolicitud,
         fecha_elaboracion: `${y}-${mo}-${da}`,
         fecha_elaboracion_larga: formatFechaLargaEC(`${y}-${mo}-${da}`),
 
         colaborador: {
           nombres_completos: trabajador?.nombre_completo || `ID ${usuarioId}`,
           fecha_ingreso: trabajador?.fecha_cont || "",
-          tiempo_organizacion: tiempoOrg,  
-
-        sucursal: trabajador?.sucursal_nombre || "",  // <-- aquí va COTOPAXI
+          tiempo_organizacion: tiempoOrg,
+          // Aquí debe venir SOLO el nombre: "COTOPAXI"
+          sucursal: trabajador?.sucursal_nombre || sucursalInferida || "",
           cargo: trabajador?.cargo || "",
         },
 
@@ -973,18 +1050,19 @@ const logoAbsPath = path.resolve(
         },
 
         saldo: {
-          // hoy usamos saldo_visible (el que el usuario ve)
+          // usamos saldo_visible (lo que el usuario ve)
           saldo_anterior: Math.floor(Number(saldoAntes.saldo_visible || 0)),
           saldo_posterior: Math.floor(Number(saldoVisibleDesp || 0)),
         },
 
-        // checkboxes manuales por ahora (null => no marcado)
+        // manual por ahora (null => no marcado)
         requiere_reemplazo: null,
         registrado: null,
       },
     });
 
     const stat = fs.statSync(absPdfPath);
+
     const fileId = await Vac.insertFile(conn, {
       ruta_relativa: rutaRelativa,
       mimetype: "application/pdf",
@@ -1006,6 +1084,9 @@ const logoAbsPath = path.resolve(
     return res.status(201).json({
       id: asignacionId,
       estado: "ACTIVA",
+      sol_numero: noSolicitud,
+      sol_anio: anioSol,
+      sol_consecutivo: consec,
       dias_calendario: dias,
       saldos: {
         saldo_real_antes: saldoAntes.saldo_real,
@@ -1020,14 +1101,18 @@ const logoAbsPath = path.resolve(
     });
   } catch (e) {
     console.error("❌ createAsignacion:", e);
+
     try {
       await conn.rollback();
     } catch {}
+
+    // limpiar pdf si alcanzó a crear
     if (absPdfPath && fs.existsSync(absPdfPath)) {
       try {
         fs.unlinkSync(absPdfPath);
       } catch {}
     }
+
     return res.status(500).json({ message: "Error interno", error: String(e) });
   } finally {
     conn.release();
@@ -1038,7 +1123,8 @@ async function anularAsignacion(req, res) {
   const conn = await poolmysql.getConnection();
   try {
     const id = Number(req.params.id);
-    if (Number.isNaN(id)) return res.status(400).json({ message: "id inválido" });
+    if (Number.isNaN(id))
+      return res.status(400).json({ message: "id inválido" });
 
     const motivo = String(req.body?.motivo || "cambio/ajuste");
 
@@ -1113,7 +1199,8 @@ async function anularAsignacion(req, res) {
 async function getActaAsignacion(req, res) {
   try {
     const id = Number(req.params.id);
-    if (Number.isNaN(id)) return res.status(400).json({ message: "id inválido" });
+    if (Number.isNaN(id))
+      return res.status(400).json({ message: "id inválido" });
 
     const asig = await Vac.getAsignacionById(id);
     if (!asig) return res.status(404).json({ message: "Asignación no existe" });
@@ -1122,7 +1209,8 @@ async function getActaAsignacion(req, res) {
     const isJefe = roles.includes("ATurnos") || roles.includes("AHorarios");
     const isOwner = Number(asig.usuario_id) === Number(req.user?.id);
 
-    if (!isJefe && !isOwner) return res.status(403).json({ message: "No autorizado" });
+    if (!isJefe && !isOwner)
+      return res.status(403).json({ message: "No autorizado" });
 
     const fileId = await Vac.getActaFileIdByAsignacion(id);
     if (!fileId) return res.status(404).json({ message: "Acta no encontrada" });

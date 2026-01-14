@@ -38,7 +38,6 @@ async function getUsuarioBaseById(usuarioId, conn = poolmysql) {
   return rows?.[0] || null;
 }
 
-
 // ---------- CONSUMO ----------
 function toYMD(value) {
   if (!value) return null;
@@ -134,12 +133,17 @@ async function insertAsignacion(conn, payload) {
       saldo_real_antes,
       saldo_real_despues,
       saldo_visible_antes,
-      saldo_visible_despues
+      saldo_visible_despues,
+
+      sol_anio,
+      sol_consecutivo,
+      sol_numero
     ) VALUES (
       ?, ?,
       ?, ?,
       ?, 'ACTIVA', ?,
-      ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?
     )
     `,
     [
@@ -156,8 +160,13 @@ async function insertAsignacion(conn, payload) {
       payload.saldo_real_despues,
       payload.saldo_visible_antes,
       payload.saldo_visible_despues,
+
+      payload.sol_anio,
+      payload.sol_consecutivo,
+      payload.sol_numero,
     ]
   );
+
   return res.insertId;
 }
 
@@ -273,7 +282,10 @@ async function inferSucursalUsuario(conn, usuarioId, fecha) {
   return rows?.[0]?.sucursal || null;
 }
 
-async function insertTurnoVacacion(conn, { usuarioId, fecha, sucursal = null }) {
+async function insertTurnoVacacion(
+  conn,
+  { usuarioId, fecha, sucursal = null }
+) {
   if (!sucursal) {
     sucursal = await inferSucursalUsuario(conn, usuarioId, fecha);
   }
@@ -300,7 +312,6 @@ async function insertTurnoVacacion(conn, { usuarioId, fecha, sucursal = null }) 
 
   return res.insertId;
 }
-
 
 async function getTurnoById(conn, turnoId) {
   const [rows] = await conn.query(
@@ -365,7 +376,6 @@ async function getActaFileIdByAsignacion(asignacionId) {
   return rows?.[0]?.file_id || null;
 }
 
-
 async function getSucursalRecienteFromTurnos(conn, usuarioId) {
   const [rows] = await conn.query(
     `
@@ -383,7 +393,21 @@ async function getSucursalRecienteFromTurnos(conn, usuarioId) {
   return rows?.[0]?.sucursal || null;
 }
 
+async function nextSolicitudConsecutivo(conn, anio) {
+  // 1) inserta si no existe el año, o incrementa si ya existe
+  await conn.query(
+    `
+    INSERT INTO vac_solicitud_seq (anio, last_num)
+    VALUES (?, 1)
+    ON DUPLICATE KEY UPDATE last_num = LAST_INSERT_ID(last_num + 1)
+    `,
+    [anio]
+  );
 
+  // 2) devuelve el consecutivo calculado en esta misma conexión
+  const [rows] = await conn.query(`SELECT LAST_INSERT_ID() AS next_num`);
+  return Number(rows?.[0]?.next_num || 1);
+}
 
 module.exports = {
   getConfig,
@@ -412,7 +436,6 @@ module.exports = {
   insertFileLink,
   getActaFileIdByAsignacion,
 
-  getSucursalRecienteFromTurnos
-
-  
+  getSucursalRecienteFromTurnos,
+  nextSolicitudConsecutivo,
 };
