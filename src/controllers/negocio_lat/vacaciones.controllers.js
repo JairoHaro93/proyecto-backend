@@ -1019,7 +1019,7 @@ async function createAsignacion(req, res) {
 
     // Logo (si no existe, se queda null y el PDF sale igual)
     const logoAbsPath = process.env.RUTA_LOGO_REDECOM
-      ? path.resolve(process.env.RUTA_LOGO_REDECOM)
+      ? path.resolve(process.env.RUTA_LOGO_REDECOM || "src/assets/logo.png")
       : null;
 
     const tiempoOrg = tiempoEnOrganizacion(trabajador?.fecha_cont, stamp);
