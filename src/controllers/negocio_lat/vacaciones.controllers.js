@@ -13,6 +13,38 @@ function ymdOk(s) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.trim());
 }
 
+function tiempoEnOrganizacion(fechaContYMD, refDate = new Date()) {
+  if (!fechaContYMD) return "";
+
+  // Usamos tu parseECDate para evitar corrimientos por zona horaria
+  const start = parseECDate(fechaContYMD);
+  const end = new Date(refDate.getTime());
+
+  if (end.getTime() < start.getTime()) return "0 meses";
+
+  // Diferencia en meses (ajustada por día del mes)
+  let months =
+    (end.getFullYear() - start.getFullYear()) * 12 +
+    (end.getMonth() - start.getMonth());
+
+  // Si aún no llega al día del mes de contratación, restamos 1 mes
+  if (end.getDate() < start.getDate()) months -= 1;
+
+  if (months < 0) months = 0;
+
+  const years = Math.floor(months / 12);
+  const remMonths = months % 12;
+
+  const yLabel = years === 1 ? "año" : "años";
+  const mLabel = remMonths === 1 ? "mes" : "meses";
+
+  if (years > 0 && remMonths > 0) return `${years} ${yLabel} ${remMonths} ${mLabel}`;
+  if (years > 0) return `${years} ${yLabel}`;
+  return `${remMonths} ${mLabel}`;
+}
+
+
+
 function toYMD(value) {
   if (!value) return null;
 
@@ -29,7 +61,7 @@ function toYMD(value) {
     return `${y}-${m}-${d}`;
   }
 
-  // fallback (por si viene raro)
+  // fallback
   const d = new Date(value);
   if (isNaN(d.getTime())) return null;
   const y = d.getUTCFullYear();
@@ -37,8 +69,6 @@ function toYMD(value) {
   const dd = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
-
-
 
 function parseECDate(ymd) {
   // fija -05:00 para evitar corrimientos
@@ -105,9 +135,6 @@ function calcGenerados({ fechaContYMD, hastaDate, config }) {
       Math.floor((segEnd.getTime() - cursor.getTime()) / (24 * 3600 * 1000))
     );
 
-    // Entitlement del año de servicio `yearNum`:
-    // year 1-5 => 15
-    // year 6 => 16, year 7 => 17, etc.
     let extra = 0;
     if (yearNum >= extraDesde) {
       extra = yearNum - (extraDesde - 1);
@@ -115,7 +142,6 @@ function calcGenerados({ fechaContYMD, hastaDate, config }) {
     }
     const entitlement = base + extra;
 
-    // Prorrateo por días del segmento / días del “año servicio”
     const yearStart = addYears(start, yearNum - 1);
     const yearEnd = addYears(start, yearNum);
     const yearLenDays = Math.max(
@@ -136,7 +162,7 @@ async function computeSaldo(usuarioId, refDate = new Date()) {
   const config = await Vac.getConfig();
   if (!config) throw new Error("vac_config no configurado");
 
-const fechaCorte = toYMD(config.fecha_corte);
+  const fechaCorte = toYMD(config.fecha_corte);
 
   const user = await Vac.getUsuarioBaseById(usuarioId);
   if (!user) return null;
@@ -175,67 +201,438 @@ const fechaCorte = toYMD(config.fecha_corte);
   };
 }
 
-function pdfWriteActa({ absPath, data }) {
+// (Opcional) fecha larga estilo "martes, 30 de diciembre de 2025"
+function formatFechaLargaEC(ymd) {
+  if (!ymdOk(ymd)) return String(ymd || "");
+  try {
+    const d = parseECDate(ymd);
+    // Node puede no traer es-EC en algunos builds; si falla, se va al catch
+    return new Intl.DateTimeFormat("es-EC", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "2-digit",
+      timeZone: "America/Guayaquil",
+    }).format(d);
+  } catch {
+    return String(ymd);
+  }
+}
+
+/**
+ * Genera el PDF del FORMULARIO (layout v19) usando PDFKit
+ * - margin 0 para control total
+ * - logo opcional (si logoAbsPath existe)
+ */
+function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 48 });
+    fs.mkdirSync(path.dirname(absPath), { recursive: true });
+
+    const doc = new PDFDocument({ size: "A4", margin: 0 });
     const stream = fs.createWriteStream(absPath);
     doc.pipe(stream);
 
-    doc.fontSize(16).text("ACTA DE VACACIONES", { align: "center" });
-    doc.moveDown(1);
+    // ===== Helpers internos =====
+    const mm = (v) => (v * 72) / 25.4; // points
+    const W = doc.page.width;
 
-    doc.fontSize(11);
-    doc.text(`Trabajador: ${data.trabajador_nombre}`);
-    doc.text(`Cédula: ${data.trabajador_ci}`);
-    if (data.trabajador_cargo) doc.text(`Cargo: ${data.trabajador_cargo}`);
-    doc.text(`Fecha contratación: ${data.fecha_cont}`);
-    doc.moveDown(0.5);
+    const M = mm(8); // margen externo
+    const LINE = 0.8;
 
-    doc.text(`Rango de vacaciones: ${data.fecha_desde} a ${data.fecha_hasta}`);
-    doc.text(`Días (calendario): ${data.dias_calendario}`);
-    doc.moveDown(0.5);
+    const rect = (x, y, w, h) => doc.lineWidth(LINE).rect(x, y, w, h).stroke();
+    const hline = (x1, y, x2) =>
+      doc.lineWidth(LINE).moveTo(x1, y).lineTo(x2, y).stroke();
+    const vline = (x, y1, y2) =>
+      doc.lineWidth(LINE).moveTo(x, y1).lineTo(x, y2).stroke();
 
-    doc.text(`Generados al momento: ${data.generados_al_momento}`);
-    doc.text(`Consumido antes: ${data.consumido_antes}`);
-    doc.text(`Saldo real antes: ${data.saldo_real_antes}`);
-    doc.text(`Saldo real después: ${data.saldo_real_despues}`);
-    doc.text(`Saldo visible después: ${data.saldo_visible_despues}`);
-    doc.moveDown(1);
+    const fitTextSize = (
+      text,
+      maxW,
+      font = "Helvetica",
+      size = 8.5,
+      min = 6
+    ) => {
+      let s = size;
+      doc.font(font);
+      while (s > min && doc.widthOfString(String(text || ""), { size: s }) > maxW)
+        s -= 0.25;
+      return s;
+    };
 
-    doc.text("Observación:", { underline: true });
-    doc.text(data.observacion || "-", { width: 500 });
-    doc.moveDown(2);
+    const drawFit = (text, x, y, maxW, opts = {}) => {
+      const font = opts.font || "Helvetica";
+      const size0 = opts.size || 8.5;
+      const min = opts.min || 6;
+      const s = fitTextSize(text, maxW, font, size0, min);
+      doc
+        .font(font)
+        .fontSize(s)
+        .text(String(text || ""), x, y, { width: maxW, lineBreak: false });
+    };
 
-    doc.text("Firmas:", { underline: true });
-    doc.moveDown(1);
+    const centerText = (text, x, y, w, h, opts = {}) => {
+      const font = opts.font || "Helvetica-Bold";
+      const size = opts.size || 8;
+      doc
+        .font(font)
+        .fontSize(size)
+        .text(String(text || ""), x, y + (h - size) / 2 - 1, {
+          width: w,
+          align: "center",
+          lineBreak: false,
+        });
+    };
 
-    const y = doc.y;
-    doc.text("______________________________", 60, y);
-    doc.text("______________________________", 330, y);
+    const checkbox = (x, y, label, checked = false) => {
+      doc.font("Helvetica").fontSize(7.5).text(label, x, y, { lineBreak: false });
+      const lw = doc.widthOfString(label, { size: 7.5 });
+      const bx = x + lw + mm(2);
+      const by = y - mm(2);
+      const s = mm(2.8);
+      rect(bx, by, s, s);
+      if (checked) {
+        doc
+          .lineWidth(0.9)
+          .moveTo(bx + 1.5, by + 1.5)
+          .lineTo(bx + s - 1.5, by + s - 1.5)
+          .stroke()
+          .moveTo(bx + 1.5, by + s - 1.5)
+          .lineTo(bx + s - 1.5, by + 1.5)
+          .stroke();
+      }
+    };
 
-    doc.moveDown(0.2);
-    doc.text("Trabajador", 60);
-    doc.text("Jefe", 330);
+    const siNoCentered = (x0, x1, y, value) => {
+      const fontSize = 7.5;
+      const s = mm(2.8);
+      const gap = mm(2);
+      const between = mm(6);
 
-    doc.moveDown(1);
-    doc.text(`Jefe: ${data.jefe_nombre}`);
+      const wSI = doc.widthOfString("SI", { size: fontSize });
+      const wNO = doc.widthOfString("NO", { size: fontSize });
+      const groupW = wSI + gap + s + between + wNO + gap + s;
+      const start = x0 + (x1 - x0 - groupW) / 2;
 
-    doc.moveDown(2);
-    doc.text(`Fecha emisión: ${data.fecha_emision}`);
+      checkbox(start, y, "SI", value === true);
+      checkbox(start + (wSI + gap + s) + between, y, "NO", value === false);
+    };
+
+    // ===== Data =====
+    const noSolicitud = String(data.no_solicitud || "");
+    const fechaElab = String(
+      data.fecha_elaboracion_larga || data.fecha_elaboracion || ""
+    );
+
+    const col = data.colaborador || {};
+    
+    const nombres = String(col.nombres_completos || "");
+    const fechaIngreso = String(col.fecha_ingreso || "");
+    const tiempoOrg = String(col.tiempo_organizacion || "");
+    const sucursal = String(col.sucursal || "");
+    const cargo = String(col.cargo || "");
+
+    const rango = data.rango || {};
+    const desde = String(rango.desde_larga || rango.desde || "");
+    const hasta = String(rango.hasta_larga || rango.hasta || "");
+    const diasSolic = Number(rango.dias_solicitados || 0);
+
+    const saldo = data.saldo || {};
+    const saldoAnt = Number(saldo.saldo_anterior || 0);
+    const saldoPos = Number(saldo.saldo_posterior || 0);
+
+    // ===== Layout v19 (medidas) =====
+    const headerH = mm(15);
+    const rowH = mm(6.2);
+    const rangeH = mm(13);
+    const saldoH = mm(22);
+    const repH = mm(12.5);
+    const obsH = mm(12);
+    const sigH = mm(18);
+    const regH = mm(11.5);
+    const footerH = mm(20);
+    const gapY = mm(2);
+
+    let y = M;
+
+    // ================= HEADER =================
+    rect(M, y, W - 2 * M, headerH);
+
+    const colLogo = mm(38);
+    const colMeta = mm(24);
+    const colTitle = W - 2 * M - colLogo - colMeta;
+
+    const xLogo = M;
+    const xTitle = M + colLogo;
+    const xMeta = xTitle + colTitle;
+
+    vline(xTitle, y, y + headerH);
+    vline(xMeta, y, y + headerH);
+
+    // Logo (sin cuadro interno)
+    if (logoAbsPath && fs.existsSync(logoAbsPath)) {
+      const pad = mm(0.8);
+      doc.image(logoAbsPath, xLogo + pad, y + pad, {
+        fit: [colLogo - 2 * pad, headerH - 2 * pad],
+        align: "center",
+        valign: "center",
+      });
+    }
+
+    // Título
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(11.5)
+      .text("FORMULARIO DE SOLICITUD DE VACACIONES", xTitle, y + mm(3.2), {
+        width: colTitle,
+        align: "center",
+      });
+
+    // Meta: 2 filas
+    hline(xMeta, y + headerH / 2, M + (W - 2 * M));
+    doc
+      .font("Helvetica")
+      .fontSize(7.5)
+      .text("Ver - 01", xMeta, y + mm(2.2), { width: colMeta, align: "center" })
+      .text("Pag. 1 de 1", xMeta, y + headerH / 2 + mm(2.2), {
+        width: colMeta,
+        align: "center",
+      });
+
+    y += headerH + gapY;
+
+    // ================= 3 filas 40/60 =================
+    const draw40_60 = (leftLabel, leftVal, rightLabel, rightVal, cfg = {}) => {
+      rect(M, y, W - 2 * M, rowH);
+      const split = M + (W - 2 * M) * 0.4;
+      vline(split, y, y + rowH);
+
+      doc
+        .font("Helvetica")
+        .fontSize(cfg.labelLeftSize || 7)
+        .text(leftLabel, M + mm(2), y + mm(1.7), { lineBreak: false });
+
+      drawFit(
+        leftVal,
+        M + mm(2) + (cfg.leftLabelW || mm(30)),
+        y + mm(1.5),
+        split - mm(2) - (M + mm(2) + (cfg.leftLabelW || mm(30))),
+        { size: 8.5 }
+      );
+
+      doc
+        .font("Helvetica")
+        .fontSize(cfg.labelRightSize || 7)
+        .text(rightLabel, split + mm(2), y + mm(1.7), { lineBreak: false });
+
+      drawFit(
+        rightVal,
+        split + mm(2) + (cfg.rightLabelW || mm(34)),
+        y + mm(1.5),
+        M + (W - 2 * M) - mm(2) - (split + mm(2) + (cfg.rightLabelW || mm(34))),
+        { size: 8.5 }
+      );
+
+      y += rowH;
+    };
+
+    draw40_60("Fecha de Elaboración:", fechaElab, "Nombres Completos:", nombres, {
+      leftLabelW: mm(30),
+      rightLabelW: mm(34),
+    });
+
+    draw40_60(
+      "Fecha de Ingreso a la Compañía:",
+      fechaIngreso,
+      "Tiempo en la Organización:",
+      tiempoOrg,
+      {
+        leftLabelW: mm(48),
+        rightLabelW: mm(46),
+        labelLeftSize: 6.7,
+        labelRightSize: 6.7,
+      }
+    );
+
+    draw40_60("Departamento/Sucursal:", sucursal, "Cargo:", cargo, {
+      leftLabelW: mm(40),
+      rightLabelW: mm(12),
+    });
+
+    y += gapY;
+
+    // ================= RANGO + NO SOLICITUD =================
+    rect(M, y, W - 2 * M, rangeH);
+    const rightW = mm(40);
+    const midW = (W - 2 * M - rightW) / 2;
+
+    const x1 = M;
+    const x2 = M + midW;
+    const x3 = M + 2 * midW;
+
+    vline(x2, y, y + rangeH);
+    vline(x3, y, y + rangeH);
+
+    doc.font("Helvetica-Bold").fontSize(8).text("DESDE:", x1 + mm(2), y + mm(2));
+    drawFit(desde, x1 + mm(2), y + mm(7), midW - mm(4), { size: 8.5 });
+
+    doc.font("Helvetica-Bold").fontSize(8).text("HASTA:", x2 + mm(2), y + mm(2));
+    drawFit(hasta, x2 + mm(2), y + mm(7), midW - mm(4), { size: 8.5 });
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("No. solicitud:", x3 + mm(2), y + mm(2));
+    doc.font("Helvetica-Bold").fontSize(9.5).text(noSolicitud, x3 + mm(2), y + mm(7));
+
+    y += rangeH + gapY;
+
+    // ================= SALDO (3 filas) =================
+    rect(M, y, W - 2 * M, saldoH);
+
+    const labelW = mm(48);
+    vline(M + labelW, y, y + saldoH);
+    centerText("Saldo de Vacaciones", M, y, labelW, saldoH, { size: 8 });
+
+    const rx0 = M + labelW;
+    const rx1 = M + (W - 2 * M);
+    const valColW = mm(18);
+    const splitVal = rx1 - valColW;
+
+    vline(splitVal, y, y + saldoH);
+
+    const r = saldoH / 3;
+    hline(rx0, y + r, rx1);
+    hline(rx0, y + 2 * r, rx1);
+
+    const saldoRow = (i, label, value) => {
+      const top = y + (i - 1) * r;
+      doc.font("Helvetica").fontSize(8).text(label, rx0, top + mm(3), {
+        width: splitVal - rx0,
+        align: "center",
+      });
+      doc.font("Helvetica-Bold").fontSize(9.5).text(String(value), splitVal, top + mm(2.6), {
+        width: rx1 - splitVal,
+        align: "center",
+      });
+    };
+
+    saldoRow(1, "Saldo anterior a la solicitud", saldoAnt);
+    saldoRow(2, "Días solicitados en este formulario", diasSolic);
+    saldoRow(3, "Saldo posterior a la solicitud", saldoPos);
+
+    y += saldoH + gapY;
+
+    // ================= REEMPLAZO =================
+    rect(M, y, W - 2 * M, repH);
+
+    const leftW = mm(46);
+    vline(M + leftW, y, y + repH);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("Requiere Reemplazo:", M + mm(2), y + mm(2));
+    siNoCentered(M, M + leftW, y + mm(7), data.requiere_reemplazo ?? null);
+
+    const rx = M + leftW + mm(2);
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("Nombre de quien le reemplazaría:", rx, y + mm(2));
+    hline(rx + mm(56), y + mm(4.2), M + (W - 2 * M) - mm(3));
+
+    doc.font("Helvetica-Bold").fontSize(8).text("Tareas pendientes", rx, y + mm(7));
+    hline(rx + mm(30), y + mm(9.2), M + (W - 2 * M) - mm(3));
+
+    y += repH + gapY;
+
+    // ================= OBS JEFE =================
+    rect(M, y, W - 2 * M, obsH);
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("Observaciones de parte del jefe/a:", M + mm(2), y + mm(2));
+    hline(M + mm(56), y + mm(4.2), M + (W - 2 * M) - mm(3));
+    hline(M + mm(2), y + mm(9.2), M + (W - 2 * M) - mm(3));
+
+    y += obsH + gapY;
+
+// ================= FIRMAS =================
+rect(M, y, W - 2 * M, sigH);
+const mid = M + (W - 2 * M) / 2;
+vline(mid, y, y + sigH);
+
+// Línea de firma más abajo (más espacio para firmar arriba)
+const lineY = y + sigH - mm(6.2);
+hline(M + mm(10), lineY, mid - mm(10));
+hline(mid + mm(10), lineY, M + (W - 2 * M) - mm(10));
+
+// Texto más pegado al borde inferior
+doc.font("Helvetica").fontSize(8).text("Firma del Colaborador/a", M, y + sigH - mm(3.8), {
+  width: (W - 2 * M) / 2,
+  align: "center",
+});
+doc.font("Helvetica").fontSize(8).text("Firma del jefe/a inmediato/a", mid, y + sigH - mm(3.8), {
+  width: (W - 2 * M) / 2,
+  align: "center",
+});
+
+y += sigH;
+
+    // ================= REGISTRADO =================
+    rect(M, y, W - 2 * M, regH);
+    const regCellW = mm(34);
+    vline(M + regCellW, y, y + regH);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("Registrado", M, y + mm(2), { width: regCellW, align: "center" });
+    siNoCentered(M, M + regCellW, y + mm(7), data.registrado ?? null);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text("Observaciones:", M + regCellW + mm(2), y + mm(2));
+    hline(M + regCellW + mm(30), y + mm(4.2), M + (W - 2 * M) - mm(3));
+    hline(M + regCellW + mm(2), y + mm(9.2), M + (W - 2 * M) - mm(3));
+
+    y += regH + gapY;
+
+ // ================= FOOTER TALENTO HUMANO =================
+rect(M, y, W - 2 * M, footerH);
+vline(mid, y, y + footerH);
+
+// Línea de firma más abajo (más espacio para firmar arriba)
+const lineY2 = y + footerH - mm(6.5);
+hline(M + mm(10), lineY2, mid - mm(10));
+hline(mid + mm(10), lineY2, M + (W - 2 * M) - mm(10));
+
+// Texto más pegado al borde inferior
+doc.font("Helvetica").fontSize(8).text("Fecha de registro Talento Humano", M, y + footerH - mm(4.0), {
+  width: (W - 2 * M) / 2,
+  align: "center",
+});
+doc.font("Helvetica").fontSize(8).text("f. Jefe/a Talento Humano", mid, y + footerH - mm(4.0), {
+  width: (W - 2 * M) / 2,
+  align: "center",
+});
+
 
     doc.end();
 
     stream.on("finish", resolve);
     stream.on("error", reject);
   });
+
+  
 }
 
 // ---------- Controllers ----------
 async function getVacConfig(req, res) {
   try {
     const config = await Vac.getConfig();
-    if (!config)
-      return res.status(404).json({ message: "vac_config no existe" });
+    if (!config) return res.status(404).json({ message: "vac_config no existe" });
     return res.json(config);
   } catch (e) {
     console.error("❌ getVacConfig:", e);
@@ -281,9 +678,7 @@ async function listAsignaciones(req, res) {
   try {
     const usuarioId = Number(req.query.usuario_id);
     if (Number.isNaN(usuarioId)) {
-      return res
-        .status(400)
-        .json({ message: "usuario_id es obligatorio y numérico" });
+      return res.status(400).json({ message: "usuario_id es obligatorio y numérico" });
     }
 
     const estado = String(req.query.estado || "TODAS").toUpperCase();
@@ -311,24 +706,21 @@ async function previewAsignacion(req, res) {
     if (Number.isNaN(usuarioId))
       return res.status(400).json({ message: "usuario_id inválido" });
     if (!ymdOk(fecha_desde) || !ymdOk(fecha_hasta)) {
-      return res
-        .status(400)
-        .json({ message: "fecha_desde/fecha_hasta inválidas (YYYY-MM-DD)" });
+      return res.status(400).json({
+        message: "fecha_desde/fecha_hasta inválidas (YYYY-MM-DD)",
+      });
     }
 
     const config = await Vac.getConfig();
-   const fechaCorte = toYMD(config.fecha_corte);
-
+    const fechaCorte = toYMD(config.fecha_corte);
 
     if (fecha_desde < fechaCorte) {
-      return res
-        .status(400)
-        .json({ message: `No permitido antes de fecha_corte (${fechaCorte})` });
+      return res.status(400).json({
+        message: `No permitido antes de fecha_corte (${fechaCorte})`,
+      });
     }
     if (fecha_desde > fecha_hasta) {
-      return res
-        .status(400)
-        .json({ message: "Rango inválido: fecha_desde > fecha_hasta" });
+      return res.status(400).json({ message: "Rango inválido: fecha_desde > fecha_hasta" });
     }
 
     const dias = daysInclusive(fecha_desde, fecha_hasta);
@@ -343,9 +735,7 @@ async function previewAsignacion(req, res) {
     const tienePermisoDevol = conflictos.filter((x) =>
       ["PERMISO", "DEVOLUCION"].includes(String(x.tipo_dia || ""))
     );
-    const tieneVac = conflictos.filter(
-      (x) => String(x.tipo_dia || "") === "VACACIONES"
-    );
+    const tieneVac = conflictos.filter((x) => String(x.tipo_dia || "") === "VACACIONES");
 
     if (tienePermisoDevol.length) {
       return res.status(409).json({
@@ -388,31 +778,27 @@ async function createAsignacion(req, res) {
   let absPdfPath = null;
 
   try {
-    const { usuario_id, fecha_desde, fecha_hasta, observacion } =
-      req.body || {};
+    const { usuario_id, fecha_desde, fecha_hasta, observacion } = req.body || {};
     const usuarioId = Number(usuario_id);
 
     if (Number.isNaN(usuarioId))
       return res.status(400).json({ message: "usuario_id inválido" });
     if (!ymdOk(fecha_desde) || !ymdOk(fecha_hasta)) {
-      return res
-        .status(400)
-        .json({ message: "fecha_desde/fecha_hasta inválidas (YYYY-MM-DD)" });
+      return res.status(400).json({
+        message: "fecha_desde/fecha_hasta inválidas (YYYY-MM-DD)",
+      });
     }
 
     const config = await Vac.getConfig();
-const fechaCorte = toYMD(config.fecha_corte);
-
+    const fechaCorte = toYMD(config.fecha_corte);
 
     if (fecha_desde < fechaCorte) {
-      return res
-        .status(400)
-        .json({ message: `No permitido antes de fecha_corte (${fechaCorte})` });
+      return res.status(400).json({
+        message: `No permitido antes de fecha_corte (${fechaCorte})`,
+      });
     }
     if (fecha_desde > fecha_hasta) {
-      return res
-        .status(400)
-        .json({ message: "Rango inválido: fecha_desde > fecha_hasta" });
+      return res.status(400).json({ message: "Rango inválido: fecha_desde > fecha_hasta" });
     }
 
     const dias = daysInclusive(fecha_desde, fecha_hasta);
@@ -427,9 +813,7 @@ const fechaCorte = toYMD(config.fecha_corte);
     const tienePermisoDevol = conflictos.filter((x) =>
       ["PERMISO", "DEVOLUCION"].includes(String(x.tipo_dia || ""))
     );
-    const tieneVac = conflictos.filter(
-      (x) => String(x.tipo_dia || "") === "VACACIONES"
-    );
+    const tieneVac = conflictos.filter((x) => String(x.tipo_dia || "") === "VACACIONES");
 
     if (tienePermisoDevol.length) {
       return res.status(409).json({
@@ -446,8 +830,7 @@ const fechaCorte = toYMD(config.fecha_corte);
 
     // Saldos (antes/después)
     const saldoAntes = await computeSaldo(usuarioId, new Date());
-    if (!saldoAntes)
-      return res.status(404).json({ message: "Usuario no existe" });
+    if (!saldoAntes) return res.status(404).json({ message: "Usuario no existe" });
 
     const saldoRealDesp = format2(saldoAntes.saldo_real - dias);
     const saldoVisibleDesp = format2(Math.max(0, saldoRealDesp));
@@ -488,19 +871,15 @@ const fechaCorte = toYMD(config.fecha_corte);
     const fechas = listYMDInRange(fecha_desde, fecha_hasta);
     const backups = [];
 
-
-
     // 1) si el front la manda, úsala
-const sucursalBody = String(req.body?.sucursal || "").trim() || null;
+    const sucursalBody = String(req.body?.sucursal || "").trim() || null;
 
-// 2) si no, intenta inferirla por turnos previos del trabajador (o del jefe como fallback)
-const sucursalInferida =
-  sucursalBody ||
-  (await Vac.getSucursalRecienteFromTurnos(conn, usuarioId)) ||
-  (await Vac.getSucursalRecienteFromTurnos(conn, Number(req.user.id))) ||
-  null;
-
-
+    // 2) si no, intenta inferirla
+    const sucursalInferida =
+      sucursalBody ||
+      (await Vac.getSucursalRecienteFromTurnos(conn, usuarioId)) ||
+      (await Vac.getSucursalRecienteFromTurnos(conn, Number(req.user.id))) ||
+      null;
 
     for (const f of fechas) {
       const t = mapTurnos.get(f);
@@ -518,14 +897,11 @@ const sucursalInferida =
           tipoDia: "VACACIONES",
         });
       } else {
-        const suc = trabajador?.sucursal_nombre || trabajador?.sucursal_codigo || null;
-
-const turnoId = await Vac.insertTurnoVacacion(conn, {
-  usuarioId,
-  fecha: f,
-  sucursal: sucursalInferida,
-});
-
+        const turnoId = await Vac.insertTurnoVacacion(conn, {
+          usuarioId,
+          fecha: f,
+          sucursal: sucursalInferida,
+        });
 
         backups.push({
           vacacion_id: asignacionId,
@@ -548,35 +924,63 @@ const turnoId = await Vac.insertTurnoVacacion(conn, {
 
     const stamp = new Date();
     const y = stamp.getFullYear();
-    const m = String(stamp.getMonth() + 1).padStart(2, "0");
-    const d = String(stamp.getDate()).padStart(2, "0");
+    const tiempoOrg = tiempoEnOrganizacion(trabajador?.fecha_cont, stamp);
+
+    const mo = String(stamp.getMonth() + 1).padStart(2, "0");
+    const da = String(stamp.getDate()).padStart(2, "0");
     const hh = String(stamp.getHours()).padStart(2, "0");
-    const mm = String(stamp.getMinutes()).padStart(2, "0");
+    const mi = String(stamp.getMinutes()).padStart(2, "0");
     const ss = String(stamp.getSeconds()).padStart(2, "0");
 
-    const fileName = `acta_vac_${asignacionId}_${y}${m}${d}_${hh}${mm}${ss}.pdf`;
+    const fileName = `acta_vac_${asignacionId}_${y}${mo}${da}_${hh}${mi}${ss}.pdf`;
     const rutaRelativa = `${relDir}/${fileName}`;
 
     absPdfPath = path.join(docsRoot, rutaRelativa);
 
-    await pdfWriteActa({
+    // Consecutivo temporal (luego lo conectamos a DB para incremental por año)
+    const noSolicitudTmp = `SV-${y}-${String(asignacionId).padStart(3, "0")}`;
+
+    // Logo: por ahora lo dejamos null (cuando quieras lo conectamos)
+  // Logo (ruta absoluta)
+const logoAbsPath = path.resolve(
+  process.env.RUTA_LOGO_REDECOM || "src/assets/logo.png"
+);
+
+
+    await pdfWriteSolicitudV19({
       absPath: absPdfPath,
+      logoAbsPath,
       data: {
-        trabajador_nombre: trabajador?.nombre_completo || `ID ${usuarioId}`,
-        trabajador_ci: trabajador?.ci || "",
-        trabajador_cargo: trabajador?.cargo || "", // si agregaste campo cargo
-        fecha_cont: trabajador?.fecha_cont || "",
-        fecha_desde,
-        fecha_hasta,
-        dias_calendario: dias,
-        generados_al_momento: saldoAntes.generados.toFixed(2),
-        consumido_antes: saldoAntes.consumido_total.toFixed(2),
-        saldo_real_antes: saldoAntes.saldo_real.toFixed(2),
-        saldo_real_despues: saldoRealDesp.toFixed(2),
-        saldo_visible_despues: saldoVisibleDesp.toFixed(2),
-        observacion: observacion || "",
-        jefe_nombre: jefe?.nombre_completo || req.user?.usuario || "",
-        fecha_emision: `${y}-${m}-${d}`,
+        no_solicitud: noSolicitudTmp,
+        fecha_elaboracion: `${y}-${mo}-${da}`,
+        fecha_elaboracion_larga: formatFechaLargaEC(`${y}-${mo}-${da}`),
+
+        colaborador: {
+          nombres_completos: trabajador?.nombre_completo || `ID ${usuarioId}`,
+          fecha_ingreso: trabajador?.fecha_cont || "",
+          tiempo_organizacion: tiempoOrg,  
+
+        sucursal: trabajador?.sucursal_nombre || "",  // <-- aquí va COTOPAXI
+          cargo: trabajador?.cargo || "",
+        },
+
+        rango: {
+          desde: fecha_desde,
+          hasta: fecha_hasta,
+          desde_larga: formatFechaLargaEC(fecha_desde),
+          hasta_larga: formatFechaLargaEC(fecha_hasta),
+          dias_solicitados: dias,
+        },
+
+        saldo: {
+          // hoy usamos saldo_visible (el que el usuario ve)
+          saldo_anterior: Math.floor(Number(saldoAntes.saldo_visible || 0)),
+          saldo_posterior: Math.floor(Number(saldoVisibleDesp || 0)),
+        },
+
+        // checkboxes manuales por ahora (null => no marcado)
+        requiere_reemplazo: null,
+        registrado: null,
       },
     });
 
@@ -591,7 +995,7 @@ const turnoId = await Vac.insertTurnoVacacion(conn, {
     await Vac.insertFileLink(conn, {
       module: "vacaciones",
       entity_id: asignacionId,
-      tag: "acta",
+      tag: "acta", // mantenemos "acta" para no romper tu getActaAsignacion actual
       position: 1,
       file_id: fileId,
       created_by: Number(req.user.id),
@@ -619,7 +1023,6 @@ const turnoId = await Vac.insertTurnoVacacion(conn, {
     try {
       await conn.rollback();
     } catch {}
-    // Si alcanzó a crear archivo y algo falló, lo limpiamos
     if (absPdfPath && fs.existsSync(absPdfPath)) {
       try {
         fs.unlinkSync(absPdfPath);
@@ -635,8 +1038,7 @@ async function anularAsignacion(req, res) {
   const conn = await poolmysql.getConnection();
   try {
     const id = Number(req.params.id);
-    if (Number.isNaN(id))
-      return res.status(400).json({ message: "id inválido" });
+    if (Number.isNaN(id)) return res.status(400).json({ message: "id inválido" });
 
     const motivo = String(req.body?.motivo || "cambio/ajuste");
 
@@ -657,7 +1059,6 @@ async function anularAsignacion(req, res) {
           tipoDia: b.tipo_dia_anterior || "NORMAL",
         });
       } else {
-        // si lo creamos solo para vacaciones, intentamos borrar si está “vacío”
         const t = await Vac.getTurnoById(conn, b.turno_id);
         if (!t) continue;
 
@@ -712,19 +1113,16 @@ async function anularAsignacion(req, res) {
 async function getActaAsignacion(req, res) {
   try {
     const id = Number(req.params.id);
-    if (Number.isNaN(id))
-      return res.status(400).json({ message: "id inválido" });
+    if (Number.isNaN(id)) return res.status(400).json({ message: "id inválido" });
 
     const asig = await Vac.getAsignacionById(id);
     if (!asig) return res.status(404).json({ message: "Asignación no existe" });
 
-    // Permisos: jefe (ATurnos/AHorarios) o dueño (usuario_id)
     const roles = Array.isArray(req.user?.rol) ? req.user.rol : [];
     const isJefe = roles.includes("ATurnos") || roles.includes("AHorarios");
     const isOwner = Number(asig.usuario_id) === Number(req.user?.id);
 
-    if (!isJefe && !isOwner)
-      return res.status(403).json({ message: "No autorizado" });
+    if (!isJefe && !isOwner) return res.status(403).json({ message: "No autorizado" });
 
     const fileId = await Vac.getActaFileIdByAsignacion(id);
     if (!fileId) return res.status(404).json({ message: "Acta no encontrada" });

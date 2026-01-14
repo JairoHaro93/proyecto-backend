@@ -17,20 +17,27 @@ async function getUsuarioBaseById(usuarioId, conn = poolmysql) {
   const [rows] = await conn.query(
     `
     SELECT
-      id,
-      ci,
-      nombre,
-      apellido,
-      CONCAT(nombre, ' ', apellido) AS nombre_completo,
-      DATE_FORMAT(fecha_cont, '%Y-%m-%d') AS fecha_cont
-    FROM sisusuarios
-    WHERE id = ?
+      u.id,
+      u.ci,
+      u.nombre,
+      u.apellido,
+      CONCAT(u.nombre, ' ', u.apellido) AS nombre_completo,
+      u.cargo,
+      DATE_FORMAT(u.fecha_cont, '%Y-%m-%d') AS fecha_cont,
+
+      -- Solo el nombre de la sucursal (ej: COTOPAXI)
+      s.nombre AS sucursal_nombre
+    FROM sisusuarios u
+    LEFT JOIN sis_sucursales s ON s.id = u.sucursal_id
+    WHERE u.id = ?
     LIMIT 1
     `,
     [usuarioId]
   );
+
   return rows?.[0] || null;
 }
+
 
 // ---------- CONSUMO ----------
 function toYMD(value) {
