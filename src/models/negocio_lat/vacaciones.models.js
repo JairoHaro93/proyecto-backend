@@ -142,7 +142,9 @@ async function insertAsignacion(conn, payload) {
       ?, ?,
       ?, ?,
       ?, 'ACTIVA', ?,
+
       ?, ?, ?, ?, ?, ?,
+
       ?, ?, ?
     )
     `,
@@ -166,7 +168,6 @@ async function insertAsignacion(conn, payload) {
       payload.sol_numero,
     ]
   );
-
   return res.insertId;
 }
 
@@ -393,21 +394,48 @@ async function getSucursalRecienteFromTurnos(conn, usuarioId) {
   return rows?.[0]?.sucursal || null;
 }
 
-async function nextSolicitudConsecutivo(conn, anio) {
-  // 1) inserta si no existe el año, o incrementa si ya existe
-  await conn.query(
+// Consecutivo por usuario + año (1..N)
+async function nextSolicitudConsecutivo(conn, usuarioId, anio) {
+  const [rows] = await conn.query(
     `
-    INSERT INTO vac_solicitud_seq (anio, last_num)
-    VALUES (?, 1)
-    ON DUPLICATE KEY UPDATE last_num = LAST_INSERT_ID(last_num + 1)
+    SELECT last_consecutivo
+    FROM vac_solicitud_seq
+    WHERE usuario_id = ? AND anio = ?
+    FOR UPDATE
     `,
-    [anio]
+    [usuarioId, anio]
   );
 
-  // 2) devuelve el consecutivo calculado en esta misma conexión
-  const [rows] = await conn.query(`SELECT LAST_INSERT_ID() AS next_num`);
-  return Number(rows?.[0]?.next_num || 1);
+  if (rows.length) {
+    const next = Number(rows[0].last_consecutivo || 0) + 1;
+
+    await conn.query(
+      `
+      UPDATE vac_solicitud_seq
+      SET last_consecutivo = ?
+      WHERE usuario_id = ? AND anio = ?
+      `,
+      [next, usuarioId, anio]
+    );
+
+    return next;
+  }
+
+  await conn.query(
+    `
+    INSERT INTO vac_solicitud_seq (usuario_id, anio, last_consecutivo)
+    VALUES (?, ?, 1)
+    `,
+    [usuarioId, anio]
+  );
+
+  return 1;
 }
+
+module.exports = {
+  // ...
+  nextSolicitudConsecutivo,
+};
 
 module.exports = {
   getConfig,

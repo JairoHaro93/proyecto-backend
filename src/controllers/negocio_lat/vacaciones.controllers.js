@@ -843,18 +843,18 @@ async function createAsignacion(req, res) {
       return res.status(400).json({ message: "usuario_id inválido" });
     }
     if (!ymdOk(fecha_desde) || !ymdOk(fecha_hasta)) {
-      return res
-        .status(400)
-        .json({ message: "fecha_desde/fecha_hasta inválidas (YYYY-MM-DD)" });
+      return res.status(400).json({
+        message: "fecha_desde/fecha_hasta inválidas (YYYY-MM-DD)",
+      });
     }
 
     const config = await Vac.getConfig();
     const fechaCorte = toYMD(config.fecha_corte);
 
     if (fecha_desde < fechaCorte) {
-      return res
-        .status(400)
-        .json({ message: `No permitido antes de fecha_corte (${fechaCorte})` });
+      return res.status(400).json({
+        message: `No permitido antes de fecha_corte (${fechaCorte})`,
+      });
     }
     if (fecha_desde > fecha_hasta) {
       return res
@@ -902,8 +902,6 @@ async function createAsignacion(req, res) {
 
     // ========== Datos base ==========
     const trabajador = await Vac.getUsuarioBaseById(usuarioId, conn);
-    const jefe = await Vac.getUsuarioBaseById(Number(req.user.id), conn);
-
     if (!trabajador) {
       return res.status(404).json({ message: "Usuario no existe" });
     }
@@ -911,16 +909,16 @@ async function createAsignacion(req, res) {
     // ========== Transacción ==========
     await conn.beginTransaction();
 
-    // ✅ Consecutivo por año (debe ser atómico / con lock dentro de nextSolicitudConsecutivo)
+    // ✅ Consecutivo POR USUARIO + AÑO
     const stamp = new Date();
     const anioSol = stamp.getFullYear();
 
-    const consec = await Vac.nextSolicitudConsecutivo(conn, anioSol);
+    // OJO: (conn, usuarioId, anioSol)
+    const consec = await Vac.nextSolicitudConsecutivo(conn, usuarioId, anioSol);
     const noSolicitud = `SV-${anioSol}-${String(consec).padStart(3, "0")}`;
 
-    // 1) Crear vac_asignaciones (IMPORTANTE: tu modelo insertAsignacion debe insertar sol_* si ya los agregaste)
+    // 1) Crear vac_asignaciones
     const asignacionId = await Vac.insertAsignacion(conn, {
-      // <-- si tu tabla ya tiene estos campos, perfecto:
       sol_anio: anioSol,
       sol_consecutivo: consec,
       sol_numero: noSolicitud,
@@ -953,12 +951,10 @@ async function createAsignacion(req, res) {
     const fechas = listYMDInRange(fecha_desde, fecha_hasta);
     const backups = [];
 
-    // sucursal: si el front manda, usarla; si no, inferir (o usar la del trabajador)
     const sucursalBody = String(req.body?.sucursal || "").trim() || null;
-
     const sucursalInferida =
       sucursalBody ||
-      trabajador?.sucursal_nombre || // si tu query trae sucursal_nombre (JOIN a sis_sucursales)
+      trabajador?.sucursal_nombre ||
       (await Vac.getSucursalRecienteFromTurnos(conn, usuarioId)) ||
       (await Vac.getSucursalRecienteFromTurnos(conn, Number(req.user.id))) ||
       null;
@@ -1017,16 +1013,13 @@ async function createAsignacion(req, res) {
     const rutaRelativa = `${relDir}/${fileName}`;
     absPdfPath = path.join(docsRoot, rutaRelativa);
 
-    // Logo: usa ENV si existe, si no, usa el logo del proyecto (ruta real por __dirname)
     let logoAbsPath = process.env.RUTA_LOGO_REDECOM
       ? path.resolve(process.env.RUTA_LOGO_REDECOM)
-      : path.resolve(__dirname, "../../assets/logo.png"); // <- desde src/controllers/negocio_lat
+      : path.resolve(__dirname, "../../assets/logo.png");
 
     if (!fs.existsSync(logoAbsPath)) {
       console.warn("⚠️ Logo NO encontrado:", logoAbsPath);
-      logoAbsPath = null; // el PDF se genera igual, solo sin logo
-    } else {
-      console.log("✅ Logo encontrado:", logoAbsPath);
+      logoAbsPath = null;
     }
 
     const tiempoOrg = tiempoEnOrganizacion(trabajador?.fecha_cont, stamp);
@@ -1035,6 +1028,12 @@ async function createAsignacion(req, res) {
       absPath: absPdfPath,
       logoAbsPath,
       data: {
+        meta: {
+          version: "Versión-01",
+          codigo: "Ver01-FO-TH-04A",
+          pagina: "Página 1 de 1",
+        },
+
         no_solicitud: noSolicitud,
         fecha_elaboracion: `${y}-${mo}-${da}`,
         fecha_elaboracion_larga: formatFechaLargaEC(`${y}-${mo}-${da}`),
@@ -1043,7 +1042,6 @@ async function createAsignacion(req, res) {
           nombres_completos: trabajador?.nombre_completo || `ID ${usuarioId}`,
           fecha_ingreso: trabajador?.fecha_cont || "",
           tiempo_organizacion: tiempoOrg,
-          // Aquí debe venir SOLO el nombre: "COTOPAXI"
           sucursal: trabajador?.sucursal_nombre || sucursalInferida || "",
           cargo: trabajador?.cargo || "",
         },
@@ -1057,12 +1055,10 @@ async function createAsignacion(req, res) {
         },
 
         saldo: {
-          // usamos saldo_visible (lo que el usuario ve)
           saldo_anterior: Math.floor(Number(saldoAntes.saldo_visible || 0)),
           saldo_posterior: Math.floor(Number(saldoVisibleDesp || 0)),
         },
 
-        // manual por ahora (null => no marcado)
         requiere_reemplazo: null,
         registrado: null,
       },
@@ -1080,7 +1076,7 @@ async function createAsignacion(req, res) {
     await Vac.insertFileLink(conn, {
       module: "vacaciones",
       entity_id: asignacionId,
-      tag: "acta", // mantenemos "acta" para no romper tu getActaAsignacion actual
+      tag: "acta",
       position: 1,
       file_id: fileId,
       created_by: Number(req.user.id),
@@ -1113,7 +1109,6 @@ async function createAsignacion(req, res) {
       await conn.rollback();
     } catch {}
 
-    // limpiar pdf si alcanzó a crear
     if (absPdfPath && fs.existsSync(absPdfPath)) {
       try {
         fs.unlinkSync(absPdfPath);
