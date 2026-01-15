@@ -808,10 +808,8 @@ async function resolverJustificacionTurno(
   jefeId
 ) {
   const tipoKey = String(tipo).toLowerCase() === "salida" ? "salida" : "atraso";
-  const estadoUp = String(estado).toUpperCase();
-
-  const minsRaw = minutos == null ? null : Number(minutos);
-  const mins = minsRaw === 0 ? null : minsRaw; // ✅ 0 => NULL
+  const estadoUp = String(estado).toUpperCase().trim();
+  const mins = minutos == null ? null : Number(minutos);
 
   const colEstado =
     tipoKey === "atraso" ? "just_atraso_estado" : "just_salida_estado";
@@ -819,24 +817,40 @@ async function resolverJustificacionTurno(
     tipoKey === "atraso" ? "just_atraso_minutos" : "just_salida_minutos";
   const colJefe =
     tipoKey === "atraso" ? "just_atraso_jefe_id" : "just_salida_jefe_id";
+  const colMotivo =
+    tipoKey === "atraso" ? "just_atraso_motivo" : "just_salida_motivo";
 
   const conn = await poolmysql.getConnection();
   try {
     await conn.beginTransaction();
 
+    // 1) Verifica turno y estado actual (PENDIENTE)
     const [rows] = await conn.query(
-      `SELECT id, usuario_id, ${colEstado} AS st
-       FROM neg_t_turnos_diarios
-       WHERE id = ? FOR UPDATE`,
+      `
+      SELECT
+        id,
+        usuario_id,
+        fecha,
+        ${colEstado} AS st,
+        ${colMotivo} AS motivo
+      FROM neg_t_turnos_diarios
+      WHERE id = ?
+      FOR UPDATE
+      `,
       [turnoId]
     );
+
     if (!rows.length) throw new Error("Turno no encontrado.");
+
     if (String(rows[0].st || "").toUpperCase() !== "PENDIENTE") {
       throw new Error("La justificación no está PENDIENTE.");
     }
 
     const usuarioId = rows[0].usuario_id;
+    const fechaMov = rows[0].fecha; // DATE del turno
+    const motivoMov = (rows[0].motivo || "").trim() || null;
 
+    // 2) Actualiza el turno (minutos pueden ser NULL)
     await conn.query(
       `
       UPDATE neg_t_turnos_diarios
@@ -849,15 +863,25 @@ async function resolverJustificacionTurno(
       [estadoUp, mins, jefeId, turnoId]
     );
 
+    // 3) ✅ Movimiento SOLO si APROBADA y minutos > 0
+    //    (Tu tabla neg_t_horas_movimientos NO tiene "origen" ni "referencia_id")
     if (estadoUp === "APROBADA" && mins != null && mins > 0) {
       await conn.query(
         `
         INSERT INTO neg_t_horas_movimientos
-          (usuario_id, mov_tipo, minutos, estado, origen, referencia_id, created_at)
+          (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion, created_at, updated_at)
         VALUES
-          (?, 'DEBITO', ?, 'APROBADO', ?, ?, NOW())
+          (?, 'DEBITO', ?, ?, ?, ?, 'APROBADO', ?, ?, NOW(), NOW())
         `,
-        [usuarioId, mins, `JUST_${tipoKey.toUpperCase()}`, turnoId]
+        [
+          usuarioId,
+          `JUST_${tipoKey.toUpperCase()}`, // JUST_ATRASO / JUST_SALIDA
+          mins,
+          fechaMov,
+          turnoId,
+          jefeId,
+          motivoMov,
+        ]
       );
     }
 
