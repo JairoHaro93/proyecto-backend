@@ -702,17 +702,33 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     min_trabajados = 0;
   }
 
-  // 4) trabajado dentro de ventana programada (para decisión)
-  let workedInWindow = 0;
-  if (m.length >= 4) {
-    workedInWindow += overlapMinutes(entrada1, salida1, progStart, progEnd);
-    workedInWindow += overlapMinutes(entrada2, salida2, progStart, progEnd);
-  } else if (m.length >= 2) {
-    workedInWindow = overlapMinutes(entrada1, salidaReal, progStart, progEnd);
-    workedInWindow = Math.max(0, workedInWindow - lunchObjetivoMin);
-  } else {
-    workedInWindow = 0;
-  }
+// 4) trabajado dentro de ventana programada (para decisión)
+let workedInWindow = 0;
+
+if (m.length >= 4) {
+  workedInWindow += overlapMinutes(entrada1, salida1, progStart, progEnd);
+  workedInWindow += overlapMinutes(entrada2, salida2, progStart, progEnd);
+
+} else if (m.length >= 2) {
+
+  // ✅ si entra dentro de tolerancia, considera como si hubiera entrado a la hora programada
+  const entradaDentroToler =
+    entrada1 && diffMinCeil(progStart, entrada1) <= tolerAtraso;
+
+  // ✅ si sale "temprano" pero dentro de tolerancia, considera como si hubiera salido a la hora programada
+  const salidaDentroToler =
+    salidaReal && diffMinCeil(salidaReal, progEnd) <= tolerSalida;
+
+  const winStart = entradaDentroToler ? progStart : entrada1;
+  const winEnd   = salidaDentroToler ? progEnd   : salidaReal;
+
+  workedInWindow = overlapMinutes(winStart, winEnd, progStart, progEnd);
+  workedInWindow = Math.max(0, workedInWindow - lunchObjetivoMin);
+
+} else {
+  workedInWindow = 0;
+}
+
 
   // 5) atraso (CEIL) - con tolerancia
   let min_atraso = 0;
@@ -728,13 +744,17 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     min_salida_temprana = Math.max(0, temprana);
   }
 
-  // 7) min_extra (informativo)
-  let min_extra = 0;
-  const cumpleVentana =
-    workedInWindow >= workObjetivoMin &&
-    min_atraso === 0 &&
-    min_salida_temprana === 0;
-  if (cumpleVentana) min_extra = Math.max(0, min_trabajados - workObjetivoMin);
+ // 7) min_extra (✅ SOLO INFORMATIVO)
+// Extra bruto según minutos trabajados vs objetivo (sin condicionar por atraso/salida temprana)
+let min_extra = 0;
+
+if (m.length >= 2) {
+  // min_trabajados ya descuenta lunchObjetivoMin cuando hay solo 2 marcas,
+  // y suma tramos cuando hay 4 marcas.
+  min_extra = Math.max(0, min_trabajados - workObjetivoMin);
+} else {
+  min_extra = 0;
+}
 
   // 8) estado asistencia
   let estado_asistencia = "SIN_MARCA";
