@@ -435,7 +435,7 @@ async function updateEstadoHoraAcumuladaTurno(
         INSERT INTO neg_t_horas_movimientos
           (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion)
         VALUES
-          (?, 'CREDITO', 'HORA_EXTRA', ?, ?, ?, 'APROBADO', ?, ?)
+          (?, 'CREDITO', 'HORA_ACUMULADA', ?, ?, ?, 'APROBADO', ?, ?)
         `,
         [
           turno.usuario_id,
@@ -460,7 +460,8 @@ async function updateEstadoHoraAcumuladaTurno(
 
 // ===============================
 //   ASIGNAR DEVOLUCIÓN (DEBITO 8h)
-//   ✅ Ahora permite saldo NEGATIVO (deuda sin tope)
+//   ✅ Permite saldo NEGATIVO (deuda sin tope)
+//   ✅ Saldo calculado SOLO con BANCO: HORA_ACUMULADA - (JUST_* + DEVOLUCION)
 // ===============================
 async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
   const conn = await poolmysql.getConnection();
@@ -480,15 +481,12 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
 
     const turno = rows[0];
 
-    if (
-      String(turno.tipo_dia || "NORMAL")
-        .toUpperCase()
-        .trim() !== "NORMAL"
-    ) {
+    if (String(turno.tipo_dia || "NORMAL").toUpperCase().trim() !== "NORMAL") {
       throw new Error(
         `No se puede asignar DEVOLUCIÓN: el turno ya es ${turno.tipo_dia}`
       );
     }
+
     if (turno.hora_entrada_real || turno.hora_salida_real) {
       throw new Error(
         "No se puede asignar DEVOLUCIÓN: el turno ya tiene marcas reales"
@@ -500,14 +498,21 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
       turno.usuario_id,
     ]);
 
-    // (Opcional) calcular saldo anterior para devolverlo como info
+    // ✅ Saldo anterior SOLO del banco (HORA_ACUMULADA)
     const [saldoRows] = await conn.query(
       `
       SELECT COALESCE(SUM(
         CASE
           WHEN estado <> 'APROBADO' THEN 0
-          WHEN mov_tipo = 'CREDITO' THEN  minutos
-          WHEN mov_tipo = 'DEBITO'  THEN -minutos
+
+          WHEN mov_tipo = 'CREDITO'
+           AND mov_concepto = 'HORA_ACUMULADA'
+          THEN minutos
+
+          WHEN mov_tipo = 'DEBITO'
+           AND mov_concepto IN ('JUST_ATRASO','JUST_SALIDA','DEVOLUCION')
+          THEN -minutos
+
           ELSE 0
         END
       ), 0) AS saldo_minutos
@@ -519,9 +524,7 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
 
     const saldoMin = Number(saldoRows?.[0]?.saldo_minutos || 0);
 
-    // ✅ ANTES: aquí bloqueabas si saldoMin < 480
-    // ✅ AHORA: no bloqueamos, puede quedar negativo (deuda sin tope)
-
+    // ✅ No bloqueamos por saldo: puede quedar negativo
     await conn.query(
       `
       UPDATE neg_t_turnos_diarios
@@ -560,6 +563,10 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
     conn.release();
   }
 }
+
+
+
+
 // ===============================
 //   RECONSTRUIR TURNO DESDE ASISTENCIA
 //   ✅ Jornada/almuerzo se infiere del HORARIO PROGRAMADO (entrada/salida)

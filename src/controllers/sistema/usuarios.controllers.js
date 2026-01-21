@@ -288,27 +288,7 @@ const deleteByID = async (req, res, next) => {
   }
 };
 
-/**
- * Devuelve la lista de usuarios que se pueden gestionar en turnos
- * según la sucursal/departamento del usuario logueado.
- *
- * Por ahora:
- *  - Si el usuario tiene sucursal_id => solo esa sucursal
- *  - Si además tiene departamento_id => solo ese departamento
- *  - (Más adelante podemos meter roles tipo ADMIN para ver todo)
- */
-// controllers/sistema/usuarios.controllers.js
-/**
- * Devuelve la lista de usuarios que se pueden gestionar en turnos
- * según la sucursal/departamento del usuario logueado.
- *
- * Regla:
- *  - Siempre se filtra por sucursal_id del usuario.
- *  - Si el usuario NO tiene departamento_id → se considera JEFE DE SUCURSAL
- *    y ve a TODOS los usuarios de la sucursal (todos los departamentos).
- *  - Si SÍ tiene departamento_id → JEFE DE DEPARTAMENTO, solo ve su departamento.
- *  - Siempre se EXCLUYE al propio usuario (no puede asignarse sus turnos).
- */
+
 /**
  * Devuelve la lista de usuarios que se pueden gestionar en turnos
  * según la sucursal/departamento del usuario logueado.

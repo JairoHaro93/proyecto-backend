@@ -192,9 +192,9 @@ function updateUsuarioAuthFlag(usuario_id, is_auth) {
  */
 async function selectUsuariosParaTurnos({
   sucursalId,
-  departamentoId, // depto del jefe (si tiene)
+  departamentoId,
   jefeUsuarioId,
-  departamentoFiltro, // depto seleccionado en el combo (solo jefe sucursal)
+  departamentoFiltro,
 }) {
   const params = [];
 
@@ -214,22 +214,27 @@ async function selectUsuariosParaTurnos({
       D.id      AS departamento_real_id,
       D.parent_id,
 
-      -- ✅ SALDO (minutos) desde KARDEX
       COALESCE(HM.saldo_minutos, 0) AS saldo_minutos
 
     FROM sisusuarios AS U
     LEFT JOIN sis_sucursales    AS S ON S.id = U.sucursal_id
     LEFT JOIN sis_departamentos AS D ON D.id = U.departamento_id
 
-    -- ✅ Join al saldo agregado
     LEFT JOIN (
       SELECT
         usuario_id,
         COALESCE(SUM(
           CASE
             WHEN estado <> 'APROBADO' THEN 0
-            WHEN mov_tipo = 'CREDITO' THEN  minutos
-            WHEN mov_tipo = 'DEBITO'  THEN -minutos
+
+            WHEN mov_tipo = 'CREDITO'
+             AND mov_concepto = 'HORA_ACUMULADA'
+            THEN minutos
+
+            WHEN mov_tipo = 'DEBITO'
+             AND mov_concepto IN ('JUST_ATRASO','JUST_SALIDA','DEVOLUCION')
+            THEN -minutos
+
             ELSE 0
           END
         ), 0) AS saldo_minutos
@@ -240,33 +245,25 @@ async function selectUsuariosParaTurnos({
     WHERE 1 = 1
   `;
 
-  // Siempre filtramos por sucursal
   if (sucursalId) {
     sql += " AND U.sucursal_id = ?";
     params.push(sucursalId);
   }
 
-  // Nunca incluir al propio jefe
   if (jefeUsuarioId) {
     sql += " AND U.id <> ?";
     params.push(jefeUsuarioId);
   }
 
-  // CASO A: jefe sucursal + departamento seleccionado
   if (departamentoFiltro) {
     sql += " AND U.departamento_id = ?";
     params.push(departamentoFiltro);
-  }
-  // CASO B: jefe departamento => hijos
-  else if (departamentoId) {
+  } else if (departamentoId) {
     sql += " AND D.parent_id = ?";
     params.push(departamentoId);
-  }
-  // CASO C: jefe sucursal sin depto seleccionado => solo jefes depto
-  else {
+  } else {
     sql += " AND D.sucursal_id = ? AND D.parent_id IS NULL";
     params.push(sucursalId);
-
     sql += " AND D.jefe_usuario_id = U.id";
   }
 
@@ -275,6 +272,7 @@ async function selectUsuariosParaTurnos({
   const [rows] = await poolmysql.query(sql, params);
   return rows;
 }
+
 
 module.exports = {
   selectAllUsuarios,
