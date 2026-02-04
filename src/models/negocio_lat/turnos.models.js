@@ -14,7 +14,7 @@ function formatFecha(date) {
 function enumerarFechas(
   fechaDesdeStr,
   fechaHastaStr,
-  excluirFinesSemana = true
+  excluirFinesSemana = true,
 ) {
   if (!fechaDesdeStr || !fechaHastaStr) return [];
 
@@ -165,7 +165,7 @@ async function generarTurnosDiariosLote({
     combos.forEach((c) => params.push(c.usuarioId, c.fecha));
     await poolmysql.query(
       `DELETE FROM neg_t_turnos_diarios WHERE (usuario_id, fecha) IN (${pairsSql})`,
-      params
+      params,
     );
   } else {
     const pairsSql = combos.map(() => "(?, ?)").join(", ");
@@ -176,11 +176,11 @@ async function generarTurnosDiariosLote({
       `SELECT usuario_id, DATE_FORMAT(fecha,'%Y-%m-%d') AS fecha
        FROM neg_t_turnos_diarios
        WHERE (usuario_id, fecha) IN (${pairsSql})`,
-      params
+      params,
     );
 
     const existingSet = new Set(
-      existing.map((r) => `${r.usuario_id}_${r.fecha}`)
+      existing.map((r) => `${r.usuario_id}_${r.fecha}`),
     );
 
     combos.forEach((c) => {
@@ -194,7 +194,7 @@ async function generarTurnosDiariosLote({
     if (!sobrescribirExistentes) {
       const [r] = await poolmysql.query(
         `SELECT id FROM neg_t_turnos_diarios WHERE usuario_id = ? AND fecha = ? LIMIT 1`,
-        [usuarioId, fecha]
+        [usuarioId, fecha],
       );
       if (r.length) continue;
     }
@@ -206,7 +206,7 @@ async function generarTurnosDiariosLote({
       horaEntradaProg,
       horaSalidaProg,
       Number(minTolerAtraso) || 0,
-      Number(minTolerSalida) || 0
+      Number(minTolerSalida) || 0,
     );
   }
 
@@ -216,7 +216,7 @@ async function generarTurnosDiariosLote({
   const rowsCount = values.length / 7;
   const rowPlaceholders = Array.from(
     { length: rowsCount },
-    () => "(?, ?, ?, ?, ?, ?, ?, 'SIN_MARCA', 'NORMAL', 'NO', NULL, NULL)"
+    () => "(?, ?, ?, ?, ?, ?, ?, 'SIN_MARCA', 'NORMAL', 'NO', NULL, NULL)",
   );
 
   const sqlInsert = `
@@ -252,7 +252,7 @@ async function generarTurnosDiariosLote({
 // ===============================
 async function actualizarTurnoProgramado(
   turnoId,
-  { horaEntradaProg, horaSalidaProg, minTolerAtraso = 0, minTolerSalida = 0 }
+  { horaEntradaProg, horaSalidaProg, minTolerAtraso = 0, minTolerSalida = 0 },
 ) {
   const [result] = await poolmysql.query(
     `
@@ -273,7 +273,7 @@ async function actualizarTurnoProgramado(
       Number(minTolerAtraso) || 0,
       Number(minTolerSalida) || 0,
       turnoId,
-    ]
+    ],
   );
   return result;
 }
@@ -287,7 +287,7 @@ async function eliminarTurnoProgramado(turnoId) {
        AND estado_asistencia = 'SIN_MARCA'
        AND (tipo_dia IS NULL OR tipo_dia = 'NORMAL')
     `,
-    [turnoId]
+    [turnoId],
   );
   return result;
 }
@@ -341,7 +341,7 @@ async function selectTurnosByUsuarioRango(usuario_id, desde, hasta) {
 // ===============================
 async function updateObsHoraAcumuladaHoy(
   usuario_id,
-  { observacion, solicitar, num_horas_acumuladas }
+  { observacion, solicitar, num_horas_acumuladas },
 ) {
   const flag = solicitar ? 1 : 0;
 
@@ -381,7 +381,7 @@ async function updateObsHoraAcumuladaHoy(
 async function updateEstadoHoraAcumuladaTurno(
   turnoId,
   estado_hora_acumulada,
-  hora_acum_aprobado_por
+  hora_acum_aprobado_por,
 ) {
   const conn = await poolmysql.getConnection();
   try {
@@ -394,7 +394,7 @@ async function updateEstadoHoraAcumuladaTurno(
       WHERE id = ?
       FOR UPDATE
       `,
-      [turnoId]
+      [turnoId],
     );
     if (!rows.length) throw new Error("Turno no encontrado");
 
@@ -406,7 +406,7 @@ async function updateEstadoHoraAcumuladaTurno(
       .trim();
     if (prev !== "SOLICITUD") {
       throw new Error(
-        `No se puede ${estado_hora_acumulada}: el turno está en estado ${prev}`
+        `No se puede ${estado_hora_acumulada}: el turno está en estado ${prev}`,
       );
     }
 
@@ -419,7 +419,7 @@ async function updateEstadoHoraAcumuladaTurno(
       WHERE id = ?
       LIMIT 1
       `,
-      [estado_hora_acumulada, hora_acum_aprobado_por, turnoId]
+      [estado_hora_acumulada, hora_acum_aprobado_por, turnoId],
     );
 
     // Insert kardex solo si APROBADO
@@ -444,7 +444,7 @@ async function updateEstadoHoraAcumuladaTurno(
           turno.id,
           hora_acum_aprobado_por,
           obs,
-        ]
+        ],
       );
     }
 
@@ -475,21 +475,25 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
       WHERE id = ?
       FOR UPDATE
       `,
-      [turnoId]
+      [turnoId],
     );
     if (!rows.length) throw new Error("Turno no encontrado");
 
     const turno = rows[0];
 
-    if (String(turno.tipo_dia || "NORMAL").toUpperCase().trim() !== "NORMAL") {
+    if (
+      String(turno.tipo_dia || "NORMAL")
+        .toUpperCase()
+        .trim() !== "NORMAL"
+    ) {
       throw new Error(
-        `No se puede asignar DEVOLUCIÓN: el turno ya es ${turno.tipo_dia}`
+        `No se puede asignar DEVOLUCIÓN: el turno ya es ${turno.tipo_dia}`,
       );
     }
 
     if (turno.hora_entrada_real || turno.hora_salida_real) {
       throw new Error(
-        "No se puede asignar DEVOLUCIÓN: el turno ya tiene marcas reales"
+        "No se puede asignar DEVOLUCIÓN: el turno ya tiene marcas reales",
       );
     }
 
@@ -519,7 +523,7 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
       FROM neg_t_horas_movimientos
       WHERE usuario_id = ?
       `,
-      [turno.usuario_id]
+      [turno.usuario_id],
     );
 
     const saldoMin = Number(saldoRows?.[0]?.saldo_minutos || 0);
@@ -534,7 +538,7 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
       WHERE id = ?
       LIMIT 1
       `,
-      [hora_acum_aprobado_por, turnoId]
+      [hora_acum_aprobado_por, turnoId],
     );
 
     const obs = (turno.observacion ?? "").toString().slice(0, 255);
@@ -546,7 +550,7 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
       VALUES
         (?, 'DEBITO', 'DEVOLUCION', 480, ?, ?, 'APROBADO', ?, ?)
       `,
-      [turno.usuario_id, turno.fecha, turno.id, hora_acum_aprobado_por, obs]
+      [turno.usuario_id, turno.fecha, turno.id, hora_acum_aprobado_por, obs],
     );
 
     await conn.commit();
@@ -563,9 +567,6 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
     conn.release();
   }
 }
-
-
-
 
 // ===============================
 //   RECONSTRUIR TURNO DESDE ASISTENCIA
@@ -641,7 +642,7 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     WHERE usuario_id = ? AND fecha = ?
     LIMIT 1
     `,
-    [usuario_id, fechaKey]
+    [usuario_id, fechaKey],
   );
 
   if (!turnoRows.length) return { ok: false, reason: "SIN_TURNO" };
@@ -661,7 +662,7 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     ORDER BY fecha_hora ASC
     LIMIT 4
     `,
-    [usuario_id, fechaKey]
+    [usuario_id, fechaKey],
   );
 
   const m = marks
@@ -703,39 +704,35 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     // si no hay 4 marcas, asumimos 1 solo almuerzo según horario programado
     min_trabajados = Math.max(
       0,
-      diffMinFloor(entrada1, salidaReal) - lunchObjetivoMin
+      diffMinFloor(entrada1, salidaReal) - lunchObjetivoMin,
     );
   } else {
     min_trabajados = 0;
   }
 
-// 4) trabajado dentro de ventana programada (para decisión)
-let workedInWindow = 0;
+  // 4) trabajado dentro de ventana programada (para decisión)
+  let workedInWindow = 0;
 
-if (m.length >= 4) {
-  workedInWindow += overlapMinutes(entrada1, salida1, progStart, progEnd);
-  workedInWindow += overlapMinutes(entrada2, salida2, progStart, progEnd);
+  if (m.length >= 4) {
+    workedInWindow += overlapMinutes(entrada1, salida1, progStart, progEnd);
+    workedInWindow += overlapMinutes(entrada2, salida2, progStart, progEnd);
+  } else if (m.length >= 2) {
+    // ✅ si entra dentro de tolerancia, considera como si hubiera entrado a la hora programada
+    const entradaDentroToler =
+      entrada1 && diffMinCeil(progStart, entrada1) <= tolerAtraso;
 
-} else if (m.length >= 2) {
+    // ✅ si sale "temprano" pero dentro de tolerancia, considera como si hubiera salido a la hora programada
+    const salidaDentroToler =
+      salidaReal && diffMinCeil(salidaReal, progEnd) <= tolerSalida;
 
-  // ✅ si entra dentro de tolerancia, considera como si hubiera entrado a la hora programada
-  const entradaDentroToler =
-    entrada1 && diffMinCeil(progStart, entrada1) <= tolerAtraso;
+    const winStart = entradaDentroToler ? progStart : entrada1;
+    const winEnd = salidaDentroToler ? progEnd : salidaReal;
 
-  // ✅ si sale "temprano" pero dentro de tolerancia, considera como si hubiera salido a la hora programada
-  const salidaDentroToler =
-    salidaReal && diffMinCeil(salidaReal, progEnd) <= tolerSalida;
-
-  const winStart = entradaDentroToler ? progStart : entrada1;
-  const winEnd   = salidaDentroToler ? progEnd   : salidaReal;
-
-  workedInWindow = overlapMinutes(winStart, winEnd, progStart, progEnd);
-  workedInWindow = Math.max(0, workedInWindow - lunchObjetivoMin);
-
-} else {
-  workedInWindow = 0;
-}
-
+    workedInWindow = overlapMinutes(winStart, winEnd, progStart, progEnd);
+    workedInWindow = Math.max(0, workedInWindow - lunchObjetivoMin);
+  } else {
+    workedInWindow = 0;
+  }
 
   // 5) atraso (CEIL) - con tolerancia
   let min_atraso = 0;
@@ -751,17 +748,17 @@ if (m.length >= 4) {
     min_salida_temprana = Math.max(0, temprana);
   }
 
- // 7) min_extra (✅ SOLO INFORMATIVO)
-// Extra bruto según minutos trabajados vs objetivo (sin condicionar por atraso/salida temprana)
-let min_extra = 0;
+  // 7) min_extra (✅ SOLO INFORMATIVO)
+  // Extra bruto según minutos trabajados vs objetivo (sin condicionar por atraso/salida temprana)
+  let min_extra = 0;
 
-if (m.length >= 2) {
-  // min_trabajados ya descuenta lunchObjetivoMin cuando hay solo 2 marcas,
-  // y suma tramos cuando hay 4 marcas.
-  min_extra = Math.max(0, min_trabajados - workObjetivoMin);
-} else {
-  min_extra = 0;
-}
+  if (m.length >= 2) {
+    // min_trabajados ya descuenta lunchObjetivoMin cuando hay solo 2 marcas,
+    // y suma tramos cuando hay 4 marcas.
+    min_extra = Math.max(0, min_trabajados - workObjetivoMin);
+  } else {
+    min_extra = 0;
+  }
 
   // 8) estado asistencia
   let estado_asistencia = "SIN_MARCA";
@@ -810,7 +807,7 @@ if (m.length >= 2) {
       min_extra,
       estado_asistencia,
       turno.id,
-    ]
+    ],
   );
 
   return {
@@ -832,7 +829,7 @@ async function resolverJustificacionTurno(
   tipo,
   estado,
   minutos,
-  jefeId
+  jefeId,
 ) {
   const tipoKey = String(tipo).toLowerCase() === "salida" ? "salida" : "atraso";
   const estadoUp = String(estado).toUpperCase().trim();
@@ -864,7 +861,7 @@ async function resolverJustificacionTurno(
       WHERE id = ?
       FOR UPDATE
       `,
-      [turnoId]
+      [turnoId],
     );
 
     if (!rows.length) throw new Error("Turno no encontrado.");
@@ -887,7 +884,7 @@ async function resolverJustificacionTurno(
           updated_at   = NOW()
       WHERE id = ?
       `,
-      [estadoUp, mins, jefeId, turnoId]
+      [estadoUp, mins, jefeId, turnoId],
     );
 
     // 3) ✅ Movimiento SOLO si APROBADA y minutos > 0
@@ -908,7 +905,7 @@ async function resolverJustificacionTurno(
           turnoId,
           jefeId,
           motivoMov,
-        ]
+        ],
       );
     }
 
@@ -922,6 +919,26 @@ async function resolverJustificacionTurno(
   }
 }
 
+async function getSaldoHorasAcumuladasMin(usuario_id) {
+  const [rows] = await poolmysql.query(
+    `
+    SELECT COALESCE(SUM(
+      CASE
+        WHEN mov_tipo='CREDITO' AND mov_concepto='HORA_ACUMULADA' THEN minutos
+        WHEN mov_tipo='DEBITO'  AND mov_concepto IN ('JUST_ATRASO','JUST_SALIDA','DEVOLUCION') THEN -minutos
+        ELSE 0
+      END
+    ), 0) AS saldo_min
+    FROM neg_t_horas_movimientos
+    WHERE usuario_id = ?
+      AND estado = 'APROBADO'
+    `,
+    [usuario_id],
+  );
+
+  return Number(rows?.[0]?.saldo_min ?? 0);
+}
+
 module.exports = {
   generarTurnosDiariosLote,
   seleccionarTurnosDiarios,
@@ -933,4 +950,5 @@ module.exports = {
   asignarDevolucionTurno,
   updateTurnoFromAsistencia,
   resolverJustificacionTurno,
+  getSaldoHorasAcumuladasMin,
 };

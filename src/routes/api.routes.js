@@ -13,7 +13,7 @@ router.use("/timbres", require("./api/negocio_lat/timbres.routes"));
 router.use("/turnos", require("./api/negocio_lat/turnos.router"));
 router.use(
   "/justificacion",
-  require("./api/negocio_lat/justificaciones_turno.routes")
+  require("./api/negocio_lat/justificaciones_turno.routes"),
 );
 
 router.use("/files", checkToken, require("./api/sistema/files.routes"));
@@ -28,20 +28,20 @@ router.use("/clientes", checkToken, require("./api/negocio/clientes.router"));
 router.use(
   "/soportes",
   checkToken,
-  require("./api/negocio_lat/soportes.router")
+  require("./api/negocio_lat/soportes.router"),
 );
 router.use("/vis", checkToken, require("./api/negocio_lat/vis.router"));
 router.use(
   "/instalaciones",
   checkToken,
-  require("./api/negocio_lat/instalaciones.router")
+  require("./api/negocio_lat/instalaciones.router"),
 );
 
 router.use("/agenda", checkToken, require("./api/negocio_lat/agenda.router"));
 
 router.use(
   "/infraestructura",
-  require("./api/negocio_lat/infraestructura.router")
+  require("./api/negocio_lat/infraestructura.router"),
 );
 router.use("/images", require("./api/negocio_lat/images.router"));
 router.use("/cajas", require("./api/negocio_lat/cajas.router"));
@@ -50,7 +50,13 @@ router.use("/olt", require("./api/negocio_lat/olt.router"));
 router.use(
   "/vacaciones",
   checkToken,
-  require("./api/negocio_lat/vacaciones.router")
+  require("./api/negocio_lat/vacaciones.router"),
+);
+
+router.use(
+  "/horas-extra",
+  checkToken,
+  require("./api/negocio_lat/horas_extras.routes"),
 );
 
 module.exports = router;

@@ -9,6 +9,7 @@ const {
   updateObsHoraAcumuladaHoy,
   updateEstadoHoraAcumuladaTurno,
   asignarDevolucionTurno,
+  getSaldoHorasAcumuladasMin,
 } = require("../../models/negocio_lat/turnos.models");
 
 // ===== Helpers fecha (evita problemas de timezone) =====
@@ -223,7 +224,7 @@ const getMiHorarioSemana = async (req, res, next) => {
     const turnos = await selectTurnosByUsuarioRango(
       usuario_id,
       desdeISO,
-      hastaISO
+      hastaISO,
     );
 
     const map = new Map();
@@ -234,7 +235,7 @@ const getMiHorarioSemana = async (req, res, next) => {
       const day = new Date(
         monday.getFullYear(),
         monday.getMonth(),
-        monday.getDate() + i
+        monday.getDate() + i,
       );
       const ymd = formatYMD(day);
 
@@ -288,11 +289,14 @@ const getMiHorarioSemana = async (req, res, next) => {
         });
       }
     }
+    const total_horas_acumuladas_min =
+      await getSaldoHorasAcumuladasMin(usuario_id);
 
     return res.json({
       success: true,
       desde: desdeISO,
       hasta: hastaISO,
+      total_horas_acumuladas_min, // ✅ NUEVO (saldo total del usuario)
       data: semana,
     });
   } catch (e) {
@@ -305,6 +309,9 @@ const getMiHorarioSemana = async (req, res, next) => {
  * body: { observacion, solicitar_hora_acumulada, num_horas_acumuladas }
  *
  * ✅ NO permite modificar si estado_hora_acumulada = APROBADO
+ * ✅ num_horas_acumuladas ahora se interpreta como MINUTOS:
+ *    60..900 en pasos de 30 (60, 90, 120, ...).
+ * ✅ Compatibilidad: si llega 1..15 se asume horas y se convierte a minutos.
  */
 const putObservacionTurnoHoy = async (req, res, next) => {
   try {
@@ -315,22 +322,51 @@ const putObservacionTurnoHoy = async (req, res, next) => {
 
     const observacion = (req.body?.observacion ?? "").toString().trim();
     const solicitar = !!req.body?.solicitar_hora_acumulada;
-    const numHoras = req.body?.num_horas_acumuladas ?? null;
+    const raw = req.body?.num_horas_acumuladas ?? null;
+
+    let minutosHA = null;
 
     if (solicitar) {
-      const n = Number(numHoras);
-      if (!Number.isInteger(n) || n < 1 || n > 15) {
+      const n = Number(raw);
+
+      // debe venir num_horas_acumuladas cuando solicitar = true
+      if (!Number.isFinite(n) || !Number.isInteger(n)) {
         return res.status(400).json({
           success: false,
-          message: "num_horas_acumuladas debe ser entero entre 1 y 15",
+          message:
+            "num_horas_acumuladas debe ser entero (minutos), por ejemplo 60, 90, 120...",
         });
       }
+
+      // ✅ compatibilidad si llega 1..15 (horas)
+      let m = n;
+      if (m >= 1 && m <= 15) m = m * 60;
+
+      // ✅ regla: empieza en 1:00 (60) y luego cada 30 min
+      if (m < 60 || m > 15 * 60 || m % 30 !== 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "num_horas_acumuladas debe ser 60..900 en pasos de 30 (60, 90, 120, ... 900)",
+        });
+      }
+
+      minutosHA = m;
+
+      // (opcional) si quieres obligar observación cuando solicita > 0
+      // if (!observacion || observacion.length < 5) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: "Observación obligatoria (mín. 5 caracteres) al solicitar horas acumuladas",
+      //   });
+      // }
     }
 
     const result = await updateObsHoraAcumuladaHoy(usuario_id, {
       observacion,
       solicitar,
-      num_horas_acumuladas: solicitar ? Number(numHoras) : null,
+      // ✅ guardamos MINUTOS
+      num_horas_acumuladas: solicitar ? minutosHA : null,
     });
 
     if (!result.affectedRows) {
@@ -340,7 +376,7 @@ const putObservacionTurnoHoy = async (req, res, next) => {
          FROM neg_t_turnos_diarios
          WHERE usuario_id = ? AND fecha = CURDATE()
          LIMIT 1`,
-        [usuario_id]
+        [usuario_id],
       );
 
       if (!rows.length) {
@@ -412,7 +448,7 @@ const putEstadoHoraAcumuladaTurno = async (req, res, next) => {
     const result = await updateEstadoHoraAcumuladaTurno(
       turnoId,
       estado,
-      aprobadoPor
+      aprobadoPor,
     );
 
     return res.status(200).json({
