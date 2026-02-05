@@ -249,7 +249,7 @@ const getMiHorarioSemana = async (req, res, next) => {
           estado_asistencia: "SIN_TURNO",
           tipo_dia: "NORMAL",
           estado_hora_acumulada: "NO",
-          num_horas_acumuladas: null,
+          num_minutos_acumulados: null,
         });
       } else {
         // ✅ dentro del else (cuando sí existe t)
@@ -274,7 +274,7 @@ const getMiHorarioSemana = async (req, res, next) => {
           sucursal: t.sucursal,
 
           estado_hora_acumulada: t.estado_hora_acumulada ?? "NO",
-          num_horas_acumuladas: t.num_horas_acumuladas ?? null,
+          num_minutos_acumulados: t.num_minutos_acumulados ?? null,
 
           // ✅ JUSTIFICACIONES (ya vienen desde SQL)
           just_atraso_estado: t.just_atraso_estado ?? "NO",
@@ -306,10 +306,10 @@ const getMiHorarioSemana = async (req, res, next) => {
 
 /**
  * PUT /api/turnos/mi-horario/observacion
- * body: { observacion, solicitar_hora_acumulada, num_horas_acumuladas }
+ * body: { observacion, solicitar_hora_acumulada, num_minutos_acumulados }
  *
  * ✅ NO permite modificar si estado_hora_acumulada = APROBADO
- * ✅ num_horas_acumuladas ahora se interpreta como MINUTOS:
+ * ✅ num_minutos_acumulados ahora se interpreta como MINUTOS:
  *    60..900 en pasos de 30 (60, 90, 120, ...).
  * ✅ Compatibilidad: si llega 1..15 se asume horas y se convierte a minutos.
  */
@@ -322,19 +322,19 @@ const putObservacionTurnoHoy = async (req, res, next) => {
 
     const observacion = (req.body?.observacion ?? "").toString().trim();
     const solicitar = !!req.body?.solicitar_hora_acumulada;
-    const raw = req.body?.num_horas_acumuladas ?? null;
+    const raw = req.body?.num_minutos_acumulados ?? null;
 
     let minutosHA = null;
 
     if (solicitar) {
       const n = Number(raw);
 
-      // debe venir num_horas_acumuladas cuando solicitar = true
+      // debe venir num_minutos_acumulados cuando solicitar = true
       if (!Number.isFinite(n) || !Number.isInteger(n)) {
         return res.status(400).json({
           success: false,
           message:
-            "num_horas_acumuladas debe ser entero (minutos), por ejemplo 60, 90, 120...",
+            "num_minutos_acumulados debe ser entero (minutos), por ejemplo 60, 90, 120...",
         });
       }
 
@@ -347,7 +347,7 @@ const putObservacionTurnoHoy = async (req, res, next) => {
         return res.status(400).json({
           success: false,
           message:
-            "num_horas_acumuladas debe ser 60..900 en pasos de 30 (60, 90, 120, ... 900)",
+            "num_minutos_acumulados debe ser 60..900 en pasos de 30 (60, 90, 120, ... 900)",
         });
       }
 
@@ -366,7 +366,7 @@ const putObservacionTurnoHoy = async (req, res, next) => {
       observacion,
       solicitar,
       // ✅ guardamos MINUTOS
-      num_horas_acumuladas: solicitar ? minutosHA : null,
+      num_minutos_acumulados: solicitar ? minutosHA : null,
     });
 
     if (!result.affectedRows) {

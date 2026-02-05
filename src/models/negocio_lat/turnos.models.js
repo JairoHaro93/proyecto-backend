@@ -232,7 +232,7 @@ async function generarTurnosDiariosLote({
       estado_asistencia,
       tipo_dia,
       estado_hora_acumulada,
-      num_horas_acumuladas,
+      num_minutos_acumulados,
       hora_acum_aprobado_por
     )
     VALUES ${rowPlaceholders.join(", ")}
@@ -313,7 +313,7 @@ async function selectTurnosByUsuarioRango(usuario_id, desde, hasta) {
       observacion,
       tipo_dia,
       estado_hora_acumulada,
-      num_horas_acumuladas,
+      num_minutos_acumulados,
       hora_acum_aprobado_por,
 
       -- ✅ Justificaciones (si existen en tu tabla)
@@ -341,7 +341,7 @@ async function selectTurnosByUsuarioRango(usuario_id, desde, hasta) {
 // ===============================
 async function updateObsHoraAcumuladaHoy(
   usuario_id,
-  { observacion, solicitar, num_horas_acumuladas },
+  { observacion, solicitar, num_minutos_acumulados },
 ) {
   const flag = solicitar ? 1 : 0;
 
@@ -353,7 +353,7 @@ async function updateObsHoraAcumuladaHoy(
         WHEN ? = 1 THEN 'SOLICITUD'
         ELSE 'NO'
       END,
-      num_horas_acumuladas = CASE
+      num_minutos_acumulados = CASE
         WHEN ? = 1 THEN ?
         ELSE NULL
       END,
@@ -368,7 +368,7 @@ async function updateObsHoraAcumuladaHoy(
     observacion,
     flag,
     flag,
-    flag ? Number(num_horas_acumuladas) : null,
+    flag ? Number(num_minutos_acumulados) : null,
     usuario_id,
   ]);
 
@@ -389,7 +389,7 @@ async function updateEstadoHoraAcumuladaTurno(
 
     const [rows] = await conn.query(
       `
-      SELECT id, usuario_id, fecha, estado_hora_acumulada, num_horas_acumuladas, observacion
+      SELECT id, usuario_id, fecha, estado_hora_acumulada, num_minutos_acumulados, observacion
       FROM neg_t_turnos_diarios
       WHERE id = ?
       FOR UPDATE
@@ -424,29 +424,29 @@ async function updateEstadoHoraAcumuladaTurno(
 
     // Insert kardex solo si APROBADO
     const pasaAprobado = estado_hora_acumulada === "APROBADO";
-    const horas = Number(turno.num_horas_acumuladas || 0);
+    const minutos = Number(turno.num_minutos_acumulados || 0);
 
-    if (pasaAprobado && horas > 0) {
-      const minutos = horas * 60;
-      const obs = (turno.observacion ?? "").toString().slice(0, 255);
+if (pasaAprobado && minutos > 0) {
+  const obs = (turno.observacion ?? "").toString().slice(0, 255);
 
-      await conn.query(
-        `
-        INSERT INTO neg_t_horas_movimientos
-          (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion)
-        VALUES
-          (?, 'CREDITO', 'HORA_ACUMULADA', ?, ?, ?, 'APROBADO', ?, ?)
-        `,
-        [
-          turno.usuario_id,
-          minutos,
-          turno.fecha,
-          turno.id,
-          hora_acum_aprobado_por,
-          obs,
-        ],
-      );
-    }
+  await conn.query(
+    `
+    INSERT INTO neg_t_horas_movimientos
+      (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion)
+    VALUES
+      (?, 'CREDITO', 'HORA_ACUMULADA', ?, ?, ?, 'APROBADO', ?, ?)
+    `,
+    [
+      turno.usuario_id,
+      minutos,              // ✅ ya NO se multiplica
+      turno.fecha,
+      turno.id,
+      hora_acum_aprobado_por,
+      obs,
+    ],
+  );
+}
+
 
     await conn.commit();
     return { ok: true };

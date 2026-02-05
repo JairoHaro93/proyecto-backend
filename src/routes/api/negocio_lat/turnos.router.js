@@ -21,8 +21,6 @@ router.delete("/:turnoId", checkToken, deleteTurno);
 
 router.get("/mi-horario", checkToken, getMiHorarioSemana);
 router.put("/mi-horario/observacion", checkToken, putObservacionTurnoHoy);
-
-// ✅ aprobar / rechazar solicitudes
 router.put("/hora-acumulada/:turnoId", checkToken, putEstadoHoraAcumuladaTurno);
 
 router.put("/devolucion/:id", checkToken, putAsignarDevolucion);
