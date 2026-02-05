@@ -11,6 +11,9 @@ const {
   asignarDevolucionTurno,
   getSaldoHorasAcumuladasMin,
 } = require("../../models/negocio_lat/turnos.models");
+const {
+  getVacacionesDisponiblesDias,
+} = require("../../models/negocio_lat/vacaciones.models");
 
 // ===== Helpers fecha (evita problemas de timezone) =====
 function parseYMD(ymd) {
@@ -291,12 +294,14 @@ const getMiHorarioSemana = async (req, res, next) => {
     }
     const total_horas_acumuladas_min =
       await getSaldoHorasAcumuladasMin(usuario_id);
-
+    const vacaciones_disponibles_dias =
+      await getVacacionesDisponiblesDias(usuario_id);
     return res.json({
       success: true,
       desde: desdeISO,
       hasta: hastaISO,
-      total_horas_acumuladas_min, // ✅ NUEVO (saldo total del usuario)
+      total_horas_acumuladas_min,
+      vacaciones_disponibles_dias,
       data: semana,
     });
   } catch (e) {

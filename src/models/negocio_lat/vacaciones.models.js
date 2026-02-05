@@ -7,7 +7,7 @@ async function getConfig() {
     `SELECT id, fecha_corte, dias_base, extra_desde_anio, extra_max
      FROM vac_config
      WHERE id = 1
-     LIMIT 1`
+     LIMIT 1`,
   );
   return rows?.[0] || null;
 }
@@ -32,7 +32,7 @@ async function getUsuarioBaseById(usuarioId, conn = poolmysql) {
     WHERE u.id = ?
     LIMIT 1
     `,
-    [usuarioId]
+    [usuarioId],
   );
 
   return rows?.[0] || null;
@@ -64,7 +64,7 @@ async function getConsumoInicial({ usuarioId, fechaCorte }) {
      FROM vac_consumo_inicial
      WHERE usuario_id = ? AND fecha_corte = ?
      LIMIT 1`,
-    [usuarioId, fecha]
+    [usuarioId, fecha],
   );
   return Number(rows?.[0]?.dias_consumidos || 0);
 }
@@ -74,7 +74,7 @@ async function sumConsumidoAsignacionesActivas({ usuarioId }) {
     `SELECT COALESCE(SUM(dias_calendario), 0) AS total
      FROM vac_asignaciones
      WHERE usuario_id = ? AND estado = 'ACTIVA'`,
-    [usuarioId]
+    [usuarioId],
   );
   return Number(rows?.[0]?.total || 0);
 }
@@ -113,7 +113,7 @@ async function listAsignacionesByUsuario({
     ORDER BY a.created_at DESC
     LIMIT ? OFFSET ?
     `,
-    params
+    params,
   );
 
   return rows || [];
@@ -166,7 +166,7 @@ async function insertAsignacion(conn, payload) {
       payload.sol_anio,
       payload.sol_consecutivo,
       payload.sol_numero,
-    ]
+    ],
   );
   return res.insertId;
 }
@@ -174,7 +174,7 @@ async function insertAsignacion(conn, payload) {
 async function getAsignacionById(id) {
   const [rows] = await poolmysql.query(
     `SELECT * FROM vac_asignaciones WHERE id = ? LIMIT 1`,
-    [id]
+    [id],
   );
   return rows?.[0] || null;
 }
@@ -190,7 +190,7 @@ async function marcarAsignacionAnulada(conn, { id, anulada_por, motivo }) {
       observacion = CONCAT(COALESCE(observacion,''), IF(COALESCE(observacion,'')='', '', ' | '), 'ANULADA: ', ?)
     WHERE id = ? AND estado='ACTIVA'
     `,
-    [anulada_por, motivo || "sin motivo", id]
+    [anulada_por, motivo || "sin motivo", id],
   );
 }
 
@@ -202,7 +202,7 @@ async function getBackupsByVacacion(conn, vacacionId) {
     WHERE vacacion_id = ?
     ORDER BY fecha ASC
     `,
-    [vacacionId]
+    [vacacionId],
   );
   return rows || [];
 }
@@ -223,7 +223,7 @@ async function insertBackupsBatch(conn, backups = []) {
       (vacacion_id, usuario_id, fecha, turno_id, turno_existia, tipo_dia_anterior)
     VALUES ?
     `,
-    [values]
+    [values],
   );
 }
 
@@ -240,7 +240,7 @@ async function selectTurnosEnRango(conn, { usuarioId, desde, hasta }) {
     WHERE usuario_id = ?
       AND fecha BETWEEN ? AND ?
     `,
-    [usuarioId, desde, hasta]
+    [usuarioId, desde, hasta],
   );
   return rows || [];
 }
@@ -255,7 +255,7 @@ async function selectConflictosEnRango(conn, { usuarioId, desde, hasta }) {
       AND tipo_dia IN ('PERMISO','DEVOLUCION','VACACIONES')
     ORDER BY fecha ASC
     `,
-    [usuarioId, desde, hasta]
+    [usuarioId, desde, hasta],
   );
   return rows || [];
 }
@@ -263,7 +263,7 @@ async function selectConflictosEnRango(conn, { usuarioId, desde, hasta }) {
 async function updateTurnoTipoDia(conn, { turnoId, tipoDia }) {
   await conn.query(
     `UPDATE neg_t_turnos_diarios SET tipo_dia = ? WHERE id = ?`,
-    [tipoDia, turnoId]
+    [tipoDia, turnoId],
   );
 }
 
@@ -278,14 +278,14 @@ async function inferSucursalUsuario(conn, usuarioId, fecha) {
     ORDER BY fecha DESC
     LIMIT 1
     `,
-    [usuarioId, fecha]
+    [usuarioId, fecha],
   );
   return rows?.[0]?.sucursal || null;
 }
 
 async function insertTurnoVacacion(
   conn,
-  { usuarioId, fecha, sucursal = null }
+  { usuarioId, fecha, sucursal = null },
 ) {
   if (!sucursal) {
     sucursal = await inferSucursalUsuario(conn, usuarioId, fecha);
@@ -308,7 +308,7 @@ async function insertTurnoVacacion(
       'VACACIONES'
     )
     `,
-    [usuarioId, fecha, sucursal]
+    [usuarioId, fecha, sucursal],
   );
 
   return res.insertId;
@@ -326,7 +326,7 @@ async function getTurnoById(conn, turnoId) {
     WHERE id = ?
     LIMIT 1
     `,
-    [turnoId]
+    [turnoId],
   );
   return rows?.[0] || null;
 }
@@ -342,21 +342,21 @@ async function insertFile(conn, { ruta_relativa, mimetype, size, created_by }) {
     INSERT INTO files (ruta_relativa, mimetype, size, created_by)
     VALUES (?, ?, ?, ?)
     `,
-    [ruta_relativa, mimetype, size, created_by || null]
+    [ruta_relativa, mimetype, size, created_by || null],
   );
   return res.insertId;
 }
 
 async function insertFileLink(
   conn,
-  { module, entity_id, tag, position, file_id, created_by }
+  { module, entity_id, tag, position, file_id, created_by },
 ) {
   const [res] = await conn.query(
     `
     INSERT INTO file_links (module, entity_id, tag, position, file_id, created_by)
     VALUES (?, ?, ?, ?, ?, ?)
     `,
-    [module, entity_id, tag, position || 1, file_id, created_by || null]
+    [module, entity_id, tag, position || 1, file_id, created_by || null],
   );
   return res.insertId;
 }
@@ -372,7 +372,7 @@ async function getActaFileIdByAsignacion(asignacionId) {
       AND position=1
     LIMIT 1
     `,
-    [asignacionId]
+    [asignacionId],
   );
   return rows?.[0]?.file_id || null;
 }
@@ -388,7 +388,7 @@ async function getSucursalRecienteFromTurnos(conn, usuarioId) {
     ORDER BY fecha DESC
     LIMIT 1
     `,
-    [usuarioId]
+    [usuarioId],
   );
 
   return rows?.[0]?.sucursal || null;
@@ -403,7 +403,7 @@ async function nextSolicitudConsecutivo(conn, usuarioId, anio) {
     WHERE usuario_id = ? AND anio = ?
     FOR UPDATE
     `,
-    [usuarioId, anio]
+    [usuarioId, anio],
   );
 
   if (rows.length) {
@@ -415,7 +415,7 @@ async function nextSolicitudConsecutivo(conn, usuarioId, anio) {
       SET last_consecutivo = ?
       WHERE usuario_id = ? AND anio = ?
       `,
-      [next, usuarioId, anio]
+      [next, usuarioId, anio],
     );
 
     return next;
@@ -426,16 +426,113 @@ async function nextSolicitudConsecutivo(conn, usuarioId, anio) {
     INSERT INTO vac_solicitud_seq (usuario_id, anio, last_consecutivo)
     VALUES (?, ?, 1)
     `,
-    [usuarioId, anio]
+    [usuarioId, anio],
   );
 
   return 1;
 }
 
-module.exports = {
-  // ...
-  nextSolicitudConsecutivo,
-};
+// ===============================
+//   SALDO SIMPLE (solo días disponibles)
+// ===============================
+
+function parseECDate(ymd) {
+  // fija -05:00 para evitar corrimientos
+  return new Date(`${ymd}T00:00:00-05:00`);
+}
+
+function format2(n) {
+  const x = Number(n || 0);
+  return Math.round(x * 100) / 100;
+}
+
+function addYears(dateObj, years) {
+  const d = new Date(dateObj.getTime());
+  d.setFullYear(d.getFullYear() + years);
+  return d;
+}
+
+function minDate(a, b) {
+  return a.getTime() <= b.getTime() ? a : b;
+}
+
+function calcGenerados({ fechaContYMD, hastaDate, config }) {
+  const base = Number(config?.dias_base || 15);
+  const extraDesde = Number(config?.extra_desde_anio || 6); // 6 => extra a partir del año 6
+  const extraMax = Number(config?.extra_max || 15);
+
+  const start = parseECDate(fechaContYMD);
+  const end = hastaDate;
+
+  if (end.getTime() <= start.getTime()) return 0;
+
+  let total = 0;
+  let yearNum = 1;
+  let cursor = new Date(start.getTime());
+
+  while (cursor.getTime() < end.getTime()) {
+    const nextAnniv = addYears(start, yearNum);
+    const segEnd = minDate(nextAnniv, end);
+
+    const segDays = Math.max(
+      0,
+      Math.floor((segEnd.getTime() - cursor.getTime()) / (24 * 3600 * 1000)),
+    );
+
+    let extra = 0;
+    if (yearNum >= extraDesde) {
+      extra = yearNum - (extraDesde - 1);
+      if (extra > extraMax) extra = extraMax;
+    }
+    const entitlement = base + extra;
+
+    const yearStart = addYears(start, yearNum - 1);
+    const yearEnd = addYears(start, yearNum);
+    const yearLenDays = Math.max(
+      1,
+      Math.floor(
+        (yearEnd.getTime() - yearStart.getTime()) / (24 * 3600 * 1000),
+      ),
+    );
+
+    total += (entitlement * segDays) / yearLenDays;
+
+    cursor = segEnd;
+    yearNum += 1;
+  }
+
+  return total;
+}
+
+/**
+ * ✅ Devuelve SOLO saldo visible (días disponibles)
+ */
+async function getVacacionesDisponiblesDias(usuarioId, refDate = new Date()) {
+  const config = await getConfig();
+  if (!config) throw new Error("vac_config no configurado");
+
+  const user = await getUsuarioBaseById(usuarioId);
+  if (!user) return 0;
+
+  const generados = calcGenerados({
+    fechaContYMD: user.fecha_cont,
+    hastaDate: refDate,
+    config,
+  });
+
+  const consumidoInicial = await getConsumoInicial({
+    usuarioId,
+    fechaCorte: config.fecha_corte,
+  });
+
+  const consumidoAsign = await sumConsumidoAsignacionesActivas({ usuarioId });
+
+  const consumidoTotal = consumidoInicial + consumidoAsign;
+  const saldoReal = generados - consumidoTotal;
+  const saldoVisible = Math.max(0, saldoReal);
+
+  return format2(saldoVisible);
+}
 
 module.exports = {
   getConfig,
@@ -443,6 +540,7 @@ module.exports = {
 
   getConsumoInicial,
   sumConsumidoAsignacionesActivas,
+  getVacacionesDisponiblesDias,
 
   listAsignacionesByUsuario,
 
