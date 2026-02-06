@@ -21,6 +21,8 @@ const {
 
 const postMarcarAsistencia = async (req, res, next) => {
   try {
+    console.log("➡️ asistencia hit", req.originalUrl, req.body);
+
     let {
       usuario_id,
       lector_codigo,
@@ -54,6 +56,7 @@ const postMarcarAsistencia = async (req, res, next) => {
           message: "Huella no registrada para este lector",
         });
       }
+
       usuario_id = rows[0].usuario_id;
     }
 
@@ -62,7 +65,9 @@ const postMarcarAsistencia = async (req, res, next) => {
     // 2) Máximo 4 marcas por día
     const [rowsCount] = await countAsistenciasHoyByUsuario(usuario_id);
     const totalHoy = Number(rowsCount?.[0]?.total || 0);
+
     if (totalHoy >= 4) {
+      console.log("⛔ bloqueado por 4 marcas", { usuario_id, totalHoy });
       return res.status(409).json({
         ok: false,
         message: "Ya tienes 4 marcaciones registradas hoy. No se permite más.",
@@ -78,6 +83,7 @@ const postMarcarAsistencia = async (req, res, next) => {
       const diffMin = (ahora.getTime() - fechaUltima.getTime()) / (1000 * 60);
 
       if (diffMin < 30) {
+        console.log("⛔ bloqueado por 30 min", { usuario_id, diffMin });
         return res.status(409).json({
           ok: false,
           message:
@@ -107,12 +113,20 @@ const postMarcarAsistencia = async (req, res, next) => {
     const [result] = await insertAsistencia(data);
     const insertId = result.insertId;
 
-    // (Opcional) is_auth...
+    // 5) Alterna is_auth_finger según número de marcación HOY (1->1, 2->0, 3->1, 4->0)
     const n = totalHoy + 1;
     const nuevoIsAuth = n % 2 === 1 ? 1 : 0;
-    await updateUsuarioAuthFlag(usuario_id, nuevoIsAuth);
 
-    // ✅ Reconstruir turno usando la fecha_hora real guardada en MySQL
+    const upd = await updateUsuarioAuthFlag(usuario_id, nuevoIsAuth);
+    console.log("✅ insert ok", { usuario_id, insertId, n });
+    console.log("✅ update is_auth_finger", {
+      usuario_id,
+      nuevoIsAuth,
+      affectedRows: upd?.affectedRows,
+      changedRows: upd?.changedRows,
+    });
+
+    // 6) Reconstruir turno usando la fecha_hora real guardada en MySQL
     try {
       const [[rowInserted]] = await selectAsistenciaById(insertId);
       const fechaMarcacion = rowInserted?.fecha_hora || new Date();
@@ -121,6 +135,7 @@ const postMarcarAsistencia = async (req, res, next) => {
       console.error("⚠️ No se pudo reconstruir turno:", e);
     }
 
+    // (Opcional) devolver nombres
     let usuario = null;
     try {
       usuario = await selectUsuarioById(usuario_id);
@@ -134,7 +149,7 @@ const postMarcarAsistencia = async (req, res, next) => {
       id: insertId,
       usuario_id,
       n_marcacion_hoy: n,
-      is_auth: nuevoIsAuth,
+      is_auth_finger: nuevoIsAuth,
       nombre: usuario ? usuario.nombre : null,
       apellido: usuario ? usuario.apellido : null,
     });

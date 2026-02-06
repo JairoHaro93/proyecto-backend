@@ -9,11 +9,7 @@ const {
   getSoportesByDate,
   getAllSoportesByOrdIns,
 } = require("../../../controllers/negocio_lat/soportes.controllers");
-const {
-  checkToken,
-  checkSoporteOrdIns,
-  checkSoportesNocId,
-} = require("../../../utils/middlewares");
+const { checkToken } = require("../../../utils/middlewares");
 
 const router = require("express").Router();
 

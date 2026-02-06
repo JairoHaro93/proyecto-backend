@@ -102,7 +102,7 @@ const loginapp = async (req, res, next) => {
     // Marcar como logueado (app)
     await poolmysql.query(
       `UPDATE sisusuarios SET is_logged_app = 1 WHERE id = ?`,
-      [result.id]
+      [result.id],
     );
 
     return res.json({
@@ -164,7 +164,7 @@ const logoutapp = async (req, res) => {
 
     const [result] = await poolmysql.query(
       `UPDATE sisusuarios SET is_logged_app = 0 WHERE id = ?`,
-      [usuario_id]
+      [usuario_id],
     );
 
     if (result.affectedRows === 0) {

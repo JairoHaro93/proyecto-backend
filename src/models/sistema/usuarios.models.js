@@ -22,7 +22,7 @@ async function selectUsuarioById(id) {
       U.fecha_cont,
       U.genero,
       U.is_auth,
-
+      U.is_auth_finger,
       U.sucursal_id,
       S.codigo  AS sucursal_codigo,
       S.nombre  AS sucursal_nombre,
@@ -47,7 +47,7 @@ async function selectUsuarioById(id) {
     LEFT JOIN sis_departamentos AS D ON D.id = U.departamento_id
     WHERE U.id = ?
     `,
-    [id]
+    [id],
   );
 
   if (!rows || rows.length === 0) return null;
@@ -68,7 +68,7 @@ async function selectUsuarioById(id) {
 
   console.log(
     "[USUARIOS] selectUsuarioById →",
-    JSON.stringify(usuario, null, 2)
+    JSON.stringify(usuario, null, 2),
   );
 
   return usuario;
@@ -124,14 +124,14 @@ async function insertUsuario({
    ?,
    ?
 );`,
-    [nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero]
+    [nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero],
   );
 }
 
 // ACTUALIZAR USUARIOS
 async function updateUsuarioById(
   usuarioId,
-  { nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero }
+  { nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero },
 ) {
   return poolmysql.query(
     `
@@ -156,7 +156,7 @@ async function updateUsuarioById(
       fecha_cont,
       genero,
       usuarioId,
-    ]
+    ],
   );
 }
 
@@ -166,14 +166,12 @@ async function deleteUsuario(usuarioId) {
 }
 
 // Actualiza el flag is_auth de un usuario (0 = fuera, 1 = dentro)
-function updateUsuarioAuthFlag(usuario_id, is_auth) {
-  const sql = `
-    UPDATE sisusuarios
-    SET is_auth = ?
-    WHERE id = ?
-  `;
-  const params = [is_auth, usuario_id];
-  return poolmysql.query(sql, params);
+async function updateUsuarioAuthFlag(usuario_id, is_auth_finger) {
+  const [result] = await poolmysql.query(
+    `UPDATE sisusuarios SET is_auth_finger = ? WHERE id = ?`,
+    [Number(is_auth_finger), Number(usuario_id)],
+  );
+  return result; // 👈 aquí tendrás affectedRows/changedRows
 }
 
 // models/sistema/usuarios.models.js
@@ -272,7 +270,6 @@ async function selectUsuariosParaTurnos({
   const [rows] = await poolmysql.query(sql, params);
   return rows;
 }
-
 
 module.exports = {
   selectAllUsuarios,

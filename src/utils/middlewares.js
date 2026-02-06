@@ -42,7 +42,7 @@ function issueSessionCookie(res, usuario) {
   res.cookie(COOKIE_NAME, token, cookieOpts);
   res.setHeader(
     "X-Session-Expires",
-    new Date(Date.now() + SESSION_TTL_S * 1000).toISOString()
+    new Date(Date.now() + SESSION_TTL_S * 1000).toISOString(),
   );
 
   return token;
@@ -194,7 +194,6 @@ module.exports = {
   checkSoportesNocId,
   checkSoporteOrdIns,
   checkToken,
-
   // multer
   upload,
 

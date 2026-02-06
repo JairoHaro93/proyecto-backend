@@ -16,19 +16,39 @@ const router = require("express").Router();
 router.get("/", checkToken, buscarClientes);
 
 //OBTENER INFORMACION DE CLIENTES BASICA DE LOS CLIENTES ACTIVOS
-router.get("/activos", checkToken, buscarClientesActivos);
+router.get(
+  "/activos",
+  checkToken,
+
+  buscarClientesActivos,
+);
 
 //OBTENER INFORMACION DE CLIENTES CON ARRAY DE SERVICIOS ORDENADOS POR ESTADO
-router.get("/data/:cedula", checkToken, getAllDataArray);
+router.get(
+  "/data/:cedula",
+  checkToken,
+
+  getAllDataArray,
+);
 
 //OBTENER INFORMACION DE CLIENTES CON ARRAY DE SERVICIOS ACTIVOS ORDENADOS POR FECHA
-router.get("/data-act/:cedula", checkToken, getDataArrayActivos);
+router.get(
+  "/data-act/:cedula",
+
+  checkToken,
+  getDataArrayActivos,
+);
 
 //OBTENER INFORMACION DE CLIENTES PARA MAPA
 router.get("/mapas", checkToken, getAllDataMapa);
 
 //OBTENER INFORMACION DE SERVICIO POR ORDINS
-router.get("/:servicioOrdIns", checkToken, getServicioByOrdIns);
+router.get(
+  "/:servicioOrdIns",
+
+  checkToken,
+  getServicioByOrdIns,
+);
 
 //OBTENER LA INFORMACION DE TODAS INSTALACIONES NUEVAS POR REALIZARCE
 router.get("/inst-pend", checkToken, getAllInstPend);
