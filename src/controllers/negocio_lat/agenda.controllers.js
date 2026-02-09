@@ -52,8 +52,8 @@ const getAgendaByFecha = async (req, res, next) => {
             const n = Number(a.ord_ins);
             return Number.isFinite(n) ? n : null;
           })
-          .filter((v) => v !== null)
-      )
+          .filter((v) => v !== null),
+      ),
     );
 
     // 3) Batch a SQL Server: ord_ins -> nombre_completo del cliente
@@ -65,7 +65,7 @@ const getAgendaByFecha = async (req, res, next) => {
           // r.orden_instalacion, r.nombre_completo
           nombresMap.set(
             Number(r.orden_instalacion),
-            r.nombre_completo || null
+            r.nombre_completo || null,
           );
         }
       } catch (err) {
@@ -80,7 +80,7 @@ const getAgendaByFecha = async (req, res, next) => {
       return {
         ...a,
         clienteNombre: Number.isFinite(key)
-          ? nombresMap.get(key) ?? null
+          ? (nombresMap.get(key) ?? null)
           : null,
       };
     });
@@ -127,7 +127,7 @@ const postAgendaHorario = async (req, res, next) => {
 
     // Si alguno no está resuelto, no se permite crear uno nuevo
     const agendaActiva = agendas.find((a) => a.age_estado === "PENDIENTE");
-    console.log(agendaActiva);
+
     if (agendaActiva) {
       return res.status(400).json({
         message: "Ya existe un trabajo activo para esta orden de instalación.",
@@ -269,7 +269,7 @@ const subirImagenUnitaria = async (req, res) => {
     // Obtener imagen anterior si existe
     const [rows] = await poolmysql.query(
       `SELECT ${campo} FROM ${tabla} WHERE trabajo_id = ?`,
-      [trabajo_id]
+      [trabajo_id],
     );
 
     if (rows.length > 0) {
@@ -284,7 +284,7 @@ const subirImagenUnitaria = async (req, res) => {
       // UPDATE
       await poolmysql.query(
         `UPDATE ${tabla} SET ${campo} = ?, fecha_actualizacion = NOW() WHERE trabajo_id = ?`,
-        [rutaRelativa, trabajo_id]
+        [rutaRelativa, trabajo_id],
       );
     } else {
       // INSERT
@@ -294,15 +294,15 @@ const subirImagenUnitaria = async (req, res) => {
         .join(", ");
       await poolmysql.query(
         `INSERT INTO ${tabla} (trabajo_id, ${columnas.join(
-          ", "
+          ", ",
         )}, fecha_actualizacion) VALUES (?, ${placeholders}, NOW())`,
-        [trabajo_id, rutaRelativa]
+        [trabajo_id, rutaRelativa],
       );
     }
 
     const urlPublica = `${process.env.IP}/imagenes/${rutaRelativa.replace(
       /\\/g,
-      "/"
+      "/",
     )}`;
 
     res.status(200).json({
@@ -355,7 +355,7 @@ const obtenerImagenesPorTrabajo = async (req, res) => {
   try {
     const [rows] = await poolmysql.query(
       `SELECT ${campos.join(", ")} FROM ${tabla} WHERE trabajo_id = ?`,
-      [trabajo_id]
+      [trabajo_id],
     );
 
     if (rows.length === 0) {

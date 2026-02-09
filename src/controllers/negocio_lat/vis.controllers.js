@@ -29,7 +29,7 @@ const createVis = async (req, res, next) => {
 
     // Si alguno no está resuelto, no se permite crear uno nuevo
     const VisActivo = vis.find((v) => v.vis_estado !== "RESUELTO");
-    console.log(VisActivo);
+
     if (VisActivo) {
       return res.status(400).json({
         message: "Ya existe un VIS activo para esta orden de instalación.",

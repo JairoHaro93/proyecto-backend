@@ -9,8 +9,7 @@ const getInstalacionByOrdIns = async (req, res, next) => {
   try {
     // Verifica si ya existe una instalación registrada para esta orden
     const [instalaciones] = await selectInstalacionesByOrdIns(ordIns);
-    console.log(ordIns);
-    console.log(instalaciones);
+
     res.json(instalaciones);
   } catch (error) {
     next(error);
@@ -45,10 +44,6 @@ const createInstalacion = async (req, res, next) => {
   }
 };
 
-
-
-
-
 async function terminarInstalacion(req, res) {
   try {
     const { ord_ins } = req.params;
@@ -57,11 +52,15 @@ async function terminarInstalacion(req, res) {
     if (!coordenadas || !ip) {
       return res.status(400).json({
         ok: false,
-        message: 'Faltan parámetros: coordenadas e ip son requeridos',
+        message: "Faltan parámetros: coordenadas e ip son requeridos",
       });
     }
 
-    const [result] = await updateInstalacionbyOrdIns({ ord_ins, coordenadas, ip });
+    const [result] = await updateInstalacionbyOrdIns({
+      ord_ins,
+      coordenadas,
+      ip,
+    });
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -72,19 +71,17 @@ async function terminarInstalacion(req, res) {
 
     return res.json({
       ok: true,
-      message: 'Instalación actualizada correctamente',
+      message: "Instalación actualizada correctamente",
       data: { ord_ins, coordenadas, ip },
     });
   } catch (err) {
-    console.error('❌ actualizarCoordsIp:', err);
-    return res.status(500).json({ ok: false, message: 'Error interno' });
+    console.error("❌ actualizarCoordsIp:", err);
+    return res.status(500).json({ ok: false, message: "Error interno" });
   }
 }
-
-
 
 module.exports = {
   createInstalacion,
   getInstalacionByOrdIns,
-  terminarInstalacion
+  terminarInstalacion,
 };

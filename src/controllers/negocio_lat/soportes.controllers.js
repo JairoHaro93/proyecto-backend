@@ -90,8 +90,8 @@ async function getSoportesByDate(req, res, next) {
             const n = Number(s.ord_ins);
             return Number.isFinite(n) ? n : null;
           })
-          .filter((v) => v !== null)
-      )
+          .filter((v) => v !== null),
+      ),
     );
 
     let nombresMap = new Map();
@@ -101,7 +101,7 @@ async function getSoportesByDate(req, res, next) {
         for (const r of filas) {
           nombresMap.set(
             Number(r.orden_instalacion),
-            r.nombre_completo || null
+            r.nombre_completo || null,
           );
         }
       } catch (err) {
@@ -115,7 +115,7 @@ async function getSoportesByDate(req, res, next) {
       return {
         ...s,
         clienteNombre: Number.isFinite(key)
-          ? nombresMap.get(key) ?? null
+          ? (nombresMap.get(key) ?? null)
           : null,
       };
     });
@@ -164,9 +164,9 @@ const createSoporte = async (req, res, next) => {
 
     // Si alguno no está resuelto, no se permite crear uno nuevo
     const soporteActivo = soportes.find(
-      (s) => !["RESUELTO", "CULMINADO"].includes(s.reg_sop_estado)
+      (s) => !["RESUELTO", "CULMINADO"].includes(s.reg_sop_estado),
     );
-    console.log(soporteActivo);
+
     if (soporteActivo) {
       return res.status(400).json({
         message: "Ya existe un soporte activo para esta orden de instalación.",

@@ -66,11 +66,6 @@ async function selectUsuarioById(id) {
     usuario.rol = [];
   }
 
-  console.log(
-    "[USUARIOS] selectUsuarioById →",
-    JSON.stringify(usuario, null, 2),
-  );
-
   return usuario;
 }
 // OBTENER TODOS LOS USUARIOS CON AGENDA-TECNICOS

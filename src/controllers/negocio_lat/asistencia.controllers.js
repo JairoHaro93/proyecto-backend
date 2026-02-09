@@ -119,13 +119,6 @@ const postMarcarAsistencia = async (req, res, next) => {
 
     const upd = await updateUsuarioAuthFlag(usuario_id, nuevoIsAuth);
     console.log("✅ insert ok", { usuario_id, insertId, n });
-    console.log("✅ update is_auth_finger", {
-      usuario_id,
-      nuevoIsAuth,
-      affectedRows: upd?.affectedRows,
-      changedRows: upd?.changedRows,
-    });
-
     // 6) Reconstruir turno usando la fecha_hora real guardada en MySQL
     try {
       const [[rowInserted]] = await selectAsistenciaById(insertId);

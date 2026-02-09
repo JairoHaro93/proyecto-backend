@@ -75,7 +75,7 @@ const createUsuario = async (req, res, next) => {
          SUM(usuario = ?) AS usuario_dup
        FROM sisusuarios
        WHERE ci = ? OR usuario = ?`,
-      [payload.ci, payload.usuario, payload.ci, payload.usuario]
+      [payload.ci, payload.usuario, payload.ci, payload.usuario],
     );
     if (dups.ci_dup) {
       return res.status(409).json({
@@ -109,7 +109,7 @@ const createUsuario = async (req, res, next) => {
           payload.fecha_nac ?? null,
           payload.fecha_cont ?? null,
           payload.genero ?? null,
-        ]
+        ],
       );
 
       if (Array.isArray(payload.rol) && payload.rol.length > 0) {
@@ -119,7 +119,7 @@ const createUsuario = async (req, res, next) => {
           const params = roles.flatMap((rid) => [result.insertId, rid]);
           await conn.query(
             `INSERT INTO sisusuarios_has_sisfunciones (sisusuarios_id, sisfunciones_id) VALUES ${values}`,
-            params
+            params,
           );
         }
       }
@@ -175,7 +175,7 @@ const updateUsuario = async (req, res, next) => {
     if (effectiveCi) {
       const [[ciDup]] = await poolmysql.query(
         `SELECT COUNT(*) AS cnt FROM sisusuarios WHERE ci = ? AND id <> ?`,
-        [effectiveCi, usuarioId]
+        [effectiveCi, usuarioId],
       );
       if (ciDup.cnt > 0) {
         return res.status(409).json({
@@ -188,7 +188,7 @@ const updateUsuario = async (req, res, next) => {
     if (effectiveUsuario) {
       const [[usrDup]] = await poolmysql.query(
         `SELECT COUNT(*) AS cnt FROM sisusuarios WHERE usuario = ? AND id <> ?`,
-        [effectiveUsuario, usuarioId]
+        [effectiveUsuario, usuarioId],
       );
       if (usrDup.cnt > 0) {
         return res.status(409).json({
@@ -226,14 +226,14 @@ const updateUsuario = async (req, res, next) => {
           emptyToNull(payload.fecha_cont),
           emptyToNull(payload.genero),
           usuarioId,
-        ]
+        ],
       );
 
       // Sincronía de roles: solo si viene "rol" en el body (aunque sea [])
       if (Array.isArray(payload.rol)) {
         await conn.query(
           `DELETE FROM sisusuarios_has_sisfunciones WHERE sisusuarios_id = ?`,
-          [usuarioId]
+          [usuarioId],
         );
 
         const roles = payload.rol.map(Number).filter(Number.isInteger);
@@ -242,7 +242,7 @@ const updateUsuario = async (req, res, next) => {
           const params = roles.flatMap((rid) => [usuarioId, rid]);
           await conn.query(
             `INSERT INTO sisusuarios_has_sisfunciones (sisusuarios_id, sisfunciones_id) VALUES ${values}`,
-            params
+            params,
           );
         }
       }
@@ -288,7 +288,6 @@ const deleteByID = async (req, res, next) => {
   }
 };
 
-
 /**
  * Devuelve la lista de usuarios que se pueden gestionar en turnos
  * según la sucursal/departamento del usuario logueado.
@@ -315,21 +314,12 @@ const getUsuariosParaTurnos = async (req, res, next) => {
       ? Number(departamento_id)
       : undefined;
 
-    console.log("[TURNOS] jefe backend:", {
-      id: jefe.id,
-      sucursal_id: jefe.sucursal_id,
-      departamento_id: jefe.departamento_id,
-      departamentoFiltro,
-    });
-
     const lista = await selectUsuariosParaTurnos({
       sucursalId: jefe.sucursal_id || null,
       departamentoId: jefe.departamento_id || null,
       jefeUsuarioId: jefe.id,
       departamentoFiltro,
     });
-
-    console.log("[TURNOS] usuarios para turnos (backend):", lista.length);
 
     return res.json(lista);
   } catch (err) {

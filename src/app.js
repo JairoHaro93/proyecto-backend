@@ -53,20 +53,19 @@ app.use(
     origin: "http://localhost:4200", // o tu dominio real
     credentials: true,
     exposedHeaders: ["Content-Disposition"], // útil para downloads
-  })
+  }),
 );
 
 // ----- Estáticos de imágenes -----
 // Sirve TODAS las imágenes desde la RAÍZ de uploads (no un subfolder).
 const IMAGES_ROOT = path.resolve(process.env.RUTA_DESTINO || "uploads");
-console.log("[imagenes] raiz:", IMAGES_ROOT);
 
 app.use(
   "/imagenes",
   express.static(IMAGES_ROOT, {
     index: false,
     maxAge: "1d",
-  })
+  }),
 );
 
 // ----- Cache-Control global (excluye /imagenes para permitir cachear estáticos) -----
@@ -83,13 +82,12 @@ app.use((req, res, next) => {
 // PDFs serán PRIVADOS => NO se sirven como estáticos.
 // Solo creamos la carpeta de destino.
 const DOCS_ROOT = path.resolve(
-  process.env.RUTA_DOCS_ROOT || process.env.RUTA_DESTINO || "uploads"
+  process.env.RUTA_DOCS_ROOT || process.env.RUTA_DESTINO || "uploads",
 );
 const DOCS_VAC = process.env.RUTA_DOCS_VACACIONES || "docs/pdfs/vacaciones";
 const VAC_DIR = path.join(DOCS_ROOT, DOCS_VAC);
 
 if (!fs.existsSync(VAC_DIR)) fs.mkdirSync(VAC_DIR, { recursive: true });
-console.log("[docs] vacaciones:", VAC_DIR);
 
 // ----- Parsers -----
 app.use(cookieParser());
