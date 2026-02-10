@@ -257,7 +257,6 @@ const getMiHorarioSemana = async (req, res, next) => {
       } else {
         // ✅ dentro del else (cuando sí existe t)
         semana.push({
-          // 🔥 CLAVE: enviar el id del turno (para que Flutter pueda llamar /turnos/:id/justificaciones/*)
           id: t.id,
 
           fecha: ymd,
@@ -272,23 +271,26 @@ const getMiHorarioSemana = async (req, res, next) => {
 
           min_trabajados: t.min_trabajados,
           min_atraso: t.min_atraso,
-          min_extra: t.min_extra,
+
+          // ✅ FALTABA ESTO (para que salga el chip SALIDA 41m)
+          min_salida_temprana: t.min_salida_temprana,
+
+          // ✅ FALTABA ESTO (banderas SI/NO)
+          atraso_si: t.atraso_si,
+          salida_temprana_si: t.salida_temprana_si,
+          almuerzo_excedido_si: t.almuerzo_excedido_si,
+
           observacion: t.observacion,
           sucursal: t.sucursal,
 
           estado_hora_acumulada: t.estado_hora_acumulada ?? "NO",
           num_minutos_acumulados: t.num_minutos_acumulados ?? null,
 
-          // ✅ JUSTIFICACIONES (ya vienen desde SQL)
           just_atraso_estado: t.just_atraso_estado ?? "NO",
           just_atraso_motivo: t.just_atraso_motivo ?? null,
-          just_atraso_minutos: t.just_atraso_minutos ?? null,
-          just_atraso_jefe_id: t.just_atraso_jefe_id ?? null,
 
           just_salida_estado: t.just_salida_estado ?? "NO",
           just_salida_motivo: t.just_salida_motivo ?? null,
-          just_salida_minutos: t.just_salida_minutos ?? null,
-          just_salida_jefe_id: t.just_salida_jefe_id ?? null,
         });
       }
     }

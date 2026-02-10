@@ -136,8 +136,6 @@ async function generarTurnosDiariosLote({
   sucursal,
   horaEntradaProg,
   horaSalidaProg,
-  minTolerAtraso = 0,
-  minTolerSalida = 0,
   excluirFinesSemana = true,
   sobrescribirExistentes = false,
 }) {
@@ -182,7 +180,6 @@ async function generarTurnosDiariosLote({
     const existingSet = new Set(
       existing.map((r) => `${r.usuario_id}_${r.fecha}`),
     );
-
     combos.forEach((c) => {
       const key = `${c.usuarioId}_${c.fecha}`;
       if (existingSet.has(key)) totalOmitidos++;
@@ -199,24 +196,23 @@ async function generarTurnosDiariosLote({
       if (r.length) continue;
     }
 
+    // SOLO 5 valores por fila
     values.push(
       usuarioId,
       fecha,
       sucursal || null,
       horaEntradaProg,
       horaSalidaProg,
-      Number(minTolerAtraso) || 0,
-      Number(minTolerSalida) || 0,
     );
   }
 
   if (!values.length)
     return { totalIntentos, totalInsertados: 0, totalOmitidos };
 
-  const rowsCount = values.length / 7;
+  const rowsCount = values.length / 5;
   const rowPlaceholders = Array.from(
     { length: rowsCount },
-    () => "(?, ?, ?, ?, ?, ?, ?, 'SIN_MARCA', 'NORMAL', 'NO', NULL, NULL)",
+    () => "(?, ?, ?, ?, ?, 'SIN_MARCA', 'NORMAL', 'NO', NULL, NULL)",
   );
 
   const sqlInsert = `
@@ -227,8 +223,6 @@ async function generarTurnosDiariosLote({
       sucursal,
       hora_entrada_prog,
       hora_salida_prog,
-      min_toler_atraso,
-      min_toler_salida,
       estado_asistencia,
       tipo_dia,
       estado_hora_acumulada,
@@ -252,28 +246,20 @@ async function generarTurnosDiariosLote({
 // ===============================
 async function actualizarTurnoProgramado(
   turnoId,
-  { horaEntradaProg, horaSalidaProg, minTolerAtraso = 0, minTolerSalida = 0 },
+  { horaEntradaProg, horaSalidaProg },
 ) {
   const [result] = await poolmysql.query(
     `
     UPDATE neg_t_turnos_diarios
        SET hora_entrada_prog = ?,
            hora_salida_prog  = ?,
-           min_toler_atraso  = ?,
-           min_toler_salida  = ?,
            updated_at = NOW()
      WHERE id = ?
        AND fecha >= CURDATE()
        AND estado_asistencia = 'SIN_MARCA'
        AND (tipo_dia IS NULL OR tipo_dia = 'NORMAL')
     `,
-    [
-      horaEntradaProg,
-      horaSalidaProg,
-      Number(minTolerAtraso) || 0,
-      Number(minTolerSalida) || 0,
-      turnoId,
-    ],
+    [horaEntradaProg, horaSalidaProg, turnoId],
   );
   return result;
 }
@@ -295,44 +281,98 @@ async function eliminarTurnoProgramado(turnoId) {
 // ===============================
 //   MI HORARIO SEMANAL
 // ===============================
+// ===============================
+//   MI HORARIO SEMANAL
+// ===============================
 async function selectTurnosByUsuarioRango(usuario_id, desde, hasta) {
   const sql = `
+    WITH marks_raw AS (
+      SELECT
+        a.usuario_id,
+        DATE(a.fecha_hora) AS fecha,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.usuario_id, DATE(a.fecha_hora)
+          ORDER BY a.fecha_hora ASC, a.id ASC
+        ) AS rn
+      FROM neg_t_asistencia a
+      WHERE a.usuario_id = ?
+        AND a.fecha_hora >= CONCAT(?, ' 00:00:00')
+        AND a.fecha_hora <  CONCAT(DATE_ADD(?, INTERVAL 1 DAY), ' 00:00:00')
+    ),
+    marks_pivot AS (
+      SELECT
+        usuario_id,
+        fecha,
+        COUNT(*) AS marcas_count
+      FROM marks_raw
+      WHERE rn <= 4
+      GROUP BY usuario_id, fecha
+    )
     SELECT
-      id,
-      usuario_id,
-      DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha,
-      sucursal,
-      TIME_FORMAT(hora_entrada_prog, '%H:%i') AS hora_entrada_prog,
-      TIME_FORMAT(hora_salida_prog, '%H:%i') AS hora_salida_prog,
-      hora_entrada_real,
-      hora_salida_real,
-      min_trabajados,
-      min_atraso,
-      min_extra,
-      estado_asistencia,
-      observacion,
-      tipo_dia,
-      estado_hora_acumulada,
-      num_minutos_acumulados,
-      hora_acum_aprobado_por,
+      t.id,
+      t.usuario_id,
+      DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha,
+      t.sucursal,
 
-      -- ✅ Justificaciones (si existen en tu tabla)
-      just_atraso_estado,
-      just_atraso_motivo,
-      just_atraso_minutos,
-      just_atraso_jefe_id,
-      just_salida_estado,
-      just_salida_motivo,
-      just_salida_minutos,
-      just_salida_jefe_id
+      TIME_FORMAT(t.hora_entrada_prog, '%H:%i') AS hora_entrada_prog,
+      TIME_FORMAT(t.hora_salida_prog,  '%H:%i') AS hora_salida_prog,
 
-    FROM neg_t_turnos_diarios
-    WHERE usuario_id = ?
-      AND fecha BETWEEN ? AND ?
-    ORDER BY fecha ASC
+      t.hora_entrada_1,
+      t.hora_salida_1,
+      t.hora_entrada_2,
+      t.hora_salida_2,
+      t.hora_entrada_real,
+      t.hora_salida_real,
+
+      COALESCE(t.min_atraso, 0) AS min_atraso,
+      COALESCE(t.min_salida_temprana, 0) AS min_salida_temprana,
+
+      -- (si aún los quieres mostrar en Flutter, déjalos)
+      t.almuerzo_permitido_min,
+      t.almuerzo_real_min,
+      t.almuerzo_excedido_min,
+
+      -- ✅ generated (los dejamos)
+      COALESCE(t.atraso_si, 0) AS atraso_si,
+      COALESCE(t.salida_temprana_si, 0) AS salida_temprana_si,
+
+      -- ✅ REGLA NUEVA: si hubo 3 marcas en el día => ALMUERZO EXCEDIDO (llamado de atención)
+      CASE
+        WHEN COALESCE(mp.marcas_count, 0) = 3 THEN 1
+        ELSE COALESCE(t.almuerzo_excedido_si, 0)
+      END AS almuerzo_excedido_si,
+
+      COALESCE(mp.marcas_count, 0) AS marcas_count,
+
+      t.estado_asistencia,
+      t.tipo_dia,
+      t.observacion,
+
+      t.estado_hora_acumulada,
+      t.hora_acum_aprobado_por,
+      t.num_minutos_acumulados,
+
+      t.just_atraso_estado,
+      t.just_atraso_motivo,
+      t.just_atraso_minutos,
+      t.just_atraso_jefe_id,
+      t.just_salida_estado,
+      t.just_salida_motivo,
+      t.just_salida_minutos,
+      t.just_salida_jefe_id
+
+    FROM neg_t_turnos_diarios t
+    LEFT JOIN marks_pivot mp
+      ON mp.usuario_id = t.usuario_id
+     AND mp.fecha = t.fecha
+    WHERE t.usuario_id = ?
+      AND t.fecha BETWEEN ? AND ?
+    ORDER BY t.fecha ASC
   `;
-  const [rows] = await poolmysql.query(sql, [usuario_id, desde, hasta]);
-  return rows;
+
+  const params = [usuario_id, desde, hasta, usuario_id, desde, hasta];
+  const [rows] = await poolmysql.query(sql, params);
+  return rows || [];
 }
 
 // ===============================
@@ -426,27 +466,26 @@ async function updateEstadoHoraAcumuladaTurno(
     const pasaAprobado = estado_hora_acumulada === "APROBADO";
     const minutos = Number(turno.num_minutos_acumulados || 0);
 
-if (pasaAprobado && minutos > 0) {
-  const obs = (turno.observacion ?? "").toString().slice(0, 255);
+    if (pasaAprobado && minutos > 0) {
+      const obs = (turno.observacion ?? "").toString().slice(0, 255);
 
-  await conn.query(
-    `
+      await conn.query(
+        `
     INSERT INTO neg_t_horas_movimientos
       (usuario_id, mov_tipo, mov_concepto, minutos, fecha, turno_id, estado, hora_acum_aprobado_por, observacion)
     VALUES
       (?, 'CREDITO', 'HORA_ACUMULADA', ?, ?, ?, 'APROBADO', ?, ?)
     `,
-    [
-      turno.usuario_id,
-      minutos,              // ✅ ya NO se multiplica
-      turno.fecha,
-      turno.id,
-      hora_acum_aprobado_por,
-      obs,
-    ],
-  );
-}
-
+        [
+          turno.usuario_id,
+          minutos, // ✅ ya NO se multiplica
+          turno.fecha,
+          turno.id,
+          hora_acum_aprobado_por,
+          obs,
+        ],
+      );
+    }
 
     await conn.commit();
     return { ok: true };
@@ -570,8 +609,9 @@ async function asignarDevolucionTurno(turnoId, hora_acum_aprobado_por) {
 
 // ===============================
 //   RECONSTRUIR TURNO DESDE ASISTENCIA
-//   ✅ Jornada/almuerzo se infiere del HORARIO PROGRAMADO (entrada/salida)
-//   ✅ ATRASO con redondeo CEIL (55 seg => 1 min)
+//   ✅ Multas: primera y última marca
+//   ✅ Almuerzo excedido: marca2->marca3 (con 3 o 4 marcas)
+//   ✅ Sin segundos (todo a HH:mm:00 en neg_t_turnos_diarios)
 // ===============================
 async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   const d =
@@ -580,64 +620,40 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
 
   const fechaKey = formatFecha(d);
 
-  const parseTimeToHHMMSS = (t) => {
-    if (!t) return null;
-    const s = String(t).trim();
+  const floorToMinute = (dt) => {
+    if (!dt) return null;
+    const x = dt instanceof Date ? new Date(dt) : new Date(dt);
+    if (Number.isNaN(x.getTime())) return null;
+    x.setSeconds(0, 0);
+    return x;
+  };
+
+  const makeLocalDTFromTurno = (ymd, timeVal) => {
+    if (!timeVal) return null;
+    const s = String(timeVal).trim();
     if (!s) return null;
-    return s.length >= 8 ? s.slice(0, 8) : `${s}:00`;
+    const hhmmss = s.length >= 8 ? s.slice(0, 8) : `${s}:00`;
+    const dt = new Date(`${ymd}T${hhmmss}`);
+    return floorToMinute(dt);
   };
 
-  const makeLocalDT = (ymd, timeVal) => {
-    const hhmmss = parseTimeToHHMMSS(timeVal);
-    if (!hhmmss) return null;
-    const dt = new Date(`${ymd}T${hhmmss}`); // local
-    return Number.isNaN(dt.getTime()) ? null : dt;
+  const diffMin = (a, b) => {
+    if (!a || !b) return 0;
+    return Math.trunc((b.getTime() - a.getTime()) / 60000);
   };
 
-  const diffMinFloor = (a, b) =>
-    Math.floor((b.getTime() - a.getTime()) / 60000);
-
-  // ✅ Para atraso/salida temprana: cualquier fracción cuenta como 1 min
-  const diffMinCeil = (a, b) => Math.ceil((b.getTime() - a.getTime()) / 60000);
-
-  const overlapMinutes = (a, b, wStart, wEnd) => {
-    if (!a || !b || !wStart || !wEnd) return 0;
-    const start = a > wStart ? a : wStart;
-    const end = b < wEnd ? b : wEnd;
-    if (end <= start) return 0;
-    return diffMinFloor(start, end);
+  const almuerzoPermitidoPorSpan = (spanMin) => {
+    if (spanMin === 540) return 60; // 9h
+    if (spanMin === 570) return 90; // 9h30
+    if (spanMin === 600) return 120; // 10h
+    if (spanMin > 600) return 60; // >10h
+    return 0; // <9h
   };
 
-  // ✅ Jornada objetivo + almuerzo inferidos del span programado
-  // Reglas:
-  // - Turno corto (<= 6h): jornada = span, almuerzo = 0
-  // - Turno largo (>= 11h30): jornada = 12h (720), almuerzo = span - 720
-  // - Normal: jornada = 8h (480), almuerzo = span - 480
-  const inferJornadaYAlmuerzo = (progStart, progEnd) => {
-    const span = diffMinFloor(progStart, progEnd);
-    if (!Number.isFinite(span) || span <= 0)
-      return { work: 0, lunch: 0, span: 0 };
-
-    if (span <= 360) {
-      return { work: span, lunch: 0, span };
-    }
-
-    const work = span >= 690 ? 720 : 480; // 11h30 = umbral a jornada 12h
-    const lunch = Math.max(0, span - work);
-    return { work, lunch, span };
-  };
-
-  // 1) Buscar turno
+  // 1) Turno
   const [turnoRows] = await poolmysql.query(
     `
-    SELECT
-      id,
-      fecha,
-      hora_entrada_prog,
-      hora_salida_prog,
-      min_toler_atraso,
-      min_toler_salida,
-      tipo_dia
+    SELECT id, hora_entrada_prog, hora_salida_prog, tipo_dia
     FROM neg_t_turnos_diarios
     WHERE usuario_id = ? AND fecha = ?
     LIMIT 1
@@ -648,11 +664,21 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   if (!turnoRows.length) return { ok: false, reason: "SIN_TURNO" };
   const turno = turnoRows[0];
 
-  if (turno.tipo_dia && String(turno.tipo_dia).toUpperCase() !== "NORMAL") {
+  if (String(turno.tipo_dia || "NORMAL").toUpperCase() !== "NORMAL") {
     return { ok: false, reason: `TIPO_DIA_${turno.tipo_dia}` };
   }
 
-  // 2) Marcaciones (hasta 4)
+  const progStart = makeLocalDTFromTurno(fechaKey, turno.hora_entrada_prog);
+  const progEnd = makeLocalDTFromTurno(fechaKey, turno.hora_salida_prog);
+
+  if (!progStart || !progEnd || progEnd <= progStart) {
+    return { ok: false, reason: "HORARIO_PROG_INVALIDO" };
+  }
+
+  const spanProgMin = diffMin(progStart, progEnd);
+  const almuerzoPermitidoMin = almuerzoPermitidoPorSpan(spanProgMin);
+
+  // 2) Marcas crudas (hasta 4)
   const [marks] = await poolmysql.query(
     `
     SELECT fecha_hora
@@ -665,118 +691,57 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     [usuario_id, fechaKey],
   );
 
-  const m = marks
-    .map((r) => new Date(r.fecha_hora))
-    .filter((x) => !Number.isNaN(x.getTime()));
+  const m = (marks || [])
+    .map((r) => floorToMinute(new Date(r.fecha_hora)))
+    .filter((x) => x && !Number.isNaN(x.getTime()));
 
   const entrada1 = m[0] || null;
   const salida1 = m[1] || null;
   const entrada2 = m[2] || null;
   const salida2 = m[3] || null;
 
-  const entradaReal = entrada1;
-  const salidaReal = m.length ? m[m.length - 1] : null;
+  // ✅ Multas: siempre primera y última
+  const entradaMulta = m.length ? m[0] : null;
+  const salidaMulta = m.length ? m[m.length - 1] : null;
 
-  const progStart = makeLocalDT(fechaKey, turno.hora_entrada_prog);
-  const progEnd = makeLocalDT(fechaKey, turno.hora_salida_prog);
-
-  if (!progStart || !progEnd || progEnd <= progStart) {
-    return { ok: false, reason: "HORARIO_PROG_INVALIDO" };
+  // 3) Almuerzo real: marca2 -> marca3 si hay >=3 marcas (incluye 3 marcas)
+  let almuerzoRealMin = null;
+  if (m.length >= 3 && m[1] && m[2] && m[2] > m[1]) {
+    almuerzoRealMin = diffMin(m[1], m[2]);
   }
 
-  const tolerAtraso = Number(turno.min_toler_atraso || 0);
-  const tolerSalida = Number(turno.min_toler_salida || 0);
+  const almuerzoExcedidoMin =
+    almuerzoRealMin == null
+      ? 0
+      : Math.max(0, almuerzoRealMin - almuerzoPermitidoMin);
 
-  const {
-    work: workObjetivoMin,
-    lunch: lunchObjetivoMin,
-    span,
-  } = inferJornadaYAlmuerzo(progStart, progEnd);
+  // 4) Minutos de multas (tolerancia 0)
+  const min_atraso =
+    entradaMulta && entradaMulta > progStart
+      ? diffMin(progStart, entradaMulta)
+      : 0;
 
-  // 3) min_trabajados (informativo)
-  let min_trabajados = 0;
-  if (m.length >= 4) {
-    if (entrada1 && salida1)
-      min_trabajados += Math.max(0, diffMinFloor(entrada1, salida1));
-    if (entrada2 && salida2)
-      min_trabajados += Math.max(0, diffMinFloor(entrada2, salida2));
-  } else if (m.length >= 2) {
-    // si no hay 4 marcas, asumimos 1 solo almuerzo según horario programado
-    min_trabajados = Math.max(
-      0,
-      diffMinFloor(entrada1, salidaReal) - lunchObjetivoMin,
-    );
-  } else {
-    min_trabajados = 0;
-  }
+  const min_salida_temprana =
+    m.length >= 2 && salidaMulta && salidaMulta < progEnd
+      ? diffMin(salidaMulta, progEnd)
+      : 0;
 
-  // 4) trabajado dentro de ventana programada (para decisión)
-  let workedInWindow = 0;
-
-  if (m.length >= 4) {
-    workedInWindow += overlapMinutes(entrada1, salida1, progStart, progEnd);
-    workedInWindow += overlapMinutes(entrada2, salida2, progStart, progEnd);
-  } else if (m.length >= 2) {
-    // ✅ si entra dentro de tolerancia, considera como si hubiera entrado a la hora programada
-    const entradaDentroToler =
-      entrada1 && diffMinCeil(progStart, entrada1) <= tolerAtraso;
-
-    // ✅ si sale "temprano" pero dentro de tolerancia, considera como si hubiera salido a la hora programada
-    const salidaDentroToler =
-      salidaReal && diffMinCeil(salidaReal, progEnd) <= tolerSalida;
-
-    const winStart = entradaDentroToler ? progStart : entrada1;
-    const winEnd = salidaDentroToler ? progEnd : salidaReal;
-
-    workedInWindow = overlapMinutes(winStart, winEnd, progStart, progEnd);
-    workedInWindow = Math.max(0, workedInWindow - lunchObjetivoMin);
-  } else {
-    workedInWindow = 0;
-  }
-
-  // 5) atraso (CEIL) - con tolerancia
-  let min_atraso = 0;
-  if (entrada1) {
-    const atraso = diffMinCeil(progStart, entrada1) - tolerAtraso;
-    min_atraso = Math.max(0, atraso);
-  }
-
-  // 6) salida temprana (CEIL) - con tolerancia
-  let min_salida_temprana = 0;
-  if (salidaReal) {
-    const temprana = diffMinCeil(salidaReal, progEnd) - tolerSalida;
-    min_salida_temprana = Math.max(0, temprana);
-  }
-
-  // 7) min_extra (✅ SOLO INFORMATIVO)
-  // Extra bruto según minutos trabajados vs objetivo (sin condicionar por atraso/salida temprana)
-  let min_extra = 0;
-
-  if (m.length >= 2) {
-    // min_trabajados ya descuenta lunchObjetivoMin cuando hay solo 2 marcas,
-    // y suma tramos cuando hay 4 marcas.
-    min_extra = Math.max(0, min_trabajados - workObjetivoMin);
-  } else {
-    min_extra = 0;
-  }
-
-  // 8) estado asistencia
+  // 5) Estado (solo UI)
   let estado_asistencia = "SIN_MARCA";
-  if (m.length === 0) {
-    estado_asistencia = "SIN_MARCA";
-  } else if (m.length === 1) {
-    estado_asistencia = "SOLO_ENTRADA";
-  } else if (m.length === 3) {
-    estado_asistencia = "INCOMPLETO";
-  } else {
-    // ✅ prioridad: ATRASO primero
+  if (m.length === 0) estado_asistencia = "SIN_MARCA";
+  else if (m.length === 1) estado_asistencia = "SOLO_ENTRADA";
+  else {
     if (min_atraso > 0) estado_asistencia = "ATRASO";
-    else if (min_salida_temprana > 0) estado_asistencia = "INCOMPLETO";
-    else if (workedInWindow < workObjetivoMin) estado_asistencia = "INCOMPLETO";
+    else if (min_salida_temprana > 0)
+      estado_asistencia = "INCOMPLETO"; // aquí lo usamos como “salida temprana”
     else estado_asistencia = "OK";
   }
 
-  // 9) Update turno
+  // ✅ hora_entrada_real / hora_salida_real: primera y última (sin segundos)
+  const hora_entrada_real = entradaMulta;
+  const hora_salida_real = m.length >= 2 ? salidaMulta : null;
+
+  // 6) Update (SOLO columnas que existen)
   await poolmysql.query(
     `
     UPDATE neg_t_turnos_diarios
@@ -785,11 +750,17 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
       hora_salida_1  = ?,
       hora_entrada_2 = ?,
       hora_salida_2  = ?,
+
       hora_entrada_real = ?,
       hora_salida_real  = ?,
-      min_trabajados = ?,
-      min_atraso     = ?,
-      min_extra      = ?,
+
+      min_atraso = ?,
+      min_salida_temprana = ?,
+
+      almuerzo_permitido_min = ?,
+      almuerzo_real_min = ?,
+      almuerzo_excedido_min = ?,
+
       estado_asistencia = ?,
       updated_at = NOW()
     WHERE id = ?
@@ -800,11 +771,13 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
       salida1,
       entrada2,
       salida2,
-      entradaReal,
-      salidaReal,
-      min_trabajados,
+      hora_entrada_real,
+      hora_salida_real,
       min_atraso,
-      min_extra,
+      min_salida_temprana,
+      almuerzoPermitidoMin,
+      almuerzoRealMin,
+      almuerzoExcedidoMin,
       estado_asistencia,
       turno.id,
     ],
@@ -814,12 +787,12 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
     ok: true,
     turno_id: turno.id,
     estado_asistencia,
-    meta: {
-      span_prog_min: span,
-      workObjetivoMin,
-      lunchObjetivoMin,
-      workedInWindow,
+    mins: {
+      min_atraso,
       min_salida_temprana,
+      almuerzoPermitidoMin,
+      almuerzoRealMin,
+      almuerzoExcedidoMin,
     },
   };
 }

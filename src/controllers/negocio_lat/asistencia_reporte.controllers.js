@@ -1,5 +1,6 @@
 // src/controllers/negocio_lat/asistencia_reporte.controllers.js
 const ExcelJS = require("exceljs");
+
 const {
   getAsistenciaCruda,
 } = require("../../models/negocio_lat/asistencia_reporte.model");
@@ -45,49 +46,49 @@ function timeToMinutes(timeStr) {
   return hh * 60 + mm;
 }
 
-function calcularMinutosTrabajadosDesdeMarcas(
-  hora_entrada_1,
-  hora_salida_1,
-  hora_entrada_2,
-  hora_salida_2
-) {
-  const e1 = timeToMinutes(hora_entrada_1);
-  const s1 = timeToMinutes(hora_salida_1);
-  const e2 = timeToMinutes(hora_entrada_2);
-  const s2 = timeToMinutes(hora_salida_2);
-
-  let minutos = 0;
-  if (e1 != null && s1 != null && s1 > e1) minutos += s1 - e1;
-  if (e2 != null && s2 != null && s2 > e2) minutos += s2 - e2;
-
-  // Fallback: si solo hay entrada y salida final
-  if (minutos === 0 && e1 != null && s2 != null && s2 > e1) {
-    minutos = s2 - e1;
-  }
-
-  return minutos;
-}
-
-function calcularMinutosTrabajados(row) {
-  if (row.min_trabajados != null) return Number(row.min_trabajados) || 0;
-  return calcularMinutosTrabajadosDesdeMarcas(
-    row.hora_entrada_1,
-    row.hora_salida_1,
-    row.hora_entrada_2,
-    row.hora_salida_2
+// ✅ Primera marca (entrada): SIEMPRE la primera disponible
+function getPrimeraMarcaHHMM(row) {
+  return (
+    row.hora_entrada_1 ||
+    row.hora_salida_1 ||
+    row.hora_entrada_2 ||
+    row.hora_salida_2 ||
+    null
   );
 }
 
-// ✅ Para atrasos/salida temprana en reporte:
-// - Si tu turno ya guarda min_atraso/min_salida_temprana en BD, úsalo.
-// - Si no existe, calcula “simple” por comparación de HH:mm.
-// Nota: Aquí NO recomputamos con CEIL/segundos porque el cálculo real ya debe venir desde updateTurnoFromAsistencia.
+// ✅ Última marca (salida): SIEMPRE la última disponible
+function getUltimaMarcaHHMM(row) {
+  return (
+    row.hora_salida_2 ||
+    row.hora_entrada_2 ||
+    row.hora_salida_1 ||
+    row.hora_entrada_1 ||
+    null
+  );
+}
+
+// ✅ Minutos “trabajados/presencia” (informativo):
+// (última - primera) - almuerzo_real (si existe)
+// * segundos ignorados porque usamos HH:mm (timeToMinutes)
+function calcularMinutosTrabajados(row) {
+  const first = timeToMinutes(getPrimeraMarcaHHMM(row));
+  const last = timeToMinutes(getUltimaMarcaHHMM(row));
+  if (first == null || last == null || last <= first) return 0;
+
+  const lunch =
+    row.almuerzo_real_min == null ? 0 : Number(row.almuerzo_real_min) || 0;
+
+  return Math.max(0, last - first - lunch);
+}
+
+// ✅ Atraso: usa BD si existe; si no, compara (primera marca vs entrada_prog)
+// (tolerancia = 0, segundos ignorados)
 function calcularMinutosAtraso(row) {
   if (row.min_atraso != null) return Number(row.min_atraso) || 0;
 
   const entradaProgMin = timeToMinutes(row.hora_entrada_prog);
-  const entradaReal = row.hora_entrada_1 || row.hora_entrada_2 || null;
-  const entradaRealMin = timeToMinutes(entradaReal);
+  const entradaRealMin = timeToMinutes(getPrimeraMarcaHHMM(row));
 
   if (
     entradaProgMin != null &&
@@ -99,10 +100,13 @@ function calcularMinutosAtraso(row) {
   return 0;
 }
 
+// ✅ Salida temprana: usa BD si existe; si no, compara (salida_prog vs última marca)
 function calcularMinutosSalidaTemprana(row) {
+  if (row.min_salida_temprana != null)
+    return Number(row.min_salida_temprana) || 0;
+
   const salidaProgMin = timeToMinutes(row.hora_salida_prog);
-  const salidaReal = row.hora_salida_real_time || row.hora_salida_2 || null;
-  const salidaRealMin = timeToMinutes(salidaReal);
+  const salidaRealMin = timeToMinutes(getUltimaMarcaHHMM(row));
 
   if (
     salidaProgMin != null &&
@@ -150,7 +154,6 @@ function excelColName(n) {
 }
 
 function parseMesToRange(mes) {
-  // mes: YYYY-MM
   const m = String(mes || "").trim();
   if (!/^\d{4}-\d{2}$/.test(m)) return null;
 
@@ -158,11 +161,10 @@ function parseMesToRange(mes) {
   const y = Number(yy);
   const month = Number(mm);
 
-  if (Number.isNaN(y) || Number.isNaN(month) || month < 1 || month > 12) {
+  if (Number.isNaN(y) || Number.isNaN(month) || month < 1 || month > 12)
     return null;
-  }
 
-  const lastDay = new Date(y, month, 0).getDate(); // month es 1-12 aquí
+  const lastDay = new Date(y, month, 0).getDate();
   const fechaDesde = `${yy}-${mm}-01`;
   const fechaHasta = `${yy}-${mm}-${String(lastDay).padStart(2, "0")}`;
 
@@ -170,7 +172,7 @@ function parseMesToRange(mes) {
 }
 
 // ==========================
-// MULTAS
+// MULTAS (solo atraso + salida temprana)
 // ==========================
 function rangoMulta(minutos) {
   const m = Number(minutos || 0);
@@ -183,29 +185,21 @@ function rangoMulta(minutos) {
 function multaPorFrecuencia(rangoKey, nuevoCount) {
   if (!rangoKey) return 0;
 
-  if (rangoKey === "1-5") {
-    return nuevoCount >= 2 ? 2.0 : 0;
-  }
-  if (rangoKey === "6-10") {
-    return nuevoCount === 1 ? 2.5 : 5.0;
-  }
-  if (rangoKey === "11+") {
-    return nuevoCount === 1 ? 10.0 : 20.0;
-  }
+  if (rangoKey === "1-5") return nuevoCount >= 2 ? 2.0 : 0;
+  if (rangoKey === "6-10") return nuevoCount === 1 ? 2.5 : 5.0;
+  if (rangoKey === "11+") return nuevoCount === 1 ? 10.0 : 20.0;
   return 0;
 }
 
 function calcularMultaDia({ minAtraso, minSalidaTemprana }, freq) {
   let total = 0;
 
-  // ATRASO
   const rA = rangoMulta(minAtraso);
   if (rA) {
     freq.atraso[rA] = (freq.atraso[rA] || 0) + 1;
     total += multaPorFrecuencia(rA, freq.atraso[rA]);
   }
 
-  // SALIDA TEMPRANA
   const rS = rangoMulta(minSalidaTemprana);
   if (rS) {
     freq.salida[rS] = (freq.salida[rS] || 0) + 1;
@@ -215,14 +209,15 @@ function calcularMultaDia({ minAtraso, minSalidaTemprana }, freq) {
   return Math.round(total * 100) / 100;
 }
 
-// ✅ Justificaciones
+// ==========================
+// Justificaciones
+// ==========================
 function normEstado(v) {
   return String(v || "NO")
     .trim()
     .toUpperCase();
 }
 
-// Acepta APROBADA o APROBADO por si algún lado lo guarda distinto
 function esAprobadaJust(v) {
   const s = normEstado(v);
   return s === "APROBADA" || s === "APROBADO";
@@ -244,7 +239,7 @@ async function getReporteAsistenciaExcel(req, res) {
     const range = parseMesToRange(mes);
     if (!range) {
       return res.status(400).json({
-        message: "mes inválido. Use formato YYYY-MM (ej: 2025-12)",
+        message: "mes inválido. Use formato YYYY-MM (ej: 2026-02)",
       });
     }
 
@@ -253,7 +248,7 @@ async function getReporteAsistenciaExcel(req, res) {
       return res.status(400).json({ message: "usuario_id debe ser numérico" });
     }
 
-    // ✅ 0) No permitir reporte si hay justificaciones pendientes
+    // ✅ 0) bloquear reporte si hay justificaciones PENDIENTES
     const pendientes = await selectPendientesJustificaciones({
       desde: range.fechaDesde,
       hasta: range.fechaHasta,
@@ -275,7 +270,7 @@ async function getReporteAsistenciaExcel(req, res) {
       fechaHasta: range.fechaHasta,
     });
 
-    // 2) Base del usuario
+    // 2) Usuario
     let nombreBase = "";
     let cedulaBase = "";
 
@@ -287,15 +282,12 @@ async function getReporteAsistenciaExcel(req, res) {
       FROM sisusuarios
       WHERE id = ?
       `,
-      [uid]
+      [uid],
     );
 
-    if (userRows && userRows.length > 0) {
+    if (userRows?.length) {
       nombreBase = userRows[0].nombre_completo || "";
       cedulaBase = userRows[0].cedula || "";
-    } else if (asistenciaCruda && asistenciaCruda.length > 0) {
-      nombreBase = asistenciaCruda[0].nombre_completo || "";
-      cedulaBase = asistenciaCruda[0].cedula || "";
     }
 
     // 3) Map por fecha
@@ -321,59 +313,44 @@ async function getReporteAsistenciaExcel(req, res) {
       const row = rowsPorFecha.get(fechaStr);
 
       if (row) {
-        const minutos_trabajados = calcularMinutosTrabajados(row);
-
-        // ✅ minutos “reales”
-        const minutos_atrasados_real = calcularMinutosAtraso(row);
-        const minutos_salida_temprana_real = calcularMinutosSalidaTemprana(row);
-
-        // ✅ estados de justificación (si tu query los trae)
-        const justAtrasoEstado = normEstado(row.just_atraso_estado);
-        const justSalidaEstado = normEstado(row.just_salida_estado);
-
-        // ✅ Estado para mostrar en Excel
         const estadoBase = String(row.estado_asistencia || "")
           .toUpperCase()
           .trim();
 
-        const justAprobAtraso =
-          esAprobadaJust(justAtrasoEstado) && minutos_atrasados_real > 0;
+        const minAtrasoReal = calcularMinutosAtraso(row);
+        const minSalidaTempranaReal = calcularMinutosSalidaTemprana(row);
 
-        const justAprobSalida =
-          esAprobadaJust(justSalidaEstado) && minutos_salida_temprana_real > 0;
+        const justAtrasoEstado = normEstado(row.just_atraso_estado);
+        const justSalidaEstado = normEstado(row.just_salida_estado);
 
-        // Solo “convertimos” si el turno estaba como ATRASO o INCOMPLETO
-        // y la justificación aprobada aplica a ese problema.
-        let estadoReporte = estadoBase;
+        const justAtrasoMotivo = row.just_atraso_motivo || null;
+        const justSalidaMotivo = row.just_salida_motivo || null;
 
-        if (
-          (estadoBase === "ATRASO" || estadoBase === "INCOMPLETO") &&
-          (justAprobAtraso || justAprobSalida)
-        ) {
-          estadoReporte = "COMPLETO (JUST)";
-        }
+        // ✅ Estado para mostrar: si hubo problema pero fue aprobado, marcamos JUST
+        let estadoReporte = estadoBase || "SIN_MARCA";
+        const justAtr = esAprobadaJust(justAtrasoEstado) && minAtrasoReal > 0;
+        const justSal =
+          esAprobadaJust(justSalidaEstado) && minSalidaTempranaReal > 0;
+        if (justAtr && justSal) estadoReporte = "OK (JUST ATR+SAL)";
+        else if (justAtr) estadoReporte = "OK (JUST ATR)";
+        else if (justSal) estadoReporte = "OK (JUST SAL)";
 
-        // ✅ PARA MULTA:
-        // si está APROBADA => NO cuenta (0 min) y NO incrementa frecuencia
-        const minAtrasoParaMulta = esAprobadaJust(justAtrasoEstado)
+        // ✅ Para multa: si APROBADA => no cuenta
+        const minAtrasoMulta = esAprobadaJust(justAtrasoEstado)
           ? 0
-          : minutos_atrasados_real;
-
-        const minSalidaParaMulta = esAprobadaJust(justSalidaEstado)
+          : minAtrasoReal;
+        const minSalidaMulta = esAprobadaJust(justSalidaEstado)
           ? 0
-          : minutos_salida_temprana_real;
+          : minSalidaTempranaReal;
 
         const multa = calcularMultaDia(
-          {
-            minAtraso: minAtrasoParaMulta,
-            minSalidaTemprana: minSalidaParaMulta,
-          },
-          freq
+          { minAtraso: minAtrasoMulta, minSalidaTemprana: minSalidaMulta },
+          freq,
         );
 
         filasReporte.push({
           fecha_dia,
-          estado_asistencia: estadoReporte || "INCOMPLETO",
+          estado_asistencia: estadoReporte,
 
           hora_entrada_prog: toHHMM(row.hora_entrada_prog),
           hora_salida_prog: toHHMM(row.hora_salida_prog),
@@ -383,18 +360,25 @@ async function getReporteAsistenciaExcel(req, res) {
           hora_entrada_2: toHHMM(row.hora_entrada_2),
           hora_salida_2: toHHMM(row.hora_salida_2),
 
-          // ✅ Transparencia: mostramos minutos reales
-          minutos_atrasados: minutos_atrasados_real,
-          minutos_salida_temprana: minutos_salida_temprana_real,
+          // ✅ SOLO este de almuerzo
+          almuerzo_excedido: row.almuerzo_excedido_si ? "SI" : "NO",
 
-          // ✅ y mostramos el estado de autorización
+          // ✅ minutos reales
+          min_atraso: minAtrasoReal,
           just_atraso_estado: justAtrasoEstado,
-          just_salida_estado: justSalidaEstado,
+          just_atraso_motivo: justAtrasoMotivo,
 
-          minutos_trabajados,
+          min_salida_temprana: minSalidaTempranaReal,
+          just_salida_estado: justSalidaEstado,
+          just_salida_motivo: justSalidaMotivo,
+
+          // ✅ minutos trabajados (presencia)
+          minutos_trabajados: calcularMinutosTrabajados(row),
 
           multa,
-          observacion: row.observacion || null,
+
+          // ✅ RENOMBRE EN EXCEL: Motivo Horas Ac (sale de t.observacion)
+          motivo_horas_ac: row.observacion || null,
         });
       } else {
         filasReporte.push({
@@ -409,16 +393,20 @@ async function getReporteAsistenciaExcel(req, res) {
           hora_entrada_2: null,
           hora_salida_2: null,
 
-          minutos_atrasados: 0,
-          minutos_salida_temprana: 0,
+          almuerzo_excedido: "NO",
 
+          min_atraso: 0,
           just_atraso_estado: "NO",
+          just_atraso_motivo: null,
+
+          min_salida_temprana: 0,
           just_salida_estado: "NO",
+          just_salida_motivo: null,
 
           minutos_trabajados: 0,
 
           multa: 0,
-          observacion: null,
+          motivo_horas_ac: null,
         });
       }
 
@@ -431,7 +419,7 @@ async function getReporteAsistenciaExcel(req, res) {
 
     worksheet.columns = [
       { header: "Fecha (día)", key: "fecha_dia", width: 24 },
-      { header: "Estado\nasistencia", key: "estado_asistencia", width: 14 },
+      { header: "Estado\nasistencia", key: "estado_asistencia", width: 16 },
 
       { header: "Entrada\nprogramada", key: "hora_entrada_prog", width: 12 },
       { header: "Salida\nprogramada", key: "hora_salida_prog", width: 12 },
@@ -441,25 +429,32 @@ async function getReporteAsistenciaExcel(req, res) {
       { header: "Entrada\n2", key: "hora_entrada_2", width: 10 },
       { header: "Salida\n2", key: "hora_salida_2", width: 10 },
 
-      { header: "Min\natraso", key: "minutos_atrasados", width: 10 },
+      // ✅ SOLO este de almuerzo
+      { header: "Almuerzo\nexcedido", key: "almuerzo_excedido", width: 14 },
+
+      { header: "Min\natraso", key: "min_atraso", width: 10 },
       { header: "Just\natraso", key: "just_atraso_estado", width: 10 },
+      { header: "Motivo\njust atraso", key: "just_atraso_motivo", width: 30 },
 
       {
         header: "Min.\nsalida temprana",
-        key: "minutos_salida_temprana",
+        key: "min_salida_temprana",
         width: 14,
       },
       { header: "Just\nsalida", key: "just_salida_estado", width: 10 },
+      { header: "Motivo\njust salida", key: "just_salida_motivo", width: 30 },
 
       { header: "Minutos\ntrabajados", key: "minutos_trabajados", width: 14 },
 
       { header: "Multas\n($)", key: "multa", width: 10 },
-      { header: "Observación", key: "observacion", width: 45 },
+
+      // ✅ renombrado
+      { header: "Motivo\nHoras Ac", key: "motivo_horas_ac", width: 45 },
     ];
 
     worksheet.addRows(filasReporte);
 
-    // ====== Cabecera superior (4 filas arriba) ======
+    // ====== Cabecera superior ======
     const totalCols = worksheet.columns.length;
     const lastCol = excelColName(totalCols);
 
@@ -509,7 +504,7 @@ async function getReporteAsistenciaExcel(req, res) {
 
     worksheet.views = [{ state: "frozen", ySplit: 5 }];
 
-    // Formato moneda para columna multas
+    // Formato moneda para multas
     const multaColIndex =
       worksheet.columns.findIndex((c) => c.key === "multa") + 1;
     if (multaColIndex > 0) {
@@ -517,7 +512,7 @@ async function getReporteAsistenciaExcel(req, res) {
     }
 
     // ====== Total Multas ======
-    const dataStartRow = headerRowIndex + 1; // 6
+    const dataStartRow = headerRowIndex + 1;
     const dataEndRow = dataStartRow + filasReporte.length - 1;
     const multaColLetter = excelColName(multaColIndex);
 
@@ -536,7 +531,7 @@ async function getReporteAsistenciaExcel(req, res) {
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
 
@@ -546,7 +541,7 @@ async function getReporteAsistenciaExcel(req, res) {
     console.error("❌ Error en getReporteAsistenciaExcel:", error);
     res.status(500).json({
       message: "Error interno en reporte-excel",
-      error: String(error),
+      error: error?.sqlMessage || error?.message || String(error),
     });
   }
 }

@@ -13,10 +13,11 @@ function inPlaceholders(arr = []) {
  * IMPORTANTE PARA EXCEL (multas):
  *  - Debe incluir campos just_* para saber si se perdona atraso/salida.
  */
+// src/models/negocio_lat/asistencia_reporte.model.js
 async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
   usuarioIds = (usuarioIds || [])
     .map((x) => Number(x))
-    .filter((x) => !Number.isNaN(x));
+    .filter((x) => Number.isFinite(x));
 
   if (!usuarioIds.length) return [];
   if (!fechaDesde || !fechaHasta) return [];
@@ -52,7 +53,7 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
       GROUP BY usuario_id, fecha
     )
 
-    -- A) Días CON TURNO (principal)
+    -- A) Días CON TURNO
     SELECT
       t.usuario_id,
       DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha,
@@ -67,20 +68,24 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
       t.hora_entrada_prog,
       t.hora_salida_prog,
 
-      -- Marcas: prioridad a lo reconstruido en turno; si está NULL, tomamos del log pivot
       COALESCE(DATE_FORMAT(t.hora_entrada_1, '%H:%i:%s'), mp.hora_entrada_1) AS hora_entrada_1,
       COALESCE(DATE_FORMAT(t.hora_salida_1,  '%H:%i:%s'), mp.hora_salida_1)  AS hora_salida_1,
       COALESCE(DATE_FORMAT(t.hora_entrada_2, '%H:%i:%s'), mp.hora_entrada_2) AS hora_entrada_2,
       COALESCE(DATE_FORMAT(t.hora_salida_2,  '%H:%i:%s'), mp.hora_salida_2)  AS hora_salida_2,
 
-      DATE_FORMAT(t.hora_salida_real, '%H:%i:%s') AS hora_salida_real_time,
+      COALESCE(DATE_FORMAT(t.hora_salida_real, '%H:%i:%s'), mp.hora_salida_2) AS hora_salida_real_time,
 
-      t.min_trabajados,
       t.min_atraso,
-      t.min_extra,
-      t.observacion AS observacion,
+      t.min_salida_temprana,
 
-      -- ✅ JUSTIFICACIONES (CLAVE para no multar si está APROBADA)
+      -- ✅ SOLO ESTE CAMPO PARA REPORTE:
+      CASE
+        WHEN COALESCE(mp.marcas_count, 0) = 3 THEN 1
+        ELSE COALESCE(t.almuerzo_excedido_si, 0)
+      END AS almuerzo_excedido_si,
+
+      t.observacion,
+
       t.just_atraso_estado,
       t.just_atraso_motivo,
       t.just_atraso_minutos,
@@ -101,7 +106,7 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
 
     UNION ALL
 
-    -- B) Días SIN TURNO pero CON MARCAS (secundario)
+    -- B) Días SIN TURNO pero CON MARCAS
     SELECT
       mp.usuario_id,
       DATE_FORMAT(mp.fecha, '%Y-%m-%d') AS fecha,
@@ -115,14 +120,15 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
       mp.hora_entrada_2,
       mp.hora_salida_2,
 
-      NULL AS hora_salida_real_time,
+      mp.hora_salida_2 AS hora_salida_real_time,
 
-      NULL AS min_trabajados,
       NULL AS min_atraso,
-      NULL AS min_extra,
+      NULL AS min_salida_temprana,
+
+      CASE WHEN COALESCE(mp.marcas_count, 0) = 3 THEN 1 ELSE 0 END AS almuerzo_excedido_si,
+
       NULL AS observacion,
 
-      -- ✅ mismas columnas que arriba (para UNION)
       NULL AS just_atraso_estado,
       NULL AS just_atraso_motivo,
       NULL AS just_atraso_minutos,
@@ -143,11 +149,11 @@ async function getAsistenciaCruda({ usuarioIds = [], fechaDesde, fechaHasta }) {
   `;
 
   const params = [
-    ...usuarioIds, // IN marks_raw
+    ...usuarioIds,
     fechaDesde,
     fechaHasta,
 
-    ...usuarioIds, // IN select A
+    ...usuarioIds,
     fechaDesde,
     fechaHasta,
   ];
