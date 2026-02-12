@@ -6,32 +6,38 @@ const PROMPT_ANY =
   /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
-const PASS_PROMPT = /User\s*password\s*:\s*/i;
+const PASS_PROMPT  = /User\s*password\s*:\s*/i;
 
 const FAILED_LOGIN =
   /Username\s+or\s+password\s+invalid|The IP address has been locked|cannot log on it|locked/i;
 
 const PAGE_REGEX = /-+\s*More[\s\S]*?-+/;
 
+// Detecta el “modo parámetros” del CLI Huawei
+const NEEDS_CR   = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
+const HAS_COMMAND = /(^|\n)\s*Command\s*:\s*$/im;
+const HAS_TIME    = /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
+
+// Confirmación de logout
+const LOGOUT_CONFIRM = /Are you sure to log out\?\s*\(y\/n\)\[n\]\s*:\s*$/im;
+
+// ✅ espera prompt O el {<cr>...}: para que NO se coma el timeout completo
+const WAIT_PROMPT_OR_CR = new RegExp(
+  `${PROMPT_ANY.source}|${NEEDS_CR.source}`,
+  "im"
+);
+
 function sanitize(s = "") {
   return String(s)
-    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI
     .replace(/\r\n/g, "\n")
     .trim();
 }
-
 function trunc(s = "", max = 1600) {
   if (s.length <= max) return s;
   return s.slice(0, max) + `\n…[${s.length - max} chars más]`;
 }
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Detecta el “modo parámetros” del CLI Huawei
-const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
-const HAS_COMMAND = /(^|\n)\s*Command\s*:\s*$/im;
-const HAS_TIME =
-  /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
 
 class OltClient {
   constructor({
@@ -73,10 +79,7 @@ class OltClient {
     if (!this.debug || !this.showCreds) return;
     const raw = String(value ?? "");
     const buf = Buffer.from(raw, "utf8");
-    this._log(
-      "CREDS",
-      `${label}: ${JSON.stringify(raw)} | bytes=${buf.length}`
-    );
+    this._log("CREDS", `${label}: ${JSON.stringify(raw)} | bytes=${buf.length}`);
   }
 
   async connect() {
@@ -123,6 +126,7 @@ class OltClient {
     return this;
   }
 
+  // deja la consola en prompt antes de ejecutar algo
   async ensurePrompt() {
     try {
       this._log("DRAIN", "enter");
@@ -134,33 +138,34 @@ class OltClient {
     } catch {}
   }
 
+  // ejecuta comando y si la OLT pide <cr>, envía ENTER extra
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
 
-    // asegura prompt limpio antes
     await this.ensurePrompt();
-
     this._log("EXEC", c);
 
+    // ✅ clave: esperamos prompt o el bloque {<cr>...}:
     let raw = await this.connection.send(c, {
       ors: "\r\n",
-      waitFor: PROMPT_ANY,
+      waitFor: WAIT_PROMPT_OR_CR,
       timeout: this.timeout,
       ...opts,
     });
 
     let clean = sanitize(raw);
 
-    // Si quedó en modo "{ <cr> ... }:"
-    // y no vemos "Command:" ni timestamp, mandamos ENTER para que ejecute
+    // Si quedó en modo "{ <cr> ... }:" y aún no ejecutó, mandamos ENTER
     if (NEEDS_CR.test(clean) && !HAS_COMMAND.test(clean) && !HAS_TIME.test(clean)) {
       this._log("FIX", "OLT pidió <cr>: enviando ENTER extra");
+
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
         waitFor: PROMPT_ANY,
         timeout: this.timeout,
       });
+
       raw = String(raw) + "\n" + String(raw2);
       clean = sanitize(raw);
     }
@@ -170,14 +175,30 @@ class OltClient {
   }
 
   async end() {
-    // antes de quit, volver a prompt para no pegarlo como parámetro
+    // antes de quit, volver a prompt
     await this.ensurePrompt();
 
     try {
       this._log("EXEC", "quit");
-      await this.connection
-        .send("quit", { ors: "\r\n", timeout: 1500 })
-        .catch(() => {});
+
+      // mandamos quit, pero esperamos prompt o confirmación
+      const resp = await this.connection.send("quit", {
+        ors: "\r\n",
+        waitFor: new RegExp(`${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`, "im"),
+        timeout: 2500,
+      }).catch(() => "");
+
+      const txt = sanitize(resp);
+
+      // si pide confirmación, respondemos "y"
+      if (LOGOUT_CONFIRM.test(txt)) {
+        this._log("EXEC", "logout confirm: y");
+        await this.connection.send("y", {
+          ors: "\r\n",
+          waitFor: PROMPT_ANY,
+          timeout: 1500,
+        }).catch(() => {});
+      }
     } catch {}
 
     try {
@@ -187,9 +208,7 @@ class OltClient {
   }
 
   async destroy() {
-    try {
-      await this.connection.destroy();
-    } catch {}
+    try { await this.connection.destroy(); } catch {}
   }
 }
 
