@@ -50,13 +50,15 @@ async function testConnection(req, res) {
     // Por seguridad, drenamos una vez más antes del comando
     await client.drain();
 
-    const out = await client.exec("display time");
+ const out = await client.exec("display time time-stamp");
+
 
     return res.json({
-      ok: true,
-      message: "Conexión OK y comando ejecutado.",
-      output: out || "(sin salida)",
-    });
+  ok: true,
+  message: "Conexión OK y comando ejecutado.",
+  time: out,
+});
+
   } catch (err) {
     lastFailAt = Date.now();
 
