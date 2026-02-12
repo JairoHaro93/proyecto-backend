@@ -1,22 +1,22 @@
 // src/utils/olt.js
 const { Telnet } = require("telnet-client");
 
-// Prompt Huawei típico: MA5800-X15>
+// ✅ Prompt Huawei tolerante: permite bytes de control al final (Telnet/IAC/etc)
 const SHELL_PROMPT =
-  /(?:MA5800[^\r\n]*[>#]\s*$|<[^>\r\n]+>\s*$|\[[^\]\r\n]+\]\s*$|[>#]\s*$)/m;
+  /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
-// Prompts de login (Huawei suele mostrar ">>User name:" / ">>User password:")
+// Prompts de login
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
 const PASS_PROMPT = /User\s*password\s*:\s*/i;
 
-// Mensajes típicos de fallo (incluye bloqueo de IP)
+// Fallos típicos (incluye lock por IP)
 const FAILED_LOGIN =
   /Username\s+or\s+password\s+invalid|The IP address has been locked|cannot log on it|locked/i;
 
-// “More” paging (por si aparece)
+// Paging (si aparece)
 const PAGE_REGEX = /-+\s*More[\s\S]*?-+/;
 
-function stripAnsiAndControls(s = "") {
+function sanitize(s = "") {
   return String(s)
     .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI
     .replace(/\r\n/g, "\n")
@@ -34,7 +34,7 @@ class OltClient {
     port = 23,
     username,
     password,
-    timeout = 20000,
+    timeout = 30000,
     debug = false,
     showCreds = false,
   }) {
@@ -44,7 +44,7 @@ class OltClient {
     this.port = Number(port || 23);
     this.username = String(username ?? "");
     this.password = String(password ?? "");
-    this.timeout = Number(timeout || 20000);
+    this.timeout = Number(timeout || 30000);
 
     this.debug = !!debug;
     this.showCreds = !!showCreds;
@@ -53,10 +53,10 @@ class OltClient {
     this.connection.on("close", () => this._log("CLOSE"));
     this.connection.on("error", (e) => this._log("ERROR", e?.message || e));
 
-    // ver data cruda (útil para ver warnings)
+    // Solo para debug visual: NO confiar en esto para “fin de comando”
     this.connection.on("data", (buf) => {
       if (!this.debug) return;
-      const txt = stripAnsiAndControls(buf.toString("utf8"));
+      const txt = sanitize(buf.toString("utf8"));
       if (txt) this._log("DATA", trunc(txt));
     });
   }
@@ -81,7 +81,6 @@ class OltClient {
     if (!this.password) throw new Error("OLT_PASSWORD no definido");
 
     this._log("CONNECT", `${this.host}:${this.port} t=${this.timeout}`);
-
     this._dumpCred("username", this.username);
     this._dumpCred("password", this.password);
 
@@ -90,32 +89,22 @@ class OltClient {
       port: this.port,
       timeout: this.timeout,
 
-      // Prompts
       shellPrompt: SHELL_PROMPT,
       loginPrompt: LOGIN_PROMPT,
       passwordPrompt: PASS_PROMPT,
       failedLoginMatch: FAILED_LOGIN,
 
-      // Credenciales
       username: this.username,
       password: this.password,
 
-      // CRLF como telnet manual
       irs: "\r\n",
       ors: "\r\n",
-
-      // “despierta” consola
       initialLFCR: true,
 
-      // timeouts
       execTimeout: this.timeout,
       sendTimeout: this.timeout,
 
-      // NO tocar espacios / NO compactar líneas
-      // (newlineReplace a veces termina raro con ciertos equipos)
       stripControls: true,
-
-      // Paging
       pageSeparator: PAGE_REGEX,
       echoLines: 0,
       stripShellPrompt: false,
@@ -123,48 +112,70 @@ class OltClient {
 
     this._log("READY", "Sesión lista (con login)");
 
-    // ✅ IMPORTANTÍSIMO: drenar warnings pendientes del login
+    // Limpia warnings pendientes
     await this.drain();
 
     return this;
   }
 
   async drain() {
-    // Mandamos un Enter y esperamos prompt para limpiar cualquier warning pendiente
     try {
       this._log("DRAIN", "enter");
       await this.connection.send("", {
         ors: "\r\n",
-        waitFor: SHELL_PROMPT, // OJO: waitFor (F mayúscula)
+        waitFor: SHELL_PROMPT, // ✅ waitFor (F mayúscula)
         timeout: 1500,
       });
     } catch {}
   }
 
+  // ✅ Exec robusto: usa send + waitFor (no connection.exec)
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
 
     this._log("EXEC", c);
 
-    const raw = await this.connection.exec(c, {
-      shellPrompt: SHELL_PROMPT,
-      irs: "\r\n",
-      ors: "\r\n",
-      execTimeout: this.timeout,
-      ...opts,
-    });
+    try {
+      const raw = await this.connection.send(c, {
+        ors: "\r\n",
+        waitFor: SHELL_PROMPT,
+        timeout: this.timeout,
+        ...opts,
+      });
 
-    const clean = stripAnsiAndControls(raw);
-    if (clean) this._log("OUT", trunc(clean));
-    return clean;
+      const clean = sanitize(raw);
+      if (clean) this._log("OUT", trunc(clean));
+      return clean;
+    } catch (err) {
+      // Re-sync 1 vez por si quedó “desfasado” el prompt
+      if (String(err?.message || "").toLowerCase().includes("response not received")) {
+        this._log("RESYNC", "drain + retry");
+        await this.drain();
+        const raw2 = await this.connection.send(c, {
+          ors: "\r\n",
+          waitFor: SHELL_PROMPT,
+          timeout: this.timeout,
+          ...opts,
+        });
+        const clean2 = sanitize(raw2);
+        if (clean2) this._log("OUT", trunc(clean2));
+        return clean2;
+      }
+      throw err;
+    }
   }
 
   async end() {
     try {
       this._log("EXEC", "quit");
-      await this.connection.exec("quit", { execTimeout: 1500 });
+      await this.connection.send("quit", {
+        ors: "\r\n",
+        waitFor: /(?:Configuration console exit|retry to log on|Connection closed|CLOSE)/im,
+        timeout: 1500,
+      }).catch(() => {});
     } catch {}
+
     try {
       this._log("END", "Cerrando socket");
       await this.connection.end();
@@ -172,9 +183,7 @@ class OltClient {
   }
 
   async destroy() {
-    try {
-      await this.connection.destroy();
-    } catch {}
+    try { await this.connection.destroy(); } catch {}
   }
 }
 
