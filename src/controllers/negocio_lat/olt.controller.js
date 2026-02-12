@@ -50,14 +50,19 @@ async function testConnection(req, res) {
     // Por seguridad, drenamos una vez más antes del comando
     await client.drain();
 
- const out = await client.exec("display time time-stamp");
+const raw = await client.exec("display time");
 
+// 12-02-2026 17:30:10-05:00
+const m = raw.match(/\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/);
+const time = m ? m[0] : null;
 
-    return res.json({
+return res.json({
   ok: true,
   message: "Conexión OK y comando ejecutado.",
-  time: out,
+  time,
+  raw, // opcional para debug
 });
+
 
   } catch (err) {
     lastFailAt = Date.now();
