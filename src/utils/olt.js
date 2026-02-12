@@ -19,16 +19,19 @@ function sanitize(s = "") {
     .replace(/\r\n/g, "\n")
     .trim();
 }
+
 function trunc(s = "", max = 1600) {
   if (s.length <= max) return s;
   return s.slice(0, max) + `\n…[${s.length - max} chars más]`;
 }
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Detecta el “modo parámetros” del CLI Huawei
 const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
 const HAS_COMMAND = /(^|\n)\s*Command\s*:\s*$/im;
-const HAS_TIME = /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
+const HAS_TIME =
+  /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
 
 class OltClient {
   constructor({
@@ -70,7 +73,10 @@ class OltClient {
     if (!this.debug || !this.showCreds) return;
     const raw = String(value ?? "");
     const buf = Buffer.from(raw, "utf8");
-    this._log("CREDS", `${label}: ${JSON.stringify(raw)} | bytes=${buf.length}`);
+    this._log(
+      "CREDS",
+      `${label}: ${JSON.stringify(raw)} | bytes=${buf.length}`
+    );
   }
 
   async connect() {
@@ -117,7 +123,6 @@ class OltClient {
     return this;
   }
 
-  // ✅ deja la consola en prompt antes de ejecutar algo (evita pegar comandos)
   async ensurePrompt() {
     try {
       this._log("DRAIN", "enter");
@@ -129,7 +134,6 @@ class OltClient {
     } catch {}
   }
 
-  // ✅ ejecuta un comando y si la OLT pide <cr>, envía ENTER extra
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
@@ -166,12 +170,14 @@ class OltClient {
   }
 
   async end() {
-    // Muy importante: antes de quit, volver a prompt para no pegarlo como parámetro
+    // antes de quit, volver a prompt para no pegarlo como parámetro
     await this.ensurePrompt();
 
     try {
       this._log("EXEC", "quit");
-      await this.connection.send("quit", { ors: "\r\n", timeout: 1500 }).catch(() => {});
+      await this.connection
+        .send("quit", { ors: "\r\n", timeout: 1500 })
+        .catch(() => {});
     } catch {}
 
     try {
@@ -181,7 +187,9 @@ class OltClient {
   }
 
   async destroy() {
-    try { await this.connection.destroy(); } catch {}
+    try {
+      await this.connection.destroy();
+    } catch {}
   }
 }
 

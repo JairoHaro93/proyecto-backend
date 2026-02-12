@@ -19,16 +19,21 @@ function serializeErr(err) {
 
 async function testConnection(req, res) {
   if (oltBusy) {
-    return res.status(429).json({ ok: false, error: { message: "OLT: intento en curso" } });
+    return res
+      .status(429)
+      .json({ ok: false, error: { message: "OLT: intento en curso" } });
   }
 
   const now = Date.now();
   const waitMs = 30_000;
   const diff = now - lastFailAt;
+
   if (diff < waitMs) {
     return res.status(429).json({
       ok: false,
-      error: { message: `OLT: espera ${Math.ceil((waitMs - diff) / 1000)}s antes de reintentar` },
+      error: {
+        message: `OLT: espera ${Math.ceil((waitMs - diff) / 1000)}s antes de reintentar`,
+      },
     });
   }
 
@@ -39,7 +44,7 @@ async function testConnection(req, res) {
     port: Number(process.env.OLT_PORT || 8090),
     username: process.env.OLT_USERNAME,
     password: process.env.OLT_PASSWORD,
-    timeout: Number(process.env.OLT_TIMEOUT_MS || 20000),
+    timeout: Number(process.env.OLT_TIMEOUT_MS || 30000),
     debug: parseBool(req.query.debug),
     showCreds: parseBool(req.query.showCreds),
   });
@@ -47,23 +52,24 @@ async function testConnection(req, res) {
   try {
     await client.connect();
 
-    // Por seguridad, drenamos una vez más antes del comando
-    await client.drain();
+    // ✅ No hace falta ensurePrompt() aquí, exec() ya lo hace antes de cada comando
+    const raw = await client.exec("display time");
 
-const raw = await client.exec("display time");
+    const m = raw.match(
+      /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/
+    );
+    const time = m ? m[0] : null;
 
-const m = raw.match(/\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/);
-const time = m ? m[0] : null;
-
-return res.json({ ok: true, message: "OK", time, raw });
-
-
-
+    return res.json({ ok: true, message: "OK", time, raw });
   } catch (err) {
     lastFailAt = Date.now();
 
     const msg = String(err?.message || "");
-    if (/IP address has been locked/i.test(msg) || /cannot log on/i.test(msg) || /locked/i.test(msg)) {
+    if (
+      /IP address has been locked/i.test(msg) ||
+      /cannot log on/i.test(msg) ||
+      /locked/i.test(msg)
+    ) {
       return res.status(500).json({
         ok: false,
         error: {
@@ -77,7 +83,9 @@ return res.json({ ok: true, message: "OK", time, raw });
     return res.status(500).json({ ok: false, error: serializeErr(err) });
   } finally {
     oltBusy = false;
-    try { await client.end(); } catch {}
+    try {
+      await client.end();
+    } catch {}
   }
 }
 
