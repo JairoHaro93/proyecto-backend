@@ -1,54 +1,35 @@
 // src/utils/olt.js
 const { Telnet } = require("telnet-client");
 
-// ===============================
-// Prompts Huawei / Telnet
-// ===============================
+// ===== Prompts Huawei MA5800 =====
+const LOGIN_PROMPT = />>\s*User\s+name:\s*$/im;
+const PASS_PROMPT  = />>\s*User\s+password:\s*$/im;
 
-// Login prompts (Huawei suele mostrar: ">>User name:" / ">>User password:")
-const LOGIN_PROMPT =
-  /(?:>{2}\s*)?(?:User\s+name|Login(?:\s+username)?)\s*:\s*$/im;
+// Prompt final (tu OLT muestra: MA5800-X15>)
+const SHELL_PROMPT_ANY = /(MA5800-X15[>#])|(<[^>\r\n]+>)|([\w.-]+[>#])|([>#])/m;
 
-const PASS_PROMPT =
-  /(?:>{2}\s*)?(?:User\s+password|Password)\s*:\s*$/im;
-
-// ✅ Prompt del sistema (Huawei suele ser: <MA5800-X15> o algo con > o #)
-// ⚠️ IMPORTANTE: Huawei/Telnet a veces manda bytes de control al final (GA/IAC),
-// por eso permitimos tail de bytes no imprimibles y 0xF9 (GA) en unicode.
+// Prompt al final (tolerante a bytes/control chars telnet al final)
 const SHELL_PROMPT_END =
-  /(?:<[^>\r\n]+>|\[[^\]\r\n]+\]|[A-Z0-9-]+>|[\w.-]+[>#]|[>#])[\s\x00-\x1f\x7f-\x9f\u00f9\u00ff]*$/m;
+  /((MA5800-X15[>#])|(<[^>\r\n]+>)|([\w.-]+[>#])|([>#]))[\s\x00-\x1f\x7f-\x9f\u00f9\u00ff]*$/m;
 
-// Prompt “en cualquier parte” (para waitfor) — más tolerante
-const SHELL_PROMPT_ANY =
-  /<[^>\r\n]+>|\[[^\]\r\n]+\]|[\w.-]+[>#]|[>#]/m;
-
-// Paginación tipo "---- More ----" (varía)
-// Si tu OLT usa otra cadena, ajústala.
+// (Opcional) paginación
 const PAGE_REGEX = /-+\s*More[\s\S]*?-+/i;
 
-// ===============================
-// Helpers
-// ===============================
+// ===== Helpers =====
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function sanitize(out = "") {
   return String(out)
-    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // quita ANSI
+    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI
     .replace(/\r\n/g, "\n")
     .trim();
 }
-
-function trunc(s = "", max = 2000) {
-  s = String(s || "");
-  if (s.length <= max) return s;
-  return s.slice(0, max) + `\n…[${s.length - max} chars más]`;
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function pickEOL(mode) {
   const m = String(mode || "CRLF").toUpperCase();
   if (m === "CR") return "\r";
   if (m === "LF") return "\n";
-  return "\r\n"; // CRLF por defecto
+  return "\r\n";
 }
 
 class OltClient {
@@ -59,34 +40,29 @@ class OltClient {
     password,
     timeout = 20000,
     debug = false,
-    showCreds = false,
 
-    // Controles de escritura / fin de línea
-    userEol = "CRLF", // "CRLF" | "CR" | "LF"
-    passEol = "CRLF", // "CRLF" | "CR" | "LF"
-    typeMsUser = 0,   // retardo (ms) entre caracteres del username
-    typeMsPass = 0,   // retardo (ms) entre caracteres del password
+    userEol = "CRLF",
+    passEol = "CRLF",
+    typeMsUser = 0,
+    typeMsPass = 0,
   } = {}) {
     this.connection = new Telnet();
 
     this.host = host;
     this.port = Number(port);
-    this.username = username ?? "";
-    this.password = password ?? "";
-
+    this.username = String(username ?? "");
+    this.password = String(password ?? "");
     this.timeout = Number(timeout) || 20000;
     this.debug = !!debug;
-    this.showCreds = !!showCreds;
 
     this.userEol = pickEOL(userEol);
     this.passEol = pickEOL(passEol);
     this.typeMsUser = Number(typeMsUser) || 0;
     this.typeMsPass = Number(typeMsPass) || 0;
 
-    // logs útiles de lifecycle
-    this.connection.on("timeout", () => this._log("TIMEOUT"));
-    this.connection.on("close", () => this._log("CLOSE"));
     this.connection.on("error", (e) => this._log("ERROR", e?.message || e));
+    this.connection.on("close", () => this._log("CLOSE"));
+    this.connection.on("timeout", () => this._log("TIMEOUT"));
   }
 
   _log(tag, msg = "") {
@@ -95,183 +71,120 @@ class OltClient {
     console.log(`[OLT][${ts}][${tag}] ${msg}`);
   }
 
-  _dumpCred(label, value) {
-    if (!this.debug || !this.showCreds) return;
-    const raw = String(value ?? "");
-    const visible = JSON.stringify(raw);
-    const buf = Buffer.from(raw, "utf8");
-    const hexSpaced = buf.toString("hex").replace(/(..)/g, "$1 ").trim();
-    const codepoints = Array.from(raw)
-      .map((ch) => ch.codePointAt(0).toString(16).padStart(4, "0"))
-      .join(" ");
-    this._log(
-      "CREDS",
-      `${label}: visible=${visible} | len_bytes=${buf.length} | hex=${hexSpaced} | ucs4=${codepoints}`
-    );
+  async _send(text, { waitfor, ors, timeout } = {}) {
+    return this.connection.send(text ?? "", {
+      waitfor,
+      ors: ors ?? "\r\n",
+      timeout: timeout ?? this.timeout,
+    });
   }
 
- async _typeAndWait({ text, eol, waitfor, typeMs }) {
-  const toType = String(text ?? "");
-  const ms = Number(typeMs) || 0;
+  async _typeAndWait(text, { waitfor, eol, typeMs } = {}) {
+    const toType = String(text ?? "");
+    const ms = Number(typeMs) || 0;
+    const ors = eol ?? "\r\n";
 
-  if (ms > 0) {
-    for (const ch of toType) {
-      await this.connection.send(ch, { ors: "" }); // no añadir enter aquí
-      await sleep(ms);
+    // tecleo char-by-char si se requiere
+    if (ms > 0) {
+      for (const ch of toType) {
+        await this._send(ch, { ors: "" });
+        await sleep(ms);
+      }
+      // manda solo el Enter
+      return this._send("", { waitfor, ors });
     }
-    // manda SOLO el enter (ors=eol)
-    return this.connection.send("", { waitfor, timeout: this.timeout, ors: eol });
-  }
 
-  // manda texto y que telnet-client agregue el enter (ors=eol)
-  return this.connection.send(toType, {
-    waitfor,
-    timeout: this.timeout,
-    ors: eol,
-  });
-}
+    // manda texto y telnet-client agrega el enter (ors)
+    return this._send(toType, { waitfor, ors });
+  }
 
   async connect() {
-    if (!this.host) throw new Error("OLT host requerido (OLT_HOST).");
-    if (!this.port) throw new Error("OLT port requerido (OLT_PORT).");
+    if (!this.host) throw new Error("OLT_HOST requerido");
+    if (!this.port) throw new Error("OLT_PORT requerido");
 
     this._log("CONNECT", `${this.host}:${this.port}`);
 
-    // Conecta socket Telnet y prepara prompts
     await this.connection.connect({
       host: this.host,
       port: this.port,
 
-      // ✅ IMPORTANTES: si no, telnet-client usa timeouts cortos en send/exec
       timeout: this.timeout,
       execTimeout: this.timeout,
       sendTimeout: this.timeout,
 
-      shellPrompt: SHELL_PROMPT_END,
       negotiationMandatory: false,
-
       irs: "\r\n",
       ors: "\r\n",
 
+      shellPrompt: SHELL_PROMPT_END,
       stripShellPrompt: false,
       pageSeparator: PAGE_REGEX,
     });
 
-    this._dumpCred("username", this.username);
-    this._dumpCred("password", this.password);
-
-    // “despertar” el banner / prompt
+    // 1) despertar banner / pedir prompt login
     this._log("WAIT", "loginPrompt");
-    await this.connection.send("\r\n", {
-      waitfor: LOGIN_PROMPT,
-      timeout: this.timeout,
-      ors: "\r\n",
-    });
-    this._log("PROMPT", "login");
+    const wake = await this._send("", { waitfor: LOGIN_PROMPT, ors: "\r\n" });
+    if (wake) this._log("WAKE", sanitize(wake));
 
-    // USERNAME
-    this._log(
-      "SEND",
-      `username="${this.showCreds ? this.username : "***"}" eol=${JSON.stringify(
-        this.userEol
-      )} typeMs=${this.typeMsUser}`
-    );
-
-    const afterUser = await this._typeAndWait({
-      text: this.username,
-      eol: this.userEol,
+    // 2) username
+    this._log("SEND", `username (eol=${JSON.stringify(this.userEol)} typeMs=${this.typeMsUser})`);
+    const afterUser = await this._typeAndWait(this.username, {
       waitfor: PASS_PROMPT,
+      eol: this.userEol,
       typeMs: this.typeMsUser,
     });
+    if (afterUser) this._log("AFTER_USER", sanitize(afterUser));
 
-    if (afterUser) this._log("AFTER_USER", trunc(sanitize(afterUser)));
-
-    // PASSWORD
-    this._log(
-      "SEND",
-      `password="***" (len=${this.password.length}) eol=${JSON.stringify(
-        this.passEol
-      )} typeMs=${this.typeMsPass}`
-    );
-
-    // ✅ NO tragar errores: si no llega el prompt, debe fallar aquí
-    const afterPass = await this._typeAndWait({
-      text: this.password,
+    // 3) password
+    this._log("SEND", `password (len=${this.password.length} eol=${JSON.stringify(this.passEol)} typeMs=${this.typeMsPass})`);
+    const afterPass = await this._typeAndWait(this.password, {
+      waitfor: SHELL_PROMPT_ANY,  // esperamos prompt final
       eol: this.passEol,
-      waitfor: SHELL_PROMPT_ANY,
       typeMs: this.typeMsPass,
     });
 
     const text = sanitize(afterPass || "");
+    if (text) this._log("AFTER_PASS", text);
 
-    const locked =
-  /IP address has been locked/i.test(text) ||
-  /you cannot log on it/i.test(text) ||
-  /please retry to log on/i.test(text);
-
-if (locked) {
-  throw new Error("OLT: la IP del servidor está bloqueada por intentos. Desbloquear en OLT o esperar expiración.");
-}
-
-
-    if (text) this._log("AFTER_PASS", trunc(text));
-
-    // ¿re-pidió login? => credenciales incorrectas o modo raro
-    const failed =
-      /Username\s+or\s+password\s+invalid/i.test(text) ||
-      LOGIN_PROMPT.test(text) ||
-      PASS_PROMPT.test(text);
-
-    if (failed) {
-      this._log("AUTH", "Credenciales inválidas (OLT re-pidió login).");
+    // detecta errores típicos Huawei
+    if (/Username\s+or\s+password\s+invalid/i.test(text) || LOGIN_PROMPT.test(text) || PASS_PROMPT.test(text)) {
       throw new Error("Autenticación OLT fallida: usuario/contraseña inválidos.");
     }
+    if (/IP address has been locked/i.test(text) || /you cannot log on/i.test(text)) {
+      throw new Error("OLT: la IP del servidor está bloqueada por intentos. Desbloquear en OLT o esperar expiración.");
+    }
 
-    // ✅ Desactiva paginación (si responde lento, ahora ya no corta por prompt)
+    // opcional: desactiva paginación
     await this.exec("screen-length 0 temporary");
 
-    this._log("READY", "Sesión autenticada y lista");
+    this._log("READY", "Sesión lista");
     return this;
   }
 
-  async exec(cmd, opts = {}) {
+  async exec(cmd) {
     const command = String(cmd || "").trim();
     if (!command) return "";
 
     this._log("EXEC", command);
 
-    // ✅ send + waitfor es más estable que exec() en Huawei/Telnet
-    const raw = await this.connection.send(command, {
+    const raw = await this._send(command, {
       waitfor: SHELL_PROMPT_ANY,
-      timeout: this.timeout,
       ors: "\r\n",
-      ...opts,
+      timeout: this.timeout,
     });
 
     const clean = sanitize(raw);
-    if (clean) this._log("OUTPUT", trunc(clean));
+    if (clean) this._log("OUT", clean);
     return clean;
   }
 
   async end() {
-    // intenta salir “bien”
     try {
-      await this.connection.send("quit", {
-        waitfor: /./m,
-        timeout: 1500,
-        ors: "\r\n",
-      });
+      await this._send("quit", { timeout: 1500 });
     } catch {}
-
     try {
-      this._log("END", "Cerrando socket");
+      this._log("END", "closing");
       await this.connection.end();
-    } catch {}
-  }
-
-  async destroy() {
-    try {
-      await this.connection.destroy();
     } catch {}
   }
 }
