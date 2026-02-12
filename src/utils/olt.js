@@ -110,27 +110,26 @@ class OltClient {
     );
   }
 
-  async _typeAndWait({ text, eol, waitfor, typeMs }) {
-    const toType = String(text ?? "");
-    const ms = Number(typeMs) || 0;
+ async _typeAndWait({ text, eol, waitfor, typeMs }) {
+  const toType = String(text ?? "");
+  const ms = Number(typeMs) || 0;
 
-    if (ms > 0) {
-      // tecleo caracter por caracter
-      for (const ch of toType) {
-        await this.connection.send(ch); // sin waitfor aquí
-        await sleep(ms);
-      }
-      // envia EOL y espera prompt
-      return this.connection.send(eol, { waitfor, timeout: this.timeout, ors: "\r\n" });
+  if (ms > 0) {
+    for (const ch of toType) {
+      await this.connection.send(ch, { ors: "" }); // no añadir enter aquí
+      await sleep(ms);
     }
-
-    // envío directo
-    return this.connection.send(toType + eol, {
-      waitfor,
-      timeout: this.timeout,
-      ors: "\r\n",
-    });
+    // manda SOLO el enter (ors=eol)
+    return this.connection.send("", { waitfor, timeout: this.timeout, ors: eol });
   }
+
+  // manda texto y que telnet-client agregue el enter (ors=eol)
+  return this.connection.send(toType, {
+    waitfor,
+    timeout: this.timeout,
+    ors: eol,
+  });
+}
 
   async connect() {
     if (!this.host) throw new Error("OLT host requerido (OLT_HOST).");
@@ -204,6 +203,17 @@ class OltClient {
     });
 
     const text = sanitize(afterPass || "");
+
+    const locked =
+  /IP address has been locked/i.test(text) ||
+  /you cannot log on it/i.test(text) ||
+  /please retry to log on/i.test(text);
+
+if (locked) {
+  throw new Error("OLT: la IP del servidor está bloqueada por intentos. Desbloquear en OLT o esperar expiración.");
+}
+
+
     if (text) this._log("AFTER_PASS", trunc(text));
 
     // ¿re-pidió login? => credenciales incorrectas o modo raro
