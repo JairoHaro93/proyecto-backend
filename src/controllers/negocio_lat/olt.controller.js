@@ -52,16 +52,11 @@ async function testConnection(req, res) {
 
 const raw = await client.exec("display time");
 
-// 12-02-2026 17:30:10-05:00
 const m = raw.match(/\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/);
 const time = m ? m[0] : null;
 
-return res.json({
-  ok: true,
-  message: "Conexión OK y comando ejecutado.",
-  time,
-  raw, // opcional para debug
-});
+return res.json({ ok: true, message: "OK", time, raw });
+
 
 
   } catch (err) {

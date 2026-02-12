@@ -1,13 +1,9 @@
 // src/utils/olt.js
 const { Telnet } = require("telnet-client");
 
-// Prompt “genérico” (para connect)
+// Prompt Huawei típico: MA5800-X15>
 const PROMPT_ANY =
   /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
-
-// Prompt “FIN DE COMANDO”: exige salto de línea antes del prompt
-const PROMPT_EOL =
-  /(?:\r?\n)(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
 const PASS_PROMPT = /User\s*password\s*:\s*/i;
@@ -23,14 +19,27 @@ function sanitize(s = "") {
     .replace(/\r\n/g, "\n")
     .trim();
 }
-
 function trunc(s = "", max = 1600) {
   if (s.length <= max) return s;
   return s.slice(0, max) + `\n…[${s.length - max} chars más]`;
 }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Detecta el “modo parámetros” del CLI Huawei
+const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
+const HAS_COMMAND = /(^|\n)\s*Command\s*:\s*$/im;
+const HAS_TIME = /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
 
 class OltClient {
-  constructor({ host, port = 23, username, password, timeout = 30000, debug = false, showCreds = false }) {
+  constructor({
+    host,
+    port = 23,
+    username,
+    password,
+    timeout = 30000,
+    debug = false,
+    showCreds = false,
+  }) {
     this.connection = new Telnet();
     this.host = host;
     this.port = Number(port || 23);
@@ -100,49 +109,79 @@ class OltClient {
     });
 
     this._log("READY", "Sesión lista (con login)");
-    await this.drain();
+
+    // Huawei a veces termina de mandar banners/warnings un pelín después
+    await sleep(150);
+    await this.ensurePrompt();
+
     return this;
   }
 
-  async drain() {
+  // ✅ deja la consola en prompt antes de ejecutar algo (evita pegar comandos)
+  async ensurePrompt() {
     try {
       this._log("DRAIN", "enter");
       await this.connection.send("", {
         ors: "\r\n",
         waitFor: PROMPT_ANY,
-        timeout: 1500,
+        timeout: 2500,
       });
     } catch {}
   }
 
-  // ✅ Exec estable: espera prompt SOLO cuando venga después de un newline
+  // ✅ ejecuta un comando y si la OLT pide <cr>, envía ENTER extra
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
 
+    // asegura prompt limpio antes
+    await this.ensurePrompt();
+
     this._log("EXEC", c);
 
-    const raw = await this.connection.send(c, {
+    let raw = await this.connection.send(c, {
       ors: "\r\n",
-      waitFor: PROMPT_EOL,   // 👈 clave para que no “corte” al inicio
+      waitFor: PROMPT_ANY,
       timeout: this.timeout,
       ...opts,
     });
 
-    const clean = sanitize(raw);
+    let clean = sanitize(raw);
+
+    // Si quedó en modo "{ <cr> ... }:"
+    // y no vemos "Command:" ni timestamp, mandamos ENTER para que ejecute
+    if (NEEDS_CR.test(clean) && !HAS_COMMAND.test(clean) && !HAS_TIME.test(clean)) {
+      this._log("FIX", "OLT pidió <cr>: enviando ENTER extra");
+      const raw2 = await this.connection.send("", {
+        ors: "\r\n",
+        waitFor: PROMPT_ANY,
+        timeout: this.timeout,
+      });
+      raw = String(raw) + "\n" + String(raw2);
+      clean = sanitize(raw);
+    }
+
     if (clean) this._log("OUT", trunc(clean));
     return clean;
   }
 
   async end() {
+    // Muy importante: antes de quit, volver a prompt para no pegarlo como parámetro
+    await this.ensurePrompt();
+
     try {
       this._log("EXEC", "quit");
-      await this.connection.send("quit", { ors: "\r\n", timeout: 1200 }).catch(() => {});
+      await this.connection.send("quit", { ors: "\r\n", timeout: 1500 }).catch(() => {});
     } catch {}
+
     try {
       this._log("END", "Cerrando socket");
       await this.connection.end();
     } catch {}
+  }
+
+  async destroy() {
+    try { await this.connection.destroy(); } catch {}
   }
 }
 
