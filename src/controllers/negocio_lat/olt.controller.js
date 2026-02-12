@@ -1,7 +1,10 @@
 // src/modules/olt/olt.controller.js
 require("dotenv").config();
-const { OltClient } = require("../../utils/olt"); // ajusta path si difiere
+const { OltClient } = require("../../utils/olt");
 
+// ===============================
+// Helpers
+// ===============================
 function serializeErr(err) {
   if (err && err.name === "AggregateError") {
     const errors = (err.errors || []).map((e) => ({
@@ -14,7 +17,11 @@ function serializeErr(err) {
       port: e?.port,
       host: e?.host,
     }));
-    return { name: "AggregateError", message: "Todos los intentos de conexión fallaron", errors };
+    return {
+      name: "AggregateError",
+      message: "Todos los intentos de conexión fallaron",
+      errors,
+    };
   }
 
   return {
@@ -29,7 +36,34 @@ function serializeErr(err) {
   };
 }
 
+// ===============================
+// Anti-lock: 1 intento + cooldown
+// ===============================
+let oltBusy = false;
+let lastFailAt = 0;
+const COOLDOWN_MS = 30_000;
+
+// ===============================
+// Controller
+// ===============================
 async function testConnection(req, res) {
+  if (oltBusy) {
+    return res
+      .status(429)
+      .json({ ok: false, error: { message: "OLT: intento en curso" } });
+  }
+
+  const now = Date.now();
+  if (now - lastFailAt < COOLDOWN_MS) {
+    const waitMs = COOLDOWN_MS - (now - lastFailAt);
+    return res.status(429).json({
+      ok: false,
+      error: { message: `OLT: espera ${Math.ceil(waitMs / 1000)}s antes de reintentar` },
+    });
+  }
+
+  oltBusy = true;
+
   const client = new OltClient({
     host: process.env.OLT_HOST,
     port: Number(process.env.OLT_PORT || 8090),
@@ -37,22 +71,35 @@ async function testConnection(req, res) {
     password: process.env.OLT_PASSWORD,
     timeout: Number(process.env.OLT_TIMEOUT_MS || 20000),
     debug: String(req.query.debug || "").toLowerCase() === "true",
+    showCreds: String(req.query.showCreds || "").toLowerCase() === "true",
+    userEol: req.query.userEol || "CRLF",
+    passEol: req.query.passEol || "CRLF",
+    typeMsUser: Number(req.query.typeMsUser || 0),
+    typeMsPass: Number(req.query.typeMsPass || 0),
   });
 
   try {
     await client.connect();
 
-    // opcional, pero útil para comandos largos
+    // útil para comandos largos (cuando el login ya funciona)
     await client.exec("screen-length 0 temporary");
 
     const out = await client.exec("display time");
 
-    return res.json({ ok: true, message: "Conexión OK y comando ejecutado.", output: out || "(sin salida)" });
+    return res.json({
+      ok: true,
+      message: "Conexión OK y comando ejecutado.",
+      output: out || "(sin salida)",
+    });
   } catch (err) {
+    lastFailAt = Date.now();
     console.error("❌ OLT testConnection error:", err);
     return res.status(500).json({ ok: false, error: serializeErr(err) });
   } finally {
-    try { await client.end(); } catch (_) {}
+    oltBusy = false;
+    try {
+      await client.end();
+    } catch (_) {}
   }
 }
 
