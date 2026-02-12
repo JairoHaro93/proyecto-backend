@@ -2,18 +2,18 @@
 const { Telnet } = require("telnet-client");
 
 const LOGIN_PROMPT = />>\s*User name:\s*$/im;
-const PASS_PROMPT  = />>\s*User password:\s*$|password:\s*$/im;
+const PASS_PROMPT  = />>\s*User password:\s*$/im;
 
-// Huawei suele quedar como:  <MA5800-X15>  o  MA5800-X15>  o  MA5800-X15#
-const SHELL_PROMPT = /<[^>]+>\s*$|[\w.-]+[>#]\s*$/m;
+// Ajusta si tu prompt final es distinto
+const SHELL_PROMPT = /<[^>]+>\s*$/m;
 
 class OltClient {
   constructor(opts = {}) {
     this.host = opts.host;
-    this.port = opts.port ?? 23;
+    this.port = Number(opts.port ?? 23);
     this.username = opts.username;
     this.password = opts.password;
-    this.timeout = opts.timeout ?? 20000;
+    this.timeout = Number(opts.timeout ?? 20000);
     this.debug = !!opts.debug;
     this.conn = null;
   }
@@ -28,29 +28,25 @@ class OltClient {
     const params = {
       host: this.host,
       port: this.port,
+
+      // ✅ IMPORTANTES (si no, exec() se queda en 2s)
+      execTimeout: this.timeout,
+      sendTimeout: this.timeout,
       timeout: this.timeout,
 
-      // Telnet negotiation (Huawei envía IAC al inicio)
       negotiationMandatory: false,
 
-      // Autologin
       username: this.username,
       password: this.password,
       loginPrompt: LOGIN_PROMPT,
       passwordPrompt: PASS_PROMPT,
-
-      // “Listo” cuando detecta el prompt del sistema
       shellPrompt: SHELL_PROMPT,
 
-      // muy importante para Huawei: CRLF
-      ors: "\r\n",
       irs: "\r\n",
-
-      // opcional
-      initialLFCR: false,
+      ors: "\r\n",
     };
 
-    this.log("connect()", { host: this.host, port: this.port });
+    this.log("connect()", { host: this.host, port: this.port, t: this.timeout });
     await this.conn.connect(params);
     this.log("connected");
   }
@@ -59,17 +55,17 @@ class OltClient {
     if (!this.conn) throw new Error("Not connected");
     this.log("exec:", cmd);
 
+    // ✅ refuerza timeouts también aquí
     return await this.conn.exec(cmd, {
-      timeout: this.timeout,
       shellPrompt: SHELL_PROMPT,
+      execTimeout: this.timeout,
+      timeout: this.timeout,
     });
   }
 
   async end() {
     if (!this.conn) return;
-    try {
-      await this.conn.end();
-    } catch (_) {}
+    try { await this.conn.end(); } catch (_) {}
     this.conn = null;
   }
 }
