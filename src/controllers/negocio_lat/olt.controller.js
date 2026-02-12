@@ -14,23 +14,14 @@ function serializeErr(err) {
     name: err?.name,
     message: err?.message || String(err),
     code: err?.code,
-    errno: err?.errno,
-    syscall: err?.syscall,
-    address: err?.address,
-    port: err?.port,
-    host: err?.host,
   };
 }
 
 async function testConnection(req, res) {
-  // Evita que 2 requests simultáneos te bloqueen IP/usuario
   if (oltBusy) {
-    return res
-      .status(429)
-      .json({ ok: false, error: { message: "OLT: intento en curso" } });
+    return res.status(429).json({ ok: false, error: { message: "OLT: intento en curso" } });
   }
 
-  // Cooldown tras fallo (para no disparar lock en la OLT)
   const now = Date.now();
   const waitMs = 30_000;
   const diff = now - lastFailAt;
@@ -56,7 +47,9 @@ async function testConnection(req, res) {
   try {
     await client.connect();
 
-    // prueba simple (como tu telnet manual)
+    // Por seguridad, drenamos una vez más antes del comando
+    await client.drain();
+
     const out = await client.exec("display time");
 
     return res.json({
@@ -66,11 +59,9 @@ async function testConnection(req, res) {
     });
   } catch (err) {
     lastFailAt = Date.now();
-    console.error("❌ OLT testConnection error:", err);
 
-    // Si Huawei responde lock, devuélvelo bonito
     const msg = String(err?.message || "");
-    if (/locked/i.test(msg)) {
+    if (/IP address has been locked/i.test(msg) || /cannot log on/i.test(msg) || /locked/i.test(msg)) {
       return res.status(500).json({
         ok: false,
         error: {
@@ -84,9 +75,7 @@ async function testConnection(req, res) {
     return res.status(500).json({ ok: false, error: serializeErr(err) });
   } finally {
     oltBusy = false;
-    try {
-      await client.end();
-    } catch {}
+    try { await client.end(); } catch {}
   }
 }
 

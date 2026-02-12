@@ -53,7 +53,7 @@ class OltClient {
     this.connection.on("close", () => this._log("CLOSE"));
     this.connection.on("error", (e) => this._log("ERROR", e?.message || e));
 
-    // Ojo: este 'data' es buffer (sirve para ver si te está llegando prompt/banner)
+    // ver data cruda (útil para ver warnings)
     this.connection.on("data", (buf) => {
       if (!this.debug) return;
       const txt = stripAnsiAndControls(buf.toString("utf8"));
@@ -85,13 +85,9 @@ class OltClient {
     this._dumpCred("username", this.username);
     this._dumpCred("password", this.password);
 
-    // ✅ Usa login automático del telnet-client (más robusto)
-    // - loginPrompt/passwordPrompt/failedLoginMatch/username/password están soportados por connect(). :contentReference[oaicite:4]{index=4}
     await this.connection.connect({
       host: this.host,
       port: this.port,
-
-      // Socket inactivity timeout
       timeout: this.timeout,
 
       // Prompts
@@ -104,41 +100,54 @@ class OltClient {
       username: this.username,
       password: this.password,
 
-      // CRLF como telnet manual (Huawei suele ir mejor con CRLF)
+      // CRLF como telnet manual
       irs: "\r\n",
-      ors: "\r\n", // por defecto es '\n', aquí lo fijamos :contentReference[oaicite:5]{index=5}
+      ors: "\r\n",
 
-      // Para que no te cierre apenas conecta esperando input
-      initialLFCR: true, // soportado por connect() :contentReference[oaicite:6]{index=6}
+      // “despierta” consola
+      initialLFCR: true,
 
-      // Timeouts de respuesta
-      execTimeout: this.timeout, // soportado :contentReference[oaicite:7]{index=7}
-      sendTimeout: this.timeout, // soportado :contentReference[oaicite:8]{index=8}
+      // timeouts
+      execTimeout: this.timeout,
+      sendTimeout: this.timeout,
 
-      // Limpieza/format
+      // NO tocar espacios / NO compactar líneas
+      // (newlineReplace a veces termina raro con ciertos equipos)
       stripControls: true,
-      newlineReplace: "\n",
 
       // Paging
       pageSeparator: PAGE_REGEX,
       echoLines: 0,
       stripShellPrompt: false,
-
-      // IMPORTANT: negotiationMandatory por defecto es true; NO lo desactives con OLT. :contentReference[oaicite:9]{index=9}
     });
 
     this._log("READY", "Sesión lista (con login)");
 
-    // ✅ Quita paginado (si el comando no existe o no tiene permisos, lo ignoramos)
-    await this.exec("screen-length 0 temporary").catch(() => {});
+    // ✅ IMPORTANTÍSIMO: drenar warnings pendientes del login
+    await this.drain();
 
     return this;
   }
 
-  async exec(cmd, opts = {}) {
-    this._log("EXEC", cmd);
+  async drain() {
+    // Mandamos un Enter y esperamos prompt para limpiar cualquier warning pendiente
+    try {
+      this._log("DRAIN", "enter");
+      await this.connection.send("", {
+        ors: "\r\n",
+        waitFor: SHELL_PROMPT, // OJO: waitFor (F mayúscula)
+        timeout: 1500,
+      });
+    } catch {}
+  }
 
-    const raw = await this.connection.exec(cmd, {
+  async exec(cmd, opts = {}) {
+    const c = String(cmd || "").trim();
+    if (!c) return "";
+
+    this._log("EXEC", c);
+
+    const raw = await this.connection.exec(c, {
       shellPrompt: SHELL_PROMPT,
       irs: "\r\n",
       ors: "\r\n",
