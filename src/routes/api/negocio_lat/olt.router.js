@@ -1,10 +1,13 @@
-const express = require("express");
-const {
-  testConnection,
-} = require("../../../controllers/negocio_lat/olt.controller");
+// src/routes/api/negocio_lat/olt.router.js
+const router = require("express").Router();
+const { testTime } = require("../../../controllers/negocio_lat/olt.controller");
 
-const router = express.Router();
+// si usas checkToken:
+const { checkToken } = require("../../../utils/middlewares");
 
-router.get("/test", testConnection);
+router.get("/time", checkToken, testTime);
+
+// si por ahora no quieres auth, temporalmente:
+// router.get("/time", testTime);
 
 module.exports = router;
