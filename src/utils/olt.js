@@ -5,23 +5,24 @@ const { Telnet } = require("telnet-client");
 const PROMPT_ANY =
   /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
+// Prompts de login (Huawei: ">>User name:" / ">>User password:")
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
-const PASS_PROMPT  = /User\s*password\s*:\s*/i;
+const PASS_PROMPT = /User\s*password\s*:\s*/i;
 
+// Fallos típicos (incluye bloqueo por intentos)
 const FAILED_LOGIN =
   /Username\s+or\s+password\s+invalid|The IP address has been locked|cannot log on it|locked/i;
 
+// Paging “More” (por si aparece)
 const PAGE_REGEX = /-+\s*More[\s\S]*?-+/;
 
-// Detecta el “modo parámetros” del CLI Huawei
-const NEEDS_CR   = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
-const HAS_COMMAND = /(^|\n)\s*Command\s*:\s*$/im;
-const HAS_TIME    = /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
+// Huawei a veces devuelve el modo parámetros:
+const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
 
 // Confirmación de logout
 const LOGOUT_CONFIRM = /Are you sure to log out\?\s*\(y\/n\)\[n\]\s*:\s*$/im;
 
-// ✅ espera prompt O el {<cr>...}: para que NO se coma el timeout completo
+// Para que NO espere 20s cuando la OLT se quedó en "{ <cr> ... }:"
 const WAIT_PROMPT_OR_CR = new RegExp(
   `${PROMPT_ANY.source}|${NEEDS_CR.source}`,
   "im"
@@ -33,10 +34,12 @@ function sanitize(s = "") {
     .replace(/\r\n/g, "\n")
     .trim();
 }
+
 function trunc(s = "", max = 1600) {
   if (s.length <= max) return s;
   return s.slice(0, max) + `\n…[${s.length - max} chars más]`;
 }
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class OltClient {
@@ -45,23 +48,45 @@ class OltClient {
     port = 23,
     username,
     password,
-    timeout = 30000,
+    timeout = 20000,
     debug = false,
     showCreds = false,
   }) {
     this.connection = new Telnet();
+
     this.host = host;
     this.port = Number(port || 23);
     this.username = String(username ?? "");
     this.password = String(password ?? "");
-    this.timeout = Number(timeout || 30000);
+    this.timeout = Number(timeout || 20000);
+
     this.debug = !!debug;
     this.showCreds = !!showCreds;
 
-    this.connection.on("timeout", () => this._log("TIMEOUT"));
-    this.connection.on("close", () => this._log("CLOSE"));
-    this.connection.on("error", (e) => this._log("ERROR", e?.message || e));
+    // flags para cierre
+    this._closing = false;
+    this._closed = false;
 
+    this.connection.on("timeout", () => this._log("TIMEOUT"));
+    this.connection.on("close", () => {
+      this._closed = true;
+      this._log("CLOSE");
+    });
+
+    this.connection.on("error", (e) => {
+      // ✅ ECONNRESET al cerrar es normal en Huawei
+      if (
+        this._closing &&
+        (e?.code === "ECONNRESET" ||
+          /ECONNRESET/i.test(String(e?.message || "")))
+      ) {
+        this._log("INFO", "ECONNRESET al cerrar (normal en Huawei)");
+        return;
+      }
+      this._log("ERROR", e?.message || e);
+    });
+
+    // Debug: muestra data entrante (prompt/banner)
     this.connection.on("data", (buf) => {
       if (!this.debug) return;
       const txt = sanitize(buf.toString("utf8"));
@@ -112,6 +137,7 @@ class OltClient {
       sendTimeout: this.timeout,
 
       stripControls: true,
+      newlineReplace: "\n",
       pageSeparator: PAGE_REGEX,
       echoLines: 0,
       stripShellPrompt: false,
@@ -119,26 +145,28 @@ class OltClient {
 
     this._log("READY", "Sesión lista (con login)");
 
-    // Huawei a veces termina de mandar banners/warnings un pelín después
-    await sleep(150);
+    // Huawei a veces sigue mandando banner/warnings un instante
+    await sleep(120);
     await this.ensurePrompt();
 
     return this;
   }
 
-  // deja la consola en prompt antes de ejecutar algo
+  // ✅ deja la consola en prompt antes de ejecutar algo
   async ensurePrompt() {
     try {
       this._log("DRAIN", "enter");
+      // Nota: telnet-client usa "waitfor" (minúscula); duplicamos por compatibilidad
       await this.connection.send("", {
         ors: "\r\n",
+        waitfor: PROMPT_ANY,
         waitFor: PROMPT_ANY,
         timeout: 2500,
       });
     } catch {}
   }
 
-  // ejecuta comando y si la OLT pide <cr>, envía ENTER extra
+  // ✅ ejecuta comando y si Huawei pide <cr>, manda ENTER extra
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
@@ -146,9 +174,10 @@ class OltClient {
     await this.ensurePrompt();
     this._log("EXEC", c);
 
-    // ✅ clave: esperamos prompt o el bloque {<cr>...}:
+    // 1) esperamos prompt O "{ <cr> ... }:"
     let raw = await this.connection.send(c, {
       ors: "\r\n",
+      waitfor: WAIT_PROMPT_OR_CR,
       waitFor: WAIT_PROMPT_OR_CR,
       timeout: this.timeout,
       ...opts,
@@ -156,12 +185,13 @@ class OltClient {
 
     let clean = sanitize(raw);
 
-    // Si quedó en modo "{ <cr> ... }:" y aún no ejecutó, mandamos ENTER
-    if (NEEDS_CR.test(clean) && !HAS_COMMAND.test(clean) && !HAS_TIME.test(clean)) {
+    // 2) si Huawei pidió <cr>, mandamos ENTER extra y ahora sí esperamos prompt final
+    if (NEEDS_CR.test(clean)) {
       this._log("FIX", "OLT pidió <cr>: enviando ENTER extra");
 
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
+        waitfor: PROMPT_ANY,
         waitFor: PROMPT_ANY,
         timeout: this.timeout,
       });
@@ -175,40 +205,43 @@ class OltClient {
   }
 
   async end() {
-    // antes de quit, volver a prompt
+    this._closing = true;
+
+    // antes de quit, vuelve a prompt para no “pegar” comandos
     await this.ensurePrompt();
 
     try {
       this._log("EXEC", "quit");
 
-      // mandamos quit, pero esperamos prompt o confirmación
-      const resp = await this.connection.send("quit", {
-        ors: "\r\n",
-        waitFor: new RegExp(`${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`, "im"),
-        timeout: 2500,
-      }).catch(() => "");
+      // mandamos quit y esperamos confirmación o prompt
+      const resp = await this.connection
+        .send("quit", {
+          ors: "\r\n",
+          waitfor: new RegExp(`${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`, "im"),
+          waitFor: new RegExp(`${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`, "im"),
+          timeout: 2500,
+        })
+        .catch(() => "");
 
       const txt = sanitize(resp);
 
-      // si pide confirmación, respondemos "y"
       if (LOGOUT_CONFIRM.test(txt)) {
         this._log("EXEC", "logout confirm: y");
-        await this.connection.send("y", {
-          ors: "\r\n",
-          waitFor: PROMPT_ANY,
-          timeout: 1500,
-        }).catch(() => {});
+        await this.connection
+          .send("y", { ors: "\r\n", timeout: 1500 })
+          .catch(() => {});
       }
     } catch {}
 
+    // cierre corto; si ya cerró la OLT, no te quedes esperando
     try {
       this._log("END", "Cerrando socket");
-      await this.connection.end();
+      await Promise.race([this.connection.end(), sleep(800)]);
     } catch {}
-  }
 
-  async destroy() {
-    try { await this.connection.destroy(); } catch {}
+    try {
+      await this.connection.destroy();
+    } catch {}
   }
 }
 

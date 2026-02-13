@@ -17,17 +17,26 @@ function serializeErr(err) {
   };
 }
 
+function extractHuaweiTime(raw = "") {
+  // Ej: 12-02-2026 18:56:09-05:00
+  const m = String(raw).match(
+    /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/
+  );
+  return m ? m[0] : null;
+}
+
 async function testConnection(req, res) {
+  // evita 2 requests simultáneos (bloqueo por intentos)
   if (oltBusy) {
     return res
       .status(429)
       .json({ ok: false, error: { message: "OLT: intento en curso" } });
   }
 
+  // cooldown tras fallo (para no disparar lock)
   const now = Date.now();
   const waitMs = 30_000;
   const diff = now - lastFailAt;
-
   if (diff < waitMs) {
     return res.status(429).json({
       ok: false,
@@ -44,7 +53,7 @@ async function testConnection(req, res) {
     port: Number(process.env.OLT_PORT || 8090),
     username: process.env.OLT_USERNAME,
     password: process.env.OLT_PASSWORD,
-    timeout: Number(process.env.OLT_TIMEOUT_MS || 30000),
+    timeout: Number(process.env.OLT_TIMEOUT_MS || 20000),
     debug: parseBool(req.query.debug),
     showCreds: parseBool(req.query.showCreds),
   });
@@ -52,13 +61,9 @@ async function testConnection(req, res) {
   try {
     await client.connect();
 
-    // ✅ No hace falta ensurePrompt() aquí, exec() ya lo hace antes de cada comando
+    // ✅ comando básico
     const raw = await client.exec("display time");
-
-    const m = raw.match(
-      /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/
-    );
-    const time = m ? m[0] : null;
+    const time = extractHuaweiTime(raw);
 
     return res.json({ ok: true, message: "OK", time, raw });
   } catch (err) {
