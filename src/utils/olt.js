@@ -1,12 +1,11 @@
 // src/utils/olt.js
 const { Telnet } = require("telnet-client");
 
-/** Prompts Huawei: user(>) / enable(#) / config(#) / interface(...)# */
 const PROMPT_ANY =
   /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
-const PASS_PROMPT = /User\s*password\s*:\s*/i;
+const PASS_PROMPT  = /User\s*password\s*:\s*/i;
 
 const FAILED_LOGIN =
   /Username\s+or\s+password\s+invalid|The IP address has been locked|cannot log on it|locked/i;
@@ -23,7 +22,8 @@ const WAIT_PROMPT_OR_CR_OR_MORE = new RegExp(
 
 function sanitize(s = "") {
   return String(s)
-    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI
+    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "")   // ANSI
+    .replace(/\[\d+[ABCD]/g, "")                // limpia "[37D" y similares
     .replace(/\r\n/g, "\n")
     .trim();
 }
@@ -43,7 +43,7 @@ class OltClient {
     this._closing = false;
 
     this.connection.on("error", (e) => {
-      if (this._closing && e?.code === "ECONNRESET") return; // normal en Huawei al cerrar
+      if (this._closing && e?.code === "ECONNRESET") return;
       if (this.debug) console.log("[OLT][ERROR]", e?.message || e);
     });
   }
@@ -79,6 +79,14 @@ class OltClient {
 
     await sleep(120);
     await this.ensurePrompt();
+
+    // ✅ intenta desactivar paginado (si no existe, no pasa nada)
+    await this.connection.send("screen-length 0 temporary", {
+      ors: "\r\n",
+      waitFor: PROMPT_ANY,
+      timeout: 2500,
+    }).catch(() => {});
+
     return this;
   }
 
@@ -92,11 +100,6 @@ class OltClient {
     } catch {}
   }
 
-  /**
-   * Ejecuta comando y:
-   * - si pide {<cr>}: envía ENTER extra
-   * - si sale "---- More ----": envía 'q' para cortar y volver al prompt
-   */
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
@@ -112,7 +115,7 @@ class OltClient {
 
     let clean = sanitize(raw);
 
-    // 1) Caso <cr>
+    // 1) Caso { <cr> }:
     if (NEEDS_CR.test(clean)) {
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
@@ -123,10 +126,27 @@ class OltClient {
       clean = sanitize(raw);
     }
 
-    // 2) Caso paginado: cortamos con 'q' y esperamos prompt
+    // 2) Caso ---- More ---- : seguir con ESPACIO (página) hasta prompt
+    let pages = 0;
+    const MAX_PAGES = 20;
+
+    while (MORE_PROMPT.test(clean) && pages < MAX_PAGES) {
+      pages++;
+
+      const rawMore = await this.connection.send(" ", {
+        ors: "", // IMPORTANT: sin CRLF
+        waitFor: WAIT_PROMPT_OR_CR_OR_MORE,
+        timeout: this.timeout,
+      });
+
+      raw = String(raw) + "\n" + String(rawMore);
+      clean = sanitize(raw);
+    }
+
+    // si por alguna razón siguiera en More, corta con q
     if (MORE_PROMPT.test(clean)) {
       const rawQ = await this.connection.send("q", {
-        ors: "", // NO enviar CRLF
+        ors: "",
         waitFor: PROMPT_ANY,
         timeout: this.timeout,
       });
@@ -142,13 +162,11 @@ class OltClient {
     await this.ensurePrompt();
 
     try {
-      const resp = await this.connection
-        .send("quit", {
-          ors: "\r\n",
-          waitFor: new RegExp(`${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`, "im"),
-          timeout: 2500,
-        })
-        .catch(() => "");
+      const resp = await this.connection.send("quit", {
+        ors: "\r\n",
+        waitFor: new RegExp(`${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`, "im"),
+        timeout: 2500,
+      }).catch(() => "");
 
       const txt = sanitize(resp);
       if (LOGOUT_CONFIRM.test(txt)) {
@@ -156,15 +174,11 @@ class OltClient {
       }
     } catch {}
 
-    try {
-      await this.connection.end();
-    } catch {}
+    try { await this.connection.end(); } catch {}
   }
 
   async destroy() {
-    try {
-      await this.connection.destroy();
-    } catch {}
+    try { await this.connection.destroy(); } catch {}
   }
 }
 
