@@ -2,9 +2,7 @@
 const router = require("express").Router();
 const { testTime, status, exec } = require("../../../controllers/negocio_lat/olt.controller");
 
-// Si quieres protegerlo con token, descomenta:
-// const { checkToken } = require("../../../utils/middlewares");
-// router.use(checkToken);
+// router.use(checkToken)  // si quieres protegerlo
 
 router.get("/test", testTime);
 router.get("/status", status);

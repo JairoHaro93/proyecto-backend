@@ -2,7 +2,7 @@
 require("dotenv").config();
 const { OltClient } = require("./olt");
 
-const IDLE_CLOSE_MS = Number(process.env.OLT_IDLE_CLOSE_MS || 180000); // 180s
+const IDLE_CLOSE_MS = Number(process.env.OLT_IDLE_CLOSE_MS || 180000);   // 180s
 const FAIL_COOLDOWN_MS = Number(process.env.OLT_FAIL_COOLDOWN_MS || 30000);
 
 class OltHttpError extends Error {
@@ -14,25 +14,24 @@ class OltHttpError extends Error {
 }
 
 class OltSessionManager {
-  constructor() {
+  constructor(profile = "default") {
+    this.profile = profile;
     this.client = null;
-
-    // Cola FIFO robusta (continúa aunque una tarea falle)
-    this.queue = Promise.resolve();
-
+    this.queue = Promise.resolve(); // FIFO
     this.idleTimer = null;
-    this.idleCloseAt = 0;
+    this.idleUntilAt = null;
 
     this.lastFailAt = 0;
     this.lastUsedAt = null;
 
-    this.pendingCount = 0;
-    this.executing = false;
+    // tracking simple de modo (solo lo que nosotros hacemos)
+    this.mode = "user"; // user | enable | config
   }
 
   _armIdleClose() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleCloseAt = Date.now() + IDLE_CLOSE_MS;
+    const until = Date.now() + IDLE_CLOSE_MS;
+    this.idleUntilAt = until;
 
     this.idleTimer = setTimeout(() => {
       this.close("idle").catch(() => {});
@@ -44,13 +43,12 @@ class OltSessionManager {
 
     const now = Date.now();
     const diff = now - this.lastFailAt;
-
     if (diff < FAIL_COOLDOWN_MS) {
       const s = Math.ceil((FAIL_COOLDOWN_MS - diff) / 1000);
       throw new OltHttpError(429, `OLT: espera ${s}s antes de reintentar`);
     }
 
-    const c = new OltClient({
+    const client = new OltClient({
       host: process.env.OLT_HOST,
       port: Number(process.env.OLT_PORT || 8090),
       username: process.env.OLT_USERNAME,
@@ -60,52 +58,60 @@ class OltSessionManager {
     });
 
     try {
-      await c.connect();
-      this.client = c;
+      await client.connect();
+      this.client = client;
+      this.mode = "user";
       this._armIdleClose();
     } catch (e) {
       this.lastFailAt = Date.now();
-      try {
-        await c.destroy();
-      } catch {}
+      try { await client.destroy(); } catch {}
       throw e;
     }
   }
 
-  run(cmd, opts = {}) {
-    this.pendingCount++;
+  async _ensureMode(target, opts) {
+    if (!target) return;
+    if (!this.client) return;
 
-    const job = async () => {
-      this.executing = true;
-      await this._ensureConnected(opts);
+    if (target === "config") {
+      if (this.mode === "config") return;
 
-      try {
-        const out = await this.client.exec(cmd);
-        this.lastUsedAt = new Date().toISOString();
-        this._armIdleClose();
-        return out;
-      } finally {
-        this.executing = false;
+      // desde user -> enable -> config
+      if (this.mode === "user") {
+        await this.client.exec("enable");
+        this.mode = "enable";
       }
-    };
+      if (this.mode === "enable") {
+        await this.client.exec("config");
+        this.mode = "config";
+      }
+    }
+  }
 
-    // Importante: si una tarea falla, igual dejamos seguir la cola
-    this.queue = this.queue.then(job, job).finally(() => {
-      this.pendingCount = Math.max(0, this.pendingCount - 1);
+  run(cmd, opts = {}) {
+    this.queue = this.queue.then(async () => {
+      await this._ensureConnected(opts);
+      await this._ensureMode(opts.mode, opts);
+
+      const out = await this.client.exec(cmd);
+
+      this.lastUsedAt = new Date().toISOString();
+      this._armIdleClose();
+      return out;
     });
 
     return this.queue;
   }
 
   status() {
-    const now = Date.now();
-    const idleLeftMs = this.client ? Math.max(0, this.idleCloseAt - now) : 0;
+    const idleLeftMs = this.idleUntilAt ? Math.max(0, this.idleUntilAt - Date.now()) : 0;
 
     return {
-      profile: "default",
+      profile: this.profile,
       connected: !!this.client,
-      busy: !!this.executing,
-      pending: Math.max(0, this.pendingCount - (this.executing ? 1 : 0)),
+      busy: false,
+      pending: 0, // si quieres exacto: puedes mantener un contador interno
+      mode: this.mode,
       idleLeftSec: Math.ceil(idleLeftMs / 1000),
       lastUsedAt: this.lastUsedAt,
     };
@@ -114,26 +120,25 @@ class OltSessionManager {
   async close(_reason = "manual") {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
-    this.idleCloseAt = 0;
+    this.idleUntilAt = null;
 
     if (!this.client) return;
 
     const c = this.client;
     this.client = null;
+    this.mode = "user";
 
     try {
       await c.end();
     } finally {
-      try {
-        await c.destroy();
-      } catch {}
+      try { await c.destroy(); } catch {}
     }
   }
 }
 
 let singleton = null;
-function getOltSession() {
-  if (!singleton) singleton = new OltSessionManager();
+function getOltSession(profile = "default") {
+  if (!singleton) singleton = new OltSessionManager(profile);
   return singleton;
 }
 
