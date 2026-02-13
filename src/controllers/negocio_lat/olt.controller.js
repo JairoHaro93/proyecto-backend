@@ -35,7 +35,10 @@ function extractStrField(raw, labelRe) {
 }
 
 function extractFloatField(raw, labelRe) {
-  const re = new RegExp(`^\\s*${labelRe}\\s*:\\s*([+-]?[0-9]+(?:\\.[0-9]+)?)\\s*$`, "im");
+  const re = new RegExp(
+    `^\\s*${labelRe}\\s*:\\s*([+-]?[0-9]+(?:\\.[0-9]+)?)\\s*$`,
+    "im"
+  );
   const m = String(raw).match(re);
   return m ? Number(m[1]) : null;
 }
@@ -52,7 +55,7 @@ function extractDescription(raw = "") {
   for (let i = idx + 1; i < lines.length; i++) {
     const l = lines[i];
 
-    // corta si aparece otro campo "Last down cause :"
+    // corta si aparece otro campo
     if (/^\s*[A-Za-z].*?:\s+/.test(l)) break;
 
     // ignora paging
@@ -68,16 +71,20 @@ function extractDescription(raw = "") {
 
 // ✅ asegura que estemos en config sin romper si ya estamos ahí
 async function ensureConfig(session, debug) {
-  const mode = session.status().mode; // user | enable | config | unknown
+  const mode = session.status().mode; // user | enable | config | gpon | unknown
 
   if (mode === "config") return;
+
+  if (mode === "gpon") {
+    await session.run("quit", { debug }).catch(() => {});
+    // sigue a config
+  }
 
   if (mode === "enable") {
     await session.run("config", { debug }).catch(() => {});
     return;
   }
 
-  // user o unknown
   await session.run("enable", { debug }).catch(() => {});
   await session.run("config", { debug }).catch(() => {});
 }
@@ -127,7 +134,9 @@ async function exec(req, res) {
 
   try {
     if (!cmdId) {
-      return res.status(400).json({ ok: false, error: { message: "cmdId requerido" } });
+      return res
+        .status(400)
+        .json({ ok: false, error: { message: "cmdId requerido" } });
     }
 
     if (cmdId === "ONT_INFO_BY_SN") {
@@ -176,7 +185,12 @@ async function exec(req, res) {
       };
 
       // 2) optical (opcional)
-      if (includeOptical && fsp && ontId && String(runState || "").toLowerCase() === "online") {
+      if (
+        includeOptical &&
+        fsp &&
+        ontId &&
+        String(runState || "").toLowerCase() === "online"
+      ) {
         const parts = fsp.split("/").map((x) => Number(x));
         const [f, s, p] = parts;
 
@@ -185,9 +199,12 @@ async function exec(req, res) {
           await ensureConfig(session, debug);
           await session.run(`interface gpon ${f}/${s}`, { debug });
 
-          const rawOpt = await session.run(`display ont optical-info ${p} ${ontId}`, { debug });
+          const rawOpt = await session.run(
+            `display ont optical-info ${p} ${ontId}`,
+            { debug }
+          );
 
-          // vuelve a config (sin arriesgar logout)
+          // vuelve a config
           await session.run("quit", { debug }).catch(() => {});
           await ensureConfig(session, debug);
 
@@ -204,7 +221,10 @@ async function exec(req, res) {
               available: true,
               rxDbm: extractFloatField(rawOpt, "Rx optical power\\(dBm\\)"),
               txDbm: extractFloatField(rawOpt, "Tx optical power\\(dBm\\)"),
-              oltRxDbm: extractFloatField(rawOpt, "OLT Rx ONT optical power\\(dBm\\)"),
+              oltRxDbm: extractFloatField(
+                rawOpt,
+                "OLT Rx ONT optical power\\(dBm\\)"
+              ),
             };
           }
 

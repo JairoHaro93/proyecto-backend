@@ -25,15 +25,34 @@ const WAIT_PROMPT_OR_CR = new RegExp(
   "im"
 );
 
-// Para quitar ANSI / limpiar
+// limpia ANSI y cosas raras
 function sanitize(s = "") {
   return String(s)
     .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI
     .replace(/\r\n/g, "\n")
+    .replace(/\[37D/g, "") // a veces aparece por paging
     .trim();
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function extractLastPrompt(text = "") {
+  const s = sanitize(text);
+  const matches = [...s.matchAll(/MA5800[^\r\n]*[>#>]\s*$/gm)];
+  if (!matches.length) return null;
+  return matches[matches.length - 1][0].trim();
+}
+
+function modeFromPrompt(prompt = "") {
+  const p = String(prompt);
+
+  // más específico primero
+  if (/\(config-if-gpon-[^)]+\)#$/i.test(p)) return "gpon";
+  if (/\(config\)#$/i.test(p)) return "config";
+  if (/#$/.test(p)) return "enable";
+  if (/>$/.test(p)) return "user";
+  return "unknown";
+}
 
 class OltClient {
   constructor({ host, port = 23, username, password, timeout = 20000, debug = false }) {
@@ -48,6 +67,10 @@ class OltClient {
     this._closing = false;
     this._bootstrapped = false;
 
+    // ✅ estado de prompt
+    this.lastPrompt = null;
+    this.mode = "unknown";
+
     if (this.debug) {
       this.connection.on("data", (buf) => {
         const txt = sanitize(buf.toString("utf8"));
@@ -59,6 +82,14 @@ class OltClient {
       if (this._closing && e?.code === "ECONNRESET") return;
       if (this.debug) console.log("[OLT][ERROR]", e?.message || e);
     });
+  }
+
+  _updateModeFromText(text) {
+    const p = extractLastPrompt(text);
+    if (p) {
+      this.lastPrompt = p;
+      this.mode = modeFromPrompt(p);
+    }
   }
 
   async connect() {
@@ -90,8 +121,9 @@ class OltClient {
       stripShellPrompt: false,
     });
 
-    // Huawei a veces termina banners un poquito después
-    await sleep(120);
+    await sleep(80);
+
+    // ✅ capturamos prompt y modo desde el inicio
     await this.ensurePrompt();
 
     // ✅ deja sesión lista: enable + scroll 512 + config
@@ -102,11 +134,12 @@ class OltClient {
 
   async ensurePrompt() {
     try {
-      await this.connection.send("", {
+      const resp = await this.connection.send("", {
         ors: "\r\n",
         waitFor: PROMPT_ANY,
         timeout: 2500,
       });
+      this._updateModeFromText(resp);
     } catch {}
   }
 
@@ -117,17 +150,20 @@ class OltClient {
 
     const scrollLines = Number(process.env.OLT_SCROLL_LINES || 512);
 
-    // no queremos que falle por “Unknown command”
     try { await this.exec("enable", { timeout: 2500 }); } catch {}
     try { await this.exec(`scroll ${scrollLines}`, { timeout: 2500 }); } catch {}
     try { await this.exec("config", { timeout: 2500 }); } catch {}
+
+    // por si acaso
+    this.mode = this.mode || "config";
   }
 
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
 
-    await this.ensurePrompt();
+    // si no sabemos dónde estamos, pedimos prompt
+    if (this.mode === "unknown") await this.ensurePrompt();
 
     let raw = await this.connection.send(c, {
       ors: "\r\n",
@@ -138,27 +174,29 @@ class OltClient {
 
     let clean = sanitize(raw);
 
-    // Si el CLI pide <cr>, mandamos ENTER y ahora sí esperamos el prompt final
+    // Si el CLI pide <cr>, mandamos ENTER extra y ahora sí esperamos prompt final
     if (NEEDS_CR.test(clean)) {
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
         waitFor: PROMPT_ANY,
         timeout: this.timeout,
       });
-
       raw = String(raw) + "\n" + String(raw2);
       clean = sanitize(raw);
     }
 
+    this._updateModeFromText(clean);
     return clean;
   }
 
   async end() {
     this._closing = true;
 
-    await this.ensurePrompt();
+    try { await this.ensurePrompt(); } catch {}
 
-    try {
+    // ✅ puede estar en config-if/config/enable/user
+    //    hacemos quit varias veces hasta ver confirmación de logout o al menos salir
+    for (let i = 0; i < 4; i++) {
       const resp = await this.connection
         .send("quit", {
           ors: "\r\n",
@@ -168,18 +206,23 @@ class OltClient {
         .catch(() => "");
 
       const txt = sanitize(resp);
+      this._updateModeFromText(txt);
 
       if (LOGOUT_CONFIRM.test(txt)) {
         await this.connection.send("y", { ors: "\r\n", timeout: 1500 }).catch(() => {});
+        break;
       }
-    } catch {}
+
+      // si ya está en user/enable y no pide confirmación, con otro quit suele pedirlo
+      if (this.mode === "user" || this.mode === "enable") continue;
+      // si sigue en config, otra vuelta también sirve
+    }
 
     try {
       await this.connection.end();
     } catch {}
   }
 
-  // opcional (si lo llamas en session manager)
   async destroy() {
     try { await this.connection.end(); } catch {}
   }
