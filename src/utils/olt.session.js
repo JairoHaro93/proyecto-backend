@@ -13,30 +13,10 @@ class OltHttpError extends Error {
   }
 }
 
-function nowMs() {
-  return Date.now();
-}
-
-function detectModeFromText(txt = "") {
-  const s = String(txt);
-  // tomamos la última línea con prompt Huawei
-  const lines = s.split("\n").map((x) => x.trim()).filter(Boolean);
-  const last = [...lines].reverse().find((l) => /MA5800/i.test(l) && /[>#]$/.test(l));
-  const p = last || "";
-
-  if (/\(config-if-gpon/i.test(p)) return "gpon";
-  if (/\(config\)#/i.test(p)) return "config";
-  if (/#$/.test(p)) return "enable";
-  if (/>$/.test(p)) return "user";
-  return "unknown";
-}
-
 class OltSessionManager {
-  constructor(profile = "default") {
-    this.profile = profile;
+  constructor() {
     this.client = null;
-
-    this.queue = Promise.resolve(); // FIFO
+    this.queue = Promise.resolve();
     this.pending = 0;
 
     this.idleTimer = null;
@@ -44,28 +24,35 @@ class OltSessionManager {
 
     this.lastFailAt = 0;
     this.lastUsedAt = null;
-
     this.mode = "unknown";
   }
 
   _armIdleClose() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
 
-    this.idleDeadlineAt = nowMs() + IDLE_CLOSE_MS;
+    this.idleDeadlineAt = Date.now() + IDLE_CLOSE_MS;
     this.idleTimer = setTimeout(() => {
       this.close("idle").catch(() => {});
     }, IDLE_CLOSE_MS);
   }
 
-  _updateModeFromOut(out) {
-    const m = detectModeFromText(out);
-    if (m && m !== "unknown") this.mode = m;
+  _detectMode(out = "") {
+    const s = String(out);
+    const lines = s.split("\n").map((x) => x.trim()).filter(Boolean);
+    const last = [...lines].reverse().find((l) => /MA5800/i.test(l) && /[>#]$/.test(l)) || "";
+
+    if (/\(config-if-gpon/i.test(last)) return "gpon";
+    if (/\(config\)#/i.test(last)) return "config";
+    if (/#$/.test(last)) return "enable";
+    if (/>$/.test(last)) return "user";
+    return "unknown";
   }
 
   async _ensureConnected({ debug = false } = {}) {
     if (this.client) return;
 
-    const diff = nowMs() - this.lastFailAt;
+    const now = Date.now();
+    const diff = now - this.lastFailAt;
     if (diff < FAIL_COOLDOWN_MS) {
       const s = Math.ceil((FAIL_COOLDOWN_MS - diff) / 1000);
       throw new OltHttpError(429, `OLT: espera ${s}s antes de reintentar`);
@@ -83,27 +70,29 @@ class OltSessionManager {
     try {
       await client.connect();
       this.client = client;
-      this.mode = "unknown";
       this.lastUsedAt = new Date().toISOString();
       this._armIdleClose();
     } catch (e) {
-      this.lastFailAt = nowMs();
+      this.lastFailAt = Date.now();
       try { await client.destroy(); } catch {}
       throw e;
     }
   }
 
-  // Ejecuta 1 comando con cola FIFO
   run(cmd, opts = {}) {
     this.pending++;
 
     this.queue = this.queue
       .then(async () => {
         await this._ensureConnected(opts);
-        const out = await this.client.exec(cmd);
+
+        const out = await this.client.exec(cmd, opts);
         this.lastUsedAt = new Date().toISOString();
         this._armIdleClose();
-        this._updateModeFromOut(out);
+
+        const m = this._detectMode(out);
+        if (m) this.mode = m;
+
         return out;
       })
       .finally(() => {
@@ -113,39 +102,27 @@ class OltSessionManager {
     return this.queue;
   }
 
-  // Helpers de vista: user -> enable -> config -> interface gpon
   async ensureConfig(opts = {}) {
-    // si ya estamos en config o gpon, ok
     if (this.mode === "config" || this.mode === "gpon") return;
 
-    // si estamos en enable, solo config
     if (this.mode === "enable") {
       await this.run("config", opts);
       return;
     }
 
-    // user/unknown: enable + config
+    // user/unknown
     await this.run("enable", opts);
     await this.run("config", opts);
   }
 
-  async enterGponView(frameSlot /* "0/1" */, opts = {}) {
-    await this.ensureConfig(opts);
-    await this.run(`interface gpon ${frameSlot}`, opts);
-    // quedamos en gpon
-  }
-
-  async exitOneLevel(opts = {}) {
-    // sale de config-if a config
-    await this.run("quit", opts);
-  }
-
   status() {
     const connected = !!this.client;
-    const idleLeftSec = connected ? Math.max(0, Math.ceil((this.idleDeadlineAt - nowMs()) / 1000)) : 0;
+    const idleLeftSec = connected
+      ? Math.max(0, Math.ceil((this.idleDeadlineAt - Date.now()) / 1000))
+      : 0;
 
     return {
-      profile: this.profile,
+      profile: "default",
       connected,
       busy: this.pending > 0,
       pending: this.pending,
@@ -174,12 +151,10 @@ class OltSessionManager {
   }
 }
 
-// singleton por perfil (si luego creas más OLTs)
-const sessions = new Map();
-function getOltSession(profile = "default") {
-  const key = String(profile || "default");
-  if (!sessions.has(key)) sessions.set(key, new OltSessionManager(key));
-  return sessions.get(key);
+let singleton = null;
+function getOltSession() {
+  if (!singleton) singleton = new OltSessionManager();
+  return singleton;
 }
 
 module.exports = { getOltSession, OltHttpError };
