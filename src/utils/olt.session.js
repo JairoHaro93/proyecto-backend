@@ -1,120 +1,95 @@
 // src/utils/olt.session.js
+require("dotenv").config();
 const { OltClient } = require("./olt");
 
+const IDLE_CLOSE_MS = Number(process.env.OLT_IDLE_CLOSE_MS || 180000);
+const FAIL_COOLDOWN_MS = Number(process.env.OLT_FAIL_COOLDOWN_MS || 30000);
+
+class OltHttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+    this.name = "OltHttpError";
+  }
+}
+
 class OltSessionManager {
-  constructor({
-    host,
-    port,
-    username,
-    password,
-    timeoutMs = 20000,
-    idleCloseMs = 60_000,
-  }) {
-    this.cfg = { host, port, username, password, timeoutMs };
-    this.idleCloseMs = idleCloseMs;
-
+  constructor() {
     this.client = null;
-    this.connected = false;
-
-    // Cola FIFO (1 job a la vez)
-    this._chain = Promise.resolve();
-
-    this._idleTimer = null;
-    this._lastUsedAt = 0;
+    this.queue = Promise.resolve(); // FIFO
+    this.idleTimer = null;
+    this.lastFailAt = 0;
   }
 
-  _touch() {
-    this._lastUsedAt = Date.now();
-    this._scheduleIdleClose();
+  _armIdleClose() {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      this.close("idle").catch(() => {});
+    }, IDLE_CLOSE_MS);
   }
 
-  _scheduleIdleClose() {
-    if (this._idleTimer) clearTimeout(this._idleTimer);
+  async _ensureConnected({ debug = false } = {}) {
+    if (this.client) return;
 
-    this._idleTimer = setTimeout(() => {
-      const idleFor = Date.now() - this._lastUsedAt;
-      if (idleFor >= this.idleCloseMs) {
-        this.close().catch(() => {});
-      }
-    }, this.idleCloseMs + 250);
-  }
-
-  async _connectIfNeeded({ debug = false, showCreds = false } = {}) {
-    if (this.connected && this.client) {
-      this.client.debug = !!debug;
-      this.client.showCreds = !!showCreds;
-      return;
+    const now = Date.now();
+    const diff = now - this.lastFailAt;
+    if (diff < FAIL_COOLDOWN_MS) {
+      const s = Math.ceil((FAIL_COOLDOWN_MS - diff) / 1000);
+      throw new OltHttpError(429, `OLT: espera ${s}s antes de reintentar`);
     }
 
-    this.client = new OltClient({
-      host: this.cfg.host,
-      port: this.cfg.port,
-      username: this.cfg.username,
-      password: this.cfg.password,
-      timeout: this.cfg.timeoutMs,
+    const client = new OltClient({
+      host: process.env.OLT_HOST,
+      port: Number(process.env.OLT_PORT || 8090),
+      username: process.env.OLT_USERNAME,
+      password: process.env.OLT_PASSWORD,
+      timeout: Number(process.env.OLT_TIMEOUT_MS || 20000),
       debug: !!debug,
-      showCreds: !!showCreds,
     });
 
-    await this.client.connect();
-    this.connected = true;
-    this._touch();
-  }
-
-  run(command, { debug = false, showCreds = false } = {}) {
-    const job = async () => {
-      await this._connectIfNeeded({ debug, showCreds });
-      this._touch();
-
-      try {
-        const raw = await this.client.exec(command);
-        this._touch();
-        return raw;
-      } catch (err) {
-        await this.close().catch(() => {});
-        throw err;
-      }
-    };
-
-    this._chain = this._chain.then(job, job);
-    return this._chain;
-  }
-
-  async close() {
-    if (this._idleTimer) clearTimeout(this._idleTimer);
-    this._idleTimer = null;
-
-    if (!this.client) {
-      this.connected = false;
-      return;
+    try {
+      await client.connect();
+      this.client = client;
+      this._armIdleClose();
+    } catch (e) {
+      this.lastFailAt = Date.now();
+      try { await client.destroy(); } catch {}
+      throw e;
     }
+  }
+
+  run(cmd, opts = {}) {
+    this.queue = this.queue.then(async () => {
+      await this._ensureConnected(opts);
+      const out = await this.client.exec(cmd);
+      this._armIdleClose();
+      return out;
+    });
+
+    return this.queue;
+  }
+
+  async close(_reason = "manual") {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+
+    if (!this.client) return;
+
+    const c = this.client;
+    this.client = null;
 
     try {
-      await this.client.end();
-    } catch (_) {
-      // Huawei suele cerrar con ECONNRESET, normal
+      await c.end();
     } finally {
-      this.client = null;
-      this.connected = false;
+      try { await c.destroy(); } catch {}
     }
   }
 }
 
 let singleton = null;
-
 function getOltSession() {
-  if (singleton) return singleton;
-
-  singleton = new OltSessionManager({
-    host: process.env.OLT_HOST,
-    port: Number(process.env.OLT_PORT || 8090),
-    username: process.env.OLT_USERNAME,
-    password: process.env.OLT_PASSWORD,
-    timeoutMs: Number(process.env.OLT_TIMEOUT_MS || 20000),
-    idleCloseMs: Number(process.env.OLT_IDLE_CLOSE_MS || 60_000),
-  });
-
+  if (!singleton) singleton = new OltSessionManager();
   return singleton;
 }
 
-module.exports = { getOltSession, OltSessionManager };
+module.exports = { getOltSession, OltHttpError };

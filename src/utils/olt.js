@@ -5,25 +5,23 @@ const { Telnet } = require("telnet-client");
 const PROMPT_ANY =
   /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
-// Login prompts Huawei
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
 const PASS_PROMPT  = /User\s*password\s*:\s*/i;
 
-// Fallos típicos (incluye lock)
 const FAILED_LOGIN =
   /Username\s+or\s+password\s+invalid|The IP address has been locked|cannot log on it|locked/i;
 
-// Caso especial del CLI: pide <cr> para ejecutar
+// CLI Huawei a veces pide <cr> para ejecutar
 const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
 
 // Logout confirm Huawei
 const LOGOUT_CONFIRM = /Are you sure to log out\?\s*\(y\/n\)\[n\]\s*:\s*$/im;
 
-// Espera prompt o el bloque { <cr> ... }:
-const WAIT_PROMPT_OR_CR = new RegExp(
-  `${PROMPT_ANY.source}|${NEEDS_CR.source}`,
-  "im"
-);
+// Para no esperar 20s cuando aparece "{ <cr> ... }:"
+const WAIT_PROMPT_OR_CR = new RegExp(`${PROMPT_ANY.source}|${NEEDS_CR.source}`, "im");
+
+// (Opcional) por si en algún comando sale "More"
+const PAGE_REGEX = /-+\s*More[\s\S]*?-+/;
 
 function sanitize(s = "") {
   return String(s)
@@ -43,10 +41,8 @@ class OltClient {
     this.password = String(password ?? "");
     this.timeout = Number(timeout || 20000);
     this.debug = !!debug;
-
     this._closing = false;
 
-    // Solo logs si debug=true
     if (this.debug) {
       this.connection.on("data", (buf) => {
         const txt = sanitize(buf.toString("utf8"));
@@ -55,7 +51,7 @@ class OltClient {
     }
 
     this.connection.on("error", (e) => {
-      // En Huawei es común ECONNRESET al cerrar (normal)
+      // en Huawei es común ECONNRESET al cerrar
       if (this._closing && e?.code === "ECONNRESET") return;
       if (this.debug) console.log("[OLT][ERROR]", e?.message || e);
     });
@@ -88,15 +84,18 @@ class OltClient {
 
       stripControls: true,
       stripShellPrompt: false,
+
+      // por si aparece "More" en comandos futuros
+      pageSeparator: PAGE_REGEX,
+      echoLines: 0,
     });
 
-    // Huawei a veces termina banners un poquito después
+    // banners/warnings suelen terminar un poquito después
     await sleep(120);
     await this.ensurePrompt();
     return this;
   }
 
-  /** Deja la consola lista en prompt (ENTER “vacío”) */
   async ensurePrompt() {
     try {
       await this.connection.send("", {
@@ -107,7 +106,6 @@ class OltClient {
     } catch {}
   }
 
-  /** Ejecuta comando y resuelve el caso "{ <cr> ... }:" enviando ENTER extra */
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
@@ -123,7 +121,7 @@ class OltClient {
 
     let clean = sanitize(raw);
 
-    // Si el CLI pide <cr>, mandamos ENTER y ahora sí esperamos el prompt final
+    // Si pide <cr>, mandamos ENTER y ahora sí esperamos prompt final
     if (NEEDS_CR.test(clean)) {
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
@@ -153,7 +151,6 @@ class OltClient {
 
       const txt = sanitize(resp);
 
-      // Si pide confirmación, respondemos "y"
       if (LOGOUT_CONFIRM.test(txt)) {
         await this.connection.send("y", { ors: "\r\n", timeout: 1500 }).catch(() => {});
       }
@@ -161,6 +158,12 @@ class OltClient {
 
     try {
       await this.connection.end();
+    } catch {}
+  }
+
+  async destroy() {
+    try {
+      await this.connection.destroy();
     } catch {}
   }
 }

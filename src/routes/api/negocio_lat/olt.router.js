@@ -2,12 +2,10 @@
 const router = require("express").Router();
 const { testTime } = require("../../../controllers/negocio_lat/olt.controller");
 
-// si usas checkToken:
-const { checkToken } = require("../../../utils/middlewares");
+// ✅ si quieres proteger con token, aquí pones tu middleware checkToken
+// const { checkToken } = require("../../../utils/middlewares");
+// router.get("/test", checkToken, testTime);
 
-//router.get("/time", checkToken, testTime);
-
-// si por ahora no quieres auth, temporalmente:
-router.get("/time", testTime);
+router.get("/test", testTime);
 
 module.exports = router;
