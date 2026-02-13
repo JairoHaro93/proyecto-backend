@@ -2,7 +2,7 @@
 require("dotenv").config();
 const { OltClient } = require("./olt");
 
-const IDLE_CLOSE_MS = Number(process.env.OLT_IDLE_CLOSE_MS || 180000);
+const IDLE_CLOSE_MS = Number(process.env.OLT_IDLE_CLOSE_MS || 180000); // 180s
 const FAIL_COOLDOWN_MS = Number(process.env.OLT_FAIL_COOLDOWN_MS || 30000);
 
 class OltHttpError extends Error {
@@ -14,38 +14,29 @@ class OltHttpError extends Error {
 }
 
 class OltSessionManager {
-  constructor() {
+  constructor(profile = "default") {
+    this.profile = profile;
+
     this.client = null;
-    this.queue = Promise.resolve();
+
+    this.queue = Promise.resolve(); // FIFO
     this.pending = 0;
+    this.busy = false;
 
     this.idleTimer = null;
-    this.idleDeadlineAt = 0;
+    this.idleCloseAt = 0;
 
-    this.lastFailAt = 0;
     this.lastUsedAt = null;
-    this.mode = "unknown";
+    this.lastFailAt = 0;
   }
 
   _armIdleClose() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
 
-    this.idleDeadlineAt = Date.now() + IDLE_CLOSE_MS;
+    this.idleCloseAt = Date.now() + IDLE_CLOSE_MS;
     this.idleTimer = setTimeout(() => {
       this.close("idle").catch(() => {});
     }, IDLE_CLOSE_MS);
-  }
-
-  _detectMode(out = "") {
-    const s = String(out);
-    const lines = s.split("\n").map((x) => x.trim()).filter(Boolean);
-    const last = [...lines].reverse().find((l) => /MA5800/i.test(l) && /[>#]$/.test(l)) || "";
-
-    if (/\(config-if-gpon/i.test(last)) return "gpon";
-    if (/\(config\)#/i.test(last)) return "config";
-    if (/#$/.test(last)) return "enable";
-    if (/>$/.test(last)) return "user";
-    return "unknown";
   }
 
   async _ensureConnected({ debug = false } = {}) {
@@ -70,7 +61,7 @@ class OltSessionManager {
     try {
       await client.connect();
       this.client = client;
-      this.lastUsedAt = new Date().toISOString();
+      this.lastUsedAt = new Date();
       this._armIdleClose();
     } catch (e) {
       this.lastFailAt = Date.now();
@@ -82,66 +73,54 @@ class OltSessionManager {
   run(cmd, opts = {}) {
     this.pending++;
 
-    this.queue = this.queue
-      .then(async () => {
+    const job = async () => {
+      this.pending = Math.max(0, this.pending - 1);
+      this.busy = true;
+
+      try {
         await this._ensureConnected(opts);
-
-        const out = await this.client.exec(cmd, opts);
-        this.lastUsedAt = new Date().toISOString();
+        const out = await this.client.exec(cmd);
+        this.lastUsedAt = new Date();
         this._armIdleClose();
-
-        const m = this._detectMode(out);
-        if (m) this.mode = m;
-
         return out;
-      })
-      .finally(() => {
-        this.pending = Math.max(0, this.pending - 1);
-      });
+      } catch (e) {
+        // si falla, registra para cooldown
+        this.lastFailAt = Date.now();
+        throw e;
+      } finally {
+        this.busy = false;
+      }
+    };
 
-    return this.queue;
-  }
-
-  async ensureConfig(opts = {}) {
-    if (this.mode === "config" || this.mode === "gpon") return;
-
-    if (this.mode === "enable") {
-      await this.run("config", opts);
-      return;
-    }
-
-    // user/unknown
-    await this.run("enable", opts);
-    await this.run("config", opts);
+    const p = this.queue.then(job, job);
+    // mantener la cola viva aunque una llamada falle
+    this.queue = p.then(() => undefined, () => undefined);
+    return p;
   }
 
   status() {
-    const connected = !!this.client;
-    const idleLeftSec = connected
-      ? Math.max(0, Math.ceil((this.idleDeadlineAt - Date.now()) / 1000))
-      : 0;
+    const idleLeftMs = this.idleCloseAt ? Math.max(0, this.idleCloseAt - Date.now()) : 0;
 
     return {
-      profile: "default",
-      connected,
-      busy: this.pending > 0,
-      pending: this.pending,
-      mode: this.mode,
-      idleLeftSec,
-      lastUsedAt: this.lastUsedAt,
+      profile: this.profile,
+      connected: !!this.client,
+      busy: !!this.busy,
+      pending: Number(this.pending || 0),
+      mode: this.client?.mode || "unknown",
+      idleLeftSec: Math.ceil(idleLeftMs / 1000),
+      lastUsedAt: this.lastUsedAt ? this.lastUsedAt.toISOString() : null,
     };
   }
 
   async close(_reason = "manual") {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
-    this.idleDeadlineAt = 0;
+    this.idleCloseAt = 0;
 
     if (!this.client) return;
 
     const c = this.client;
     this.client = null;
-    this.mode = "unknown";
 
     try {
       await c.end();
@@ -152,8 +131,8 @@ class OltSessionManager {
 }
 
 let singleton = null;
-function getOltSession() {
-  if (!singleton) singleton = new OltSessionManager();
+function getOltSession(profile = "default") {
+  if (!singleton) singleton = new OltSessionManager(profile);
   return singleton;
 }
 

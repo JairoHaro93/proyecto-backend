@@ -1,26 +1,28 @@
 // src/utils/olt.js
 const { Telnet } = require("telnet-client");
 
-/** Prompt Huawei: MA5800-X15>  / MA5800-X15# / MA5800-X15(config)# */
+/** Prompt típico Huawei */
 const PROMPT_ANY =
   /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
+// Login prompts Huawei
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
 const PASS_PROMPT = /User\s*password\s*:\s*/i;
 
+// Fallos típicos
 const FAILED_LOGIN =
   /Username\s+or\s+password\s+invalid|The IP address has been locked|cannot log on it|locked/i;
 
-/** CLI pide ENTER para ejecutar */
+// Caso especial: pide <cr>
 const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
 
-/** Paging */
-const MORE_PROMPT = /----\s*More\s*\(\s*Press\s*'Q'\s*to\s*break\s*\)\s*----/im;
+// Paging "More"
+const MORE_PROMPT = /----\s*More\s*\(.*?\)\s*----/im;
 
-/** Logout confirm */
+// Confirmación de logout
 const LOGOUT_CONFIRM = /Are you sure to log out\?\s*\(y\/n\)\[n\]\s*:\s*$/im;
 
-/** Espera cualquiera de estos “finales parciales” */
+// Esperar prompt, o <cr>, o "More"
 const WAIT_ANY = new RegExp(
   `${PROMPT_ANY.source}|${NEEDS_CR.source}|${MORE_PROMPT.source}|${LOGOUT_CONFIRM.source}`,
   "im"
@@ -28,16 +30,27 @@ const WAIT_ANY = new RegExp(
 
 function sanitize(s = "") {
   return String(s)
-    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI reales
-    .replace(/\[\d+[ABCD]/g, "")              // restos tipo [37D
+    // ANSI ESC sequences
+    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "")
+    // a veces queda "[37D" sin ESC (cursor left)
+    .replace(/\[\d+[A-Za-z]/g, "")
     .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\x00/g, "")
     .trim();
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class OltClient {
-  constructor({ host, port = 23, username, password, timeout = 20000, debug = false }) {
+  constructor({
+    host,
+    port = 23,
+    username,
+    password,
+    timeout = 20000,
+    debug = false,
+  }) {
     this.connection = new Telnet();
     this.host = host;
     this.port = Number(port || 23);
@@ -47,18 +60,30 @@ class OltClient {
     this.debug = !!debug;
 
     this._closing = false;
+    this.mode = "unknown"; // user | enable | config | unknown
+  }
 
-    this.connection.on("error", (e) => {
-      if (this._closing && e?.code === "ECONNRESET") return; // normal Huawei al cerrar
-      if (this.debug) console.log("[OLT][ERROR]", e?.message || e);
-    });
+  _log(...args) {
+    if (!this.debug) return;
+    console.log("[OLT]", ...args);
+  }
 
-    if (this.debug) {
-      this.connection.on("data", (buf) => {
-        const txt = sanitize(buf.toString("utf8"));
-        if (txt) console.log("[OLT]", txt);
-      });
+  _updateModeFromText(txt) {
+    const t = String(txt || "");
+    // prioridad: config
+    if (/\(config[^\)]*\)#\s*$/im.test(t) || /\(config[^\)]*\)/i.test(t)) {
+      this.mode = "config";
+      return;
     }
+    if (/#\s*$/m.test(t)) {
+      this.mode = "enable";
+      return;
+    }
+    if (/>\s*$/m.test(t)) {
+      this.mode = "user";
+      return;
+    }
+    // no cambia si no detecta
   }
 
   async connect() {
@@ -88,51 +113,46 @@ class OltClient {
 
       stripControls: true,
       stripShellPrompt: false,
+      echoLines: 0,
     });
 
+    // Huawei suele mandar warning/banners después del login
     await sleep(120);
     await this.ensurePrompt();
     return this;
   }
 
-  /**
-   * Deja la consola lista.
-   * Si quedó en "---- More ----", manda q para volver al prompt.
-   */
-  async ensurePrompt() {
-    try {
-      const r = await this.connection.send("", {
-        ors: "\r\n",
-        waitFor: WAIT_ANY,
-        timeout: 2500,
-      });
-
-      const t = sanitize(r);
-
-      // si quedó paginado, salir del paging
-      if (MORE_PROMPT.test(t)) {
-        await this.connection.send("q", {
-          ors: "",
-          waitFor: PROMPT_ANY,
-          timeout: 2500,
-        }).catch(() => {});
-      }
-
-      // si quedó esperando <cr>, también lo resolvemos
-      if (NEEDS_CR.test(t)) {
-        await this.connection.send("", {
-          ors: "\r\n",
-          waitFor: PROMPT_ANY,
-          timeout: 2500,
-        }).catch(() => {});
-      }
-    } catch {}
+  async _send(data, { waitFor = WAIT_ANY, timeout = this.timeout, ors = "\r\n" } = {}) {
+    const raw = await this.connection.send(data, { ors, waitFor, timeout });
+    const clean = sanitize(raw);
+    if (clean) this._log(clean);
+    this._updateModeFromText(clean);
+    return clean;
   }
 
-  /**
-   * Ejecuta comando y resuelve:
-   * - { <cr> }: enviando ENTER
-   * - ---- More ----: enviando ENTER hasta prompt
+  /** Lleva la consola a un prompt estable, resolviendo "More" o "<cr>" si quedaron colgados */
+  async ensurePrompt() {
+    for (let i = 0; i < 6; i++) {
+      try {
+        const out = await this._send("", { waitFor: WAIT_ANY, timeout: 1800 });
+
+        // si aparece "More", ENTER para seguir
+        if (MORE_PROMPT.test(out)) continue;
+
+        // si aparece "<cr>", ENTER para ejecutar lo pendiente
+        if (NEEDS_CR.test(out)) continue;
+
+        // si ya hay prompt, listo
+        if (PROMPT_ANY.test(out)) return;
+      } catch {
+        // ignorar; a veces no responde al primer enter
+      }
+    }
+  }
+
+  /** Ejecuta comando y maneja:
+   *  - "{ <cr> ... }:" => ENTER extra
+   *  - "---- More ----" => ENTER repetidos hasta llegar al prompt
    */
   async exec(cmd) {
     const c = String(cmd || "").trim();
@@ -140,71 +160,63 @@ class OltClient {
 
     await this.ensurePrompt();
 
-    let raw = await this.connection.send(c, {
-      ors: "\r\n",
-      waitFor: WAIT_ANY,
-      timeout: this.timeout,
-    });
+    // primer envío
+    let all = await this._send(c, { waitFor: WAIT_ANY, timeout: this.timeout });
 
-    let txt = sanitize(raw);
+    // bucle para resolver <cr> y paging
+    for (let i = 0; i < 30; i++) {
+      const txt = String(all);
 
-    // loop para resolver interacciones (CR / MORE) hasta llegar al prompt
-    const MAX_STEPS = 80;
-    let steps = 0;
-
-    while ((NEEDS_CR.test(txt) || MORE_PROMPT.test(txt)) && steps < MAX_STEPS) {
-      steps++;
-
-      // 1) si pidió <cr> -> ENTER
+      // si pide <cr> => ENTER
       if (NEEDS_CR.test(txt)) {
-        const r2 = await this.connection.send("", {
-          ors: "\r\n",
-          waitFor: WAIT_ANY,
-          timeout: this.timeout,
-        });
-        raw = String(raw) + "\n" + String(r2);
-        txt = sanitize(raw);
+        const more = await this._send("", { waitFor: WAIT_ANY, timeout: this.timeout });
+        all = `${all}\n${more}`;
         continue;
       }
 
-      // 2) si salió "More" -> ENTER (como tú haces manual)
+      // si hay paging => ENTER (como tú lo haces manual)
       if (MORE_PROMPT.test(txt)) {
-        const r3 = await this.connection.send("", {
-          ors: "\r\n",
-          waitFor: WAIT_ANY,
-          timeout: this.timeout,
-        });
-        raw = String(raw) + "\n" + String(r3);
-        txt = sanitize(raw);
+        const more = await this._send("", { waitFor: WAIT_ANY, timeout: this.timeout });
+        all = `${all}\n${more}`;
         continue;
       }
+
+      // si ya terminó en prompt, salimos
+      if (PROMPT_ANY.test(txt)) break;
+
+      // si no terminó en prompt pero tampoco hay señales, intentamos leer con ENTER
+      const more = await this._send("", { waitFor: WAIT_ANY, timeout: 1800 });
+      all = `${all}\n${more}`;
+      if (PROMPT_ANY.test(all)) break;
     }
 
-    return txt;
+    return sanitize(all);
   }
 
   async end() {
     this._closing = true;
-    await this.ensurePrompt();
 
     try {
-      const resp = await this.connection.send("quit", {
-        ors: "\r\n",
-        waitFor: WAIT_ANY,
+      await this.ensurePrompt();
+      const resp = await this._send("quit", {
+        waitFor: new RegExp(`${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`, "im"),
         timeout: 2500,
       }).catch(() => "");
 
-      const t = sanitize(resp);
-      if (LOGOUT_CONFIRM.test(t)) {
-        await this.connection.send("y", { ors: "\r\n", timeout: 1500 }).catch(() => {});
+      if (LOGOUT_CONFIRM.test(resp)) {
+        await this._send("y", { waitFor: PROMPT_ANY, timeout: 1500 }).catch(() => {});
       }
     } catch {}
 
-    try { await this.connection.end(); } catch {}
+    try {
+      await this.connection.end();
+    } catch {}
   }
 
   async destroy() {
-    try { await this.connection.destroy(); } catch {}
+    try {
+      await this.connection.destroy();
+    } catch {}
   }
 }
 

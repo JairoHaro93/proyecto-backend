@@ -14,75 +14,63 @@ function serializeErr(err) {
   };
 }
 
-function pickLineValue(raw, label) {
-  const re = new RegExp(`${label}\\s*:\\s*([^\\n\\r]+)`, "i");
-  const m = String(raw).match(re);
-  return m ? m[1].trim() : null;
-}
-
-function extractBlock(raw, label) {
-  const s = String(raw);
-  const i = s.search(new RegExp(`${label}\\s*:`, "i"));
-  if (i < 0) return null;
-
-  const after = s.slice(i);
-  const m = after.match(
-    new RegExp(
-      `${label}\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*[A-Za-z0-9\\-\\/() ]+\\s*:\\s*|$)`,
-      "i"
-    )
-  );
-
-  if (!m) return null;
-  return m[1]
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .join(" ");
-}
-
-function parseOntInfo(raw) {
-  const fsp = pickLineValue(raw, "F/S/P");
-  const ontIdStr = pickLineValue(raw, "ONT-ID");
-  const runState = pickLineValue(raw, "Run state");
-  const description = extractBlock(raw, "Description");
-
-  const lastDownCause = pickLineValue(raw, "Last down cause");
-  const lastUpTime = pickLineValue(raw, "Last up time");
-  const lastDownTime = pickLineValue(raw, "Last down time");
-  const lastDyingGaspTime = pickLineValue(raw, "Last dying gasp time");
-  const onlineDuration = pickLineValue(raw, "ONT online duration");
-
-  return {
-    fsp: fsp || null,
-    ontId: ontIdStr ? Number(ontIdStr) : null,
-    runState: runState || null,
-    description: description || null,
-    lastDownCause: lastDownCause || null,
-    lastUpTime: lastUpTime || null,
-    lastDownTime: lastDownTime || null,
-    lastDyingGaspTime: lastDyingGaspTime || null,
-    onlineDuration: onlineDuration || null,
-  };
-}
+const RE_TIME =
+  /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
 
 function extractTime(raw = "") {
-  const m = String(raw).match(
-    /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/
-  );
+  const m = String(raw).match(RE_TIME);
   return m ? m[0] : null;
 }
 
+function extractIntField(raw, labelRe) {
+  const re = new RegExp(`^\\s*${labelRe}\\s*:\\s*(\\d+)\\s*$`, "im");
+  const m = String(raw).match(re);
+  return m ? Number(m[1]) : null;
+}
+
+function extractStrField(raw, labelRe) {
+  const re = new RegExp(`^\\s*${labelRe}\\s*:\\s*(.+?)\\s*$`, "im");
+  const m = String(raw).match(re);
+  return m ? String(m[1]).trim() : null;
+}
+
+function extractDescription(raw = "") {
+  const lines = String(raw).split("\n");
+  const idx = lines.findIndex((l) => /^\s*Description\s*:/.test(l));
+  if (idx === -1) return null;
+
+  const out = [];
+  const first = lines[idx].split(":").slice(1).join(":").trim();
+  if (first) out.push(first);
+
+  for (let i = idx + 1; i < lines.length; i++) {
+    const l = lines[i];
+
+    // cortar si aparece otro campo tipo "Last down cause :"
+    if (/^\s*[A-Za-z].*?:\s+/.test(l)) break;
+
+    // ignorar paging
+    if (/----\s*More\s*\(/i.test(l)) continue;
+
+    const t = l.trim();
+    if (t) out.push(t);
+  }
+
+  const joined = out.join(" ").replace(/\s+/g, " ").trim();
+  return joined || null;
+}
+
 async function status(req, res) {
-  const session = getOltSession();
+  const session = getOltSession("default");
   return res.json({ ok: true, status: session.status() });
 }
 
+// GET /api/olt/test  -> display time
 async function testTime(req, res) {
   const debug = parseBool(req.query.debug);
+  const session = getOltSession("default");
 
   try {
-    const session = getOltSession();
     const raw = await session.run("display time", { debug });
     const time = extractTime(raw);
 
@@ -110,46 +98,66 @@ async function testTime(req, res) {
   }
 }
 
+// POST /api/olt/exec  { cmdId, args }
 async function exec(req, res) {
   const debug = parseBool(req.query.debug);
-
-  const cmdId = String(req.body?.cmdId || "").trim();
-  const args = req.body?.args || {};
-
-  if (!cmdId) return res.status(400).json({ ok: false, error: { message: "cmdId requerido" } });
+  const { cmdId, args } = req.body || {};
+  const session = getOltSession("default");
 
   try {
-    const session = getOltSession();
+    if (!cmdId) {
+      return res.status(400).json({ ok: false, error: { message: "cmdId requerido" } });
+    }
 
     if (cmdId === "ONT_INFO_BY_SN") {
-      const sn = String(args?.sn || "").trim();
-      if (!sn) return res.status(400).json({ ok: false, error: { message: "args.sn requerido" } });
+      const sn = String(args?.sn || "").trim().toUpperCase();
 
-      // Aseguramos config para que el comando exista
-      await session.ensureConfig({ debug });
+      if (!/^[0-9A-F]{16}$/i.test(sn)) {
+        return res.status(400).json({
+          ok: false,
+          error: { message: "SN inválido (debe ser HEX de 16 chars)" },
+        });
+      }
+
+      // asegurar contexto (si ya estás, no pasa nada relevante)
+      await session.run("enable", { debug }).catch(() => {});
+      await session.run("config", { debug }).catch(() => {});
 
       const cmd = `display ont info by-sn  ${sn}`;
       const raw = await session.run(cmd, { debug });
 
-      const info = parseOntInfo(raw);
+      // parse
+      const fsp = extractStrField(raw, "F\\/S\\/P");
+      const ontId = extractIntField(raw, "ONT-ID");
+      const runState = extractStrField(raw, "Run state");
+      const description = extractDescription(raw);
 
-      if (!debug) {
-        return res.json({
-          ok: true,
-          cmdId,
-          sn,
-          ...info,
-        });
-      }
+      const ontLastDistanceM = extractIntField(raw, "ONT last distance\\(m\\)");
 
-      return res.json({
+      const lastDownCause = extractStrField(raw, "Last down cause");
+      const lastUpTime = extractStrField(raw, "Last up time");
+      const lastDownTime = extractStrField(raw, "Last down time");
+      const lastDyingGaspTime = extractStrField(raw, "Last dying gasp time");
+      const onlineDuration = extractStrField(raw, "ONT online duration");
+
+      const payload = {
         ok: true,
-        cmdId,
+        cmdId: "ONT_INFO_BY_SN",
         sn,
-        cmd,
-        ...info,
-        raw,
-      });
+        fsp,
+        ontId,
+        runState,
+        description,
+        ontLastDistanceM,
+        lastDownCause,
+        lastUpTime,
+        lastDownTime,
+        lastDyingGaspTime,
+        onlineDuration,
+      };
+
+      if (debug) payload.raw = raw;
+      return res.json(payload);
     }
 
     return res.status(400).json({
@@ -163,8 +171,26 @@ async function exec(req, res) {
       return res.status(err.status).json({ ok: false, error: { message: msg } });
     }
 
+    if (/IP address has been locked|cannot log on|locked/i.test(msg)) {
+      return res.status(500).json({
+        ok: false,
+        error: {
+          name: "Error",
+          message:
+            "OLT: la IP/usuario está bloqueada por intentos. Desbloquear en OLT o esperar expiración.",
+        },
+      });
+    }
+
     return res.status(500).json({ ok: false, error: serializeErr(err) });
   }
 }
 
-module.exports = { status, testTime, exec };
+// POST /api/olt/close  (opcional)
+async function close(req, res) {
+  const session = getOltSession("default");
+  await session.close("manual");
+  return res.json({ ok: true, message: "Sesión cerrada" });
+}
+
+module.exports = { status, testTime, exec, close };
