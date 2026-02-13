@@ -6,6 +6,36 @@ function parseBool(v) {
   return String(v || "").toLowerCase() === "true";
 }
 
+
+function toIsoFromHuawei(dt) {
+  // "12-02-2026 20:47:12-05:00"  ->  "2026-02-12T20:47:12-05:00"
+  const s = String(dt || "").trim();
+  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}:\d{2}:\d{2})([+-]\d{2}:\d{2})$/);
+  if (!m) return null;
+  const [, dd, mm, yyyy, hhmmss, tz] = m;
+  return `${yyyy}-${mm}-${dd}T${hhmmss}${tz}`;
+}
+
+function fmtDuration(sec) {
+  if (sec == null || !Number.isFinite(sec)) return null;
+  sec = Math.max(0, Math.floor(sec));
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const hh = String(h).padStart(2, "0");
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return d > 0 ? `${d}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+}
+
+function pick(raw, re) {
+  const m = String(raw || "").match(re);
+  return m ? String(m[1] ?? "").trim() : null;
+}
+
+
+
 function serializeErr(err) {
   return {
     name: err?.name,
@@ -31,9 +61,57 @@ const COMMANDS = {
     parse: (raw) => ({ time: extractTime(raw) }),
   },
 
-  // Ejemplo (si lo quieres probar luego):
-  // VERSION: { build: () => "display version" },
+  ONT_INFO_BY_SN: {
+    build: ({ sn } = {}) => {
+      const serial = String(sn || "").trim().toUpperCase();
+      // Huawei SN suele venir en 16 HEX (como tu ejemplo)
+      if (!/^[0-9A-F]{16}$/.test(serial)) {
+        throw new Error("SN inválido: debe ser HEX de 16 caracteres (ej: 54504C479346E80F)");
+      }
+      return `display ont info by-sn ${serial}`;
+    },
+
+    parse: (raw) => {
+      const out = String(raw || "");
+
+      // Estos nombres pueden variar un poco; ajustamos si tu salida usa otro texto
+      const runState = pick(out, /Run\s*state\s*:\s*([^\n]+)/i) || pick(out, /\bStatus\s*:\s*([^\n]+)/i);
+      const lastUp   = pick(out, /Last\s*up\s*time\s*:\s*([^\n]+)/i);
+      const lastDown = pick(out, /Last\s*down\s*time\s*:\s*([^\n]+)/i);
+      const downCause =
+        pick(out, /Last\s*down\s*cause\s*:\s*([^\n]+)/i) ||
+        pick(out, /Last\s*down\s*reason\s*:\s*([^\n]+)/i);
+
+      // Algunos firmwares dan duración directa
+      const onlineDurText =
+        pick(out, /Online\s*(?:duration|time)\s*(?:\(\w+\))?\s*:\s*([^\n]+)/i);
+
+      // Si no hay duración, calculamos con lastUp
+      let onlineSeconds = null;
+      if (!onlineDurText && lastUp) {
+        const iso = toIsoFromHuawei(lastUp);
+        if (iso) {
+          const t = Date.parse(iso);
+          if (!Number.isNaN(t) && String(runState || "").toLowerCase().includes("online")) {
+            onlineSeconds = Math.floor((Date.now() - t) / 1000);
+          }
+        }
+      }
+
+      return {
+        runState: runState || null,
+        lastUpTime: lastUp || null,
+        lastDownTime: lastDown || null,
+        lastDownCause: downCause || null,
+        online: {
+          seconds: onlineSeconds,
+          text: onlineDurText || fmtDuration(onlineSeconds),
+        },
+      };
+    },
+  },
 };
+
 
 async function testTime(req, res) {
   const debug = parseBool(req.query.debug);
