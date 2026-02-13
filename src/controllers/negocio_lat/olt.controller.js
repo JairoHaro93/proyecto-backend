@@ -21,52 +21,100 @@ function extractTime(raw = "") {
   return m ? m[0] : null;
 }
 
-// GET /api/olt/test
+/**
+ * ✅ WHITELIST de comandos (por cmdId)
+ * Agrega aquí nuevos comandos, siempre read-only al inicio.
+ */
+const COMMANDS = {
+  TIME: {
+    build: () => "display time",
+    parse: (raw) => ({ time: extractTime(raw) }),
+  },
+
+  // Ejemplo (si lo quieres probar luego):
+  // VERSION: { build: () => "display version" },
+};
+
 async function testTime(req, res) {
   const debug = parseBool(req.query.debug);
-  const profile = String(req.query.profile || "default");
-
   try {
-    const session = getOltSession(profile);
-
+    const session = getOltSession();
     const raw = await session.run("display time", { debug });
-    const time = extractTime(raw);
 
+    const time = extractTime(raw);
     if (!debug) return res.json({ ok: true, message: "OK", time });
     return res.json({ ok: true, message: "OK", time, raw });
   } catch (err) {
-    const msg = String(err?.message || "");
+    return handleOltError(err, res);
+  }
+}
 
-    // status controlado desde session manager
-    if (err instanceof OltHttpError && err.status) {
-      return res.status(err.status).json({ ok: false, error: { message: msg } });
-    }
+async function status(req, res) {
+  const session = getOltSession();
+  return res.json({ ok: true, status: session.status() });
+}
 
-    // bloqueo típico Huawei
-    if (/IP address has been locked|cannot log on|locked/i.test(msg)) {
-      return res.status(500).json({
+async function exec(req, res) {
+  const debug = parseBool(req.query.debug);
+  const { cmdId, args } = req.body || {};
+
+  if (!cmdId || typeof cmdId !== "string") {
+    return res.status(400).json({ ok: false, error: { message: "cmdId es requerido" } });
+  }
+
+  const def = COMMANDS[cmdId.toUpperCase()];
+  if (!def) {
+    return res.status(400).json({
+      ok: false,
+      error: { message: `cmdId no permitido: ${cmdId}` },
+    });
+  }
+
+  try {
+    const session = getOltSession();
+
+    const cmd = def.build ? def.build(args || {}) : null;
+    if (!cmd || typeof cmd !== "string") {
+      return res.status(400).json({
         ok: false,
-        error: {
-          name: "Error",
-          message:
-            "OLT: la IP/usuario está bloqueada por intentos. Desbloquear en OLT o esperar expiración.",
-        },
+        error: { message: `No se pudo construir comando para cmdId=${cmdId}` },
       });
     }
 
-    return res.status(500).json({ ok: false, error: serializeErr(err) });
-  }
-}
+    const raw = await session.run(cmd, { debug });
 
-// GET /api/olt/status
-async function getStatus(req, res) {
-  const profile = String(req.query.profile || "default");
-  try {
-    const session = getOltSession(profile);
-    return res.json({ ok: true, status: session.status() });
+    // Respuesta normalizada
+    const parsed = def.parse ? def.parse(raw) : {};
+    const base = { ok: true, cmdId: cmdId.toUpperCase(), ...parsed };
+
+    if (!debug) return res.json(base);
+    return res.json({ ...base, raw });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: serializeErr(err) });
+    return handleOltError(err, res);
   }
 }
 
-module.exports = { testTime, getStatus };
+function handleOltError(err, res) {
+  const msg = String(err?.message || "");
+
+  // Errores controlados (cooldown)
+  if (err instanceof OltHttpError && err.status) {
+    return res.status(err.status).json({ ok: false, error: { message: msg } });
+  }
+
+  // Bloqueos típicos Huawei
+  if (/IP address has been locked|cannot log on|locked/i.test(msg)) {
+    return res.status(500).json({
+      ok: false,
+      error: {
+        name: "Error",
+        message:
+          "OLT: la IP/usuario está bloqueada por intentos. Desbloquear en OLT o esperar expiración.",
+      },
+    });
+  }
+
+  return res.status(500).json({ ok: false, error: serializeErr(err) });
+}
+
+module.exports = { testTime, status, exec };

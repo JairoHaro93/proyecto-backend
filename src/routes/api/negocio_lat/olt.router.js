@@ -1,20 +1,13 @@
 // src/routes/api/negocio_lat/olt.router.js
 const router = require("express").Router();
+const { testTime, status, exec } = require("../../../controllers/negocio_lat/olt.controller");
 
-// ajusta este path si en tu proyecto está en otro lugar
-const { checkToken } = require("../../../utils/middlewares");
+// Si quieres protegerlo con token, descomenta:
+// const { checkToken } = require("../../../utils/middlewares");
+// router.use(checkToken);
 
-const {
-  testTime,
-  getStatus,
-} = require("../../../controllers/negocio_lat/olt.controller");
-
-// ✅ protegido
-//router.get("/test", checkToken, testTime);
-//router.get("/status", checkToken, getStatus);
-
-// ❌ sin auth (si lo quieres temporalmente)
- router.get("/test", testTime);
- router.get("/status", getStatus);
+router.get("/test", testTime);
+router.get("/status", status);
+router.post("/exec", exec);
 
 module.exports = router;
