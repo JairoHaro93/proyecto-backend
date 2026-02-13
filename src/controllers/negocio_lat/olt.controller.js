@@ -6,13 +6,6 @@ function parseBool(v) {
   return String(v || "").toLowerCase() === "true";
 }
 
-function extractTime(raw = "") {
-  const m = String(raw).match(
-    /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/
-  );
-  return m ? m[0] : null;
-}
-
 function serializeErr(err) {
   return {
     name: err?.name,
@@ -21,11 +14,20 @@ function serializeErr(err) {
   };
 }
 
+function extractTime(raw = "") {
+  const m = String(raw).match(
+    /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/
+  );
+  return m ? m[0] : null;
+}
+
+// GET /api/olt/test
 async function testTime(req, res) {
   const debug = parseBool(req.query.debug);
+  const profile = String(req.query.profile || "default");
 
   try {
-    const session = getOltSession();
+    const session = getOltSession(profile);
 
     const raw = await session.run("display time", { debug });
     const time = extractTime(raw);
@@ -33,15 +35,22 @@ async function testTime(req, res) {
     if (!debug) return res.json({ ok: true, message: "OK", time });
     return res.json({ ok: true, message: "OK", time, raw });
   } catch (err) {
-    if (err instanceof OltHttpError) {
-      return res.status(err.status).json({ ok: false, error: { message: err.message } });
+    const msg = String(err?.message || "");
+
+    // status controlado desde session manager
+    if (err instanceof OltHttpError && err.status) {
+      return res.status(err.status).json({ ok: false, error: { message: msg } });
     }
 
-    const msg = String(err?.message || "");
+    // bloqueo típico Huawei
     if (/IP address has been locked|cannot log on|locked/i.test(msg)) {
       return res.status(500).json({
         ok: false,
-        error: { message: "OLT: la IP/usuario está bloqueada. Desbloquear en OLT o esperar expiración." },
+        error: {
+          name: "Error",
+          message:
+            "OLT: la IP/usuario está bloqueada por intentos. Desbloquear en OLT o esperar expiración.",
+        },
       });
     }
 
@@ -49,4 +58,15 @@ async function testTime(req, res) {
   }
 }
 
-module.exports = { testTime };
+// GET /api/olt/status
+async function getStatus(req, res) {
+  const profile = String(req.query.profile || "default");
+  try {
+    const session = getOltSession(profile);
+    return res.json({ ok: true, status: session.status() });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: serializeErr(err) });
+  }
+}
+
+module.exports = { testTime, getStatus };

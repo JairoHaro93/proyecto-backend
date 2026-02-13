@@ -14,54 +14,51 @@ class OltHttpError extends Error {
 }
 
 class OltSessionManager {
-  constructor() {
+  constructor(profile = "default") {
+    this.profile = profile;
+
     this.client = null;
 
-    // cola FIFO “resiliente”
-    this._tail = Promise.resolve();
+    // cola FIFO para ejecutar comandos uno por uno
+    this.queue = Promise.resolve();
 
+    // métricas para status()
+    this.busy = 0;      // comandos en ejecución
+    this.pending = 0;   // comandos en cola (incluye el actual)
+    this.lastUsedAt = 0;
+
+    // idle close
     this.idleTimer = null;
+
+    // cooldown tras fallo
     this.lastFailAt = 0;
-
-    this.busy = 0;           // comandos ejecutándose (debería ser 0/1 por la cola)
-    this.pending = 0;        // cuántos están en cola (incluye el actual)
-    this.lastUsedAt = 0;     // ms epoch del último uso (para idleLeft)
-  }
-
-  _clearIdle() {
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = null;
   }
 
   _armIdleClose() {
-    this._clearIdle();
-    // solo armar cuando está conectado y NO está ejecutando
-    if (!this.client || this.busy > 0) return;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
 
-    const now = Date.now();
-    const base = this.lastUsedAt || now;
-    const left = Math.max(0, IDLE_CLOSE_MS - (now - base));
+    // si no hay cliente, no armamos nada
+    if (!this.client) return;
 
-    this.idleTimer = setTimeout(() => {
-      // si justo se puso busy, reprograma
-      if (this.busy > 0) return this._armIdleClose();
-      this.close("idle").catch(() => {});
-    }, left || 1);
+    this.idleTimer = setTimeout(async () => {
+      // si justo está ejecutando algo, rearmamos y salimos
+      if (this.busy > 0 || this.pending > 0) {
+        this._armIdleClose();
+        return;
+      }
+      await this.close("idle").catch(() => {});
+    }, IDLE_CLOSE_MS);
   }
 
-  _cooldownCheck() {
+  async _ensureConnected({ debug = false } = {}) {
+    if (this.client) return;
+
     const now = Date.now();
     const diff = now - this.lastFailAt;
     if (diff < FAIL_COOLDOWN_MS) {
       const s = Math.ceil((FAIL_COOLDOWN_MS - diff) / 1000);
       throw new OltHttpError(429, `OLT: espera ${s}s antes de reintentar`);
     }
-  }
-
-  async _ensureConnected({ debug = false } = {}) {
-    if (this.client) return;
-
-    this._cooldownCheck();
 
     const client = new OltClient({
       host: process.env.OLT_HOST,
@@ -79,62 +76,70 @@ class OltSessionManager {
       this._armIdleClose();
     } catch (e) {
       this.lastFailAt = Date.now();
-      try { await client.destroy(); } catch {}
+      try {
+        await client.destroy();
+      } catch {}
       throw e;
     }
   }
 
   /**
-   * Ejecuta un comando en cola FIFO.
-   * Importante: si un run falla, la cola NO se rompe (tail queda “vivo”).
+   * Ejecuta un comando en la OLT en cola FIFO.
+   * Retorna la salida del comando.
    */
   run(cmd, opts = {}) {
     this.pending++;
 
-    const task = this._tail.then(async () => {
+    const task = this.queue.then(async () => {
       this.busy++;
-      this._clearIdle();
-
       try {
         await this._ensureConnected(opts);
+
         const out = await this.client.exec(cmd);
+
         this.lastUsedAt = Date.now();
+        this._armIdleClose();
         return out;
       } catch (e) {
-        // si algo falla, ponemos cooldown y cerramos sesión para dejar limpio
+        // marca fallo para cooldown y resetea sesión
         this.lastFailAt = Date.now();
         await this.close("error").catch(() => {});
         throw e;
       } finally {
-        this.busy--;
-        this.pending--;
+        this.busy = Math.max(0, this.busy - 1);
+        this.pending = Math.max(0, this.pending - 1);
+        // si queda conectada, rearmamos idle close
         this._armIdleClose();
       }
     });
 
-    // 🔒 clave: mantener el tail siempre resuelto aunque task falle
-    this._tail = task.catch(() => {});
+    // importante: mantener viva la cola aunque el task falle
+    this.queue = task.catch(() => {});
+
     return task;
   }
 
   status() {
     const connected = !!this.client;
     const now = Date.now();
-    const idleLeftMs = connected
-      ? Math.max(0, IDLE_CLOSE_MS - (now - (this.lastUsedAt || now)))
-      : 0;
+    const last = this.lastUsedAt || 0;
+
+    const idleLeftMs = connected ? Math.max(0, IDLE_CLOSE_MS - (now - last)) : 0;
 
     return {
+      profile: this.profile,
       connected,
       busy: this.busy > 0,
       pending: this.pending,
-      idleLeftSec: Math.ceil(idleLeftMs / 1000),
-      lastUsedAt: this.lastUsedAt ? new Date(this.lastUsedAt).toISOString() : null,
+      idleLeftSec: connected ? Math.ceil(idleLeftMs / 1000) : 0,
+      lastUsedAt: last ? new Date(last).toISOString() : null,
     };
   }
 
   async close(_reason = "manual") {
-    this._clearIdle();
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+
     if (!this.client) return;
 
     const c = this.client;
@@ -143,15 +148,19 @@ class OltSessionManager {
     try {
       await c.end();
     } finally {
-      try { await c.destroy(); } catch {}
+      try {
+        await c.destroy();
+      } catch {}
     }
   }
 }
 
-let singleton = null;
-function getOltSession() {
-  if (!singleton) singleton = new OltSessionManager();
-  return singleton;
+// ✅ singleton por profile (aunque hoy uses solo 1 usuario OLT)
+const sessions = new Map();
+function getOltSession(profile = "default") {
+  const key = String(profile || "default");
+  if (!sessions.has(key)) sessions.set(key, new OltSessionManager(key));
+  return sessions.get(key);
 }
 
 module.exports = { getOltSession, OltHttpError };
