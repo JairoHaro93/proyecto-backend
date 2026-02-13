@@ -1,37 +1,35 @@
 // src/utils/olt.js
 const { Telnet } = require("telnet-client");
 
-/** Prompt típico Huawei: MA5800-X15>, MA5800-X15#, MA5800-X15(config)# */
+/** Prompt Huawei típico (incluye user/enable/config/interface) */
 const PROMPT_ANY =
-  /(?:MA5800[^\r\n]*[>#]\s*|MA5800[^\r\n]*\([^)]+\)[#>]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
+  /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
-// Login prompts Huawei
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
-const PASS_PROMPT  = /User\s*password\s*:\s*/i;
+const PASS_PROMPT = /User\s*password\s*:\s*/i;
 
-// Fallos típicos (incluye lock)
 const FAILED_LOGIN =
   /Username\s+or\s+password\s+invalid|The IP address has been locked|cannot log on it|locked/i;
 
-// Caso especial del CLI: pide <cr> para ejecutar
+// Huawei a veces pide confirmar <cr> para ejecutar
 const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
 
-// Paginación (a veces te pide ENTER/More)
-const MORE_PROMPT =
-  /----\s*More[\s\S]*?----|--\s*More\s*--|Press\s+Q\s+to\s+break/i;
+// Huawei paginación
+const MORE_PROMPT = /----\s*More\s*\(\s*Press\s*'Q'\s*to\s*break\s*\)\s*----/im;
 
-// Logout confirm Huawei
+// Confirmación logout
 const LOGOUT_CONFIRM = /Are you sure to log out\?\s*\(y\/n\)\[n\]\s*:\s*$/im;
 
-// Espera prompt o {<cr>} o paginación
-const WAIT_ANY = new RegExp(
+// waitFor: prompt o <cr> o more
+const WAIT_PROMPT_OR_CR_OR_MORE = new RegExp(
   `${PROMPT_ANY.source}|${NEEDS_CR.source}|${MORE_PROMPT.source}`,
   "im"
 );
 
 function sanitize(s = "") {
   return String(s)
-    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI
+    // ANSI escapes
+    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "")
     .replace(/\r\n/g, "\n")
     .trim();
 }
@@ -58,15 +56,8 @@ class OltClient {
     }
 
     this.connection.on("error", (e) => {
-      if (this._closing && e?.code === "ECONNRESET") {
-        if (this.debug) console.log("[OLT][INFO] ECONNRESET al cerrar (normal en Huawei)");
-        return;
-      }
+      if (this._closing && e?.code === "ECONNRESET") return; // normal al cerrar
       if (this.debug) console.log("[OLT][ERROR]", e?.message || e);
-    });
-
-    this.connection.on("close", () => {
-      if (this.debug) console.log("[OLT][CLOSE]");
     });
   }
 
@@ -99,12 +90,12 @@ class OltClient {
       stripShellPrompt: false,
     });
 
+    // banners a veces llegan después
     await sleep(120);
     await this.ensurePrompt();
     return this;
   }
 
-  /** ENTER vacío para quedar en prompt */
   async ensurePrompt() {
     try {
       await this.connection.send("", {
@@ -115,53 +106,55 @@ class OltClient {
     } catch {}
   }
 
-  /** Ejecuta comando + maneja "{ <cr> }:" + maneja paging */
-  async exec(cmd) {
-    const c = String(cmd || "");
-    if (!c.trim()) return "";
+  /**
+   * Ejecuta comando:
+   * - resuelve "{ <cr> ... }:" enviando ENTER
+   * - resuelve "---- More ----" enviando SPACE hasta terminar
+   */
+  async exec(cmd, opts = {}) {
+    const c = String(cmd || "").trim();
+    if (!c) return "";
 
     await this.ensurePrompt();
 
-    // 👇 importante: NO tocar espacios, los dejamos tal cual
-    const raw1 = await this.connection.send(c, {
+    let raw = await this.connection.send(c, {
       ors: "\r\n",
-      waitFor: WAIT_ANY,
+      waitFor: WAIT_PROMPT_OR_CR_OR_MORE,
       timeout: this.timeout,
+      ...opts,
     });
 
-    let out = raw1;
-    let lastChunk = sanitize(raw1);
+    let clean = sanitize(raw);
 
-    // Caso: pide <cr> (ENTER extra)
-    if (NEEDS_CR.test(lastChunk)) {
+    // 1) Si pide <cr>, mandamos ENTER y seguimos
+    if (NEEDS_CR.test(clean)) {
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
-        waitFor: WAIT_ANY,
+        waitFor: WAIT_PROMPT_OR_CR_OR_MORE,
         timeout: this.timeout,
       });
-      out += "\n" + raw2;
-      lastChunk = sanitize(raw2);
+      raw = String(raw) + "\n" + String(raw2);
+      clean = sanitize(raw);
     }
 
-    // Caso: paginación -> seguir enviando ENTER hasta que vuelva el prompt final
+    // 2) Si hay paginación, mandamos SPACE hasta que termine (límite por seguridad)
     let guard = 0;
-    while (MORE_PROMPT.test(lastChunk) && guard < 80) {
-      guard += 1;
-      const rawN = await this.connection.send("", {
-        ors: "\r\n",
-        waitFor: WAIT_ANY,
+    while (MORE_PROMPT.test(clean) && guard < 60) {
+      guard++;
+      const more = await this.connection.send(" ", {
+        ors: "",
+        waitFor: WAIT_PROMPT_OR_CR_OR_MORE,
         timeout: this.timeout,
       });
-      out += "\n" + rawN;
-      lastChunk = sanitize(rawN);
+      raw = String(raw) + "\n" + String(more);
+      clean = sanitize(raw);
     }
 
-    return sanitize(out);
+    return clean;
   }
 
   async end() {
     this._closing = true;
-
     await this.ensurePrompt();
 
     try {
@@ -174,6 +167,7 @@ class OltClient {
         .catch(() => "");
 
       const txt = sanitize(resp);
+
       if (LOGOUT_CONFIRM.test(txt)) {
         await this.connection.send("y", { ors: "\r\n", timeout: 1500 }).catch(() => {});
       }
@@ -185,8 +179,10 @@ class OltClient {
   }
 
   async destroy() {
-    try { await this.connection.destroy(); } catch {}
+    try {
+      await this.connection.destroy();
+    } catch {}
   }
 }
 
-module.exports = { OltClient, PROMPT_ANY };
+module.exports = { OltClient };
