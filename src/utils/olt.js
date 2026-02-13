@@ -1,7 +1,7 @@
 // src/utils/olt.js
 const { Telnet } = require("telnet-client");
 
-/** Prompt típico Huawei: MA5800-X15>  MA5800-X15#  MA5800-X15(config)# ... */
+/** Prompt típico Huawei */
 const PROMPT_ANY =
   /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
@@ -19,27 +19,16 @@ const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
 // Logout confirm Huawei
 const LOGOUT_CONFIRM = /Are you sure to log out\?\s*\(y\/n\)\[n\]\s*:\s*$/im;
 
-// ✅ paginado Huawei
-const MORE_PROMPT = /----\s*More\s*\(\s*Press\s*'Q'\s*to\s*break\s*\)\s*----/im;
-
-// Espera prompt o {<cr>} o "More"
-const WAIT_PROMPT_OR_CR_OR_MORE = new RegExp(
-  `${PROMPT_ANY.source}|${NEEDS_CR.source}|${MORE_PROMPT.source}`,
+// Espera prompt o el bloque { <cr> ... }:
+const WAIT_PROMPT_OR_CR = new RegExp(
+  `${PROMPT_ANY.source}|${NEEDS_CR.source}`,
   "im"
 );
 
-// Espera prompt o "More" (para continuar páginas)
-const WAIT_PROMPT_OR_MORE = new RegExp(
-  `${PROMPT_ANY.source}|${MORE_PROMPT.source}`,
-  "im"
-);
-
+// Para quitar ANSI / limpiar
 function sanitize(s = "") {
   return String(s)
-    // ANSI ESC sequences
-    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "")
-    // a veces queda algo como "[37D" (cursor-left) sin ESC visible
-    .replace(/\[\d{1,4}D/g, "")
+    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI
     .replace(/\r\n/g, "\n")
     .trim();
 }
@@ -57,6 +46,7 @@ class OltClient {
     this.debug = !!debug;
 
     this._closing = false;
+    this._bootstrapped = false;
 
     if (this.debug) {
       this.connection.on("data", (buf) => {
@@ -66,7 +56,6 @@ class OltClient {
     }
 
     this.connection.on("error", (e) => {
-      // Huawei suele tirar ECONNRESET al cerrar (normal)
       if (this._closing && e?.code === "ECONNRESET") return;
       if (this.debug) console.log("[OLT][ERROR]", e?.message || e);
     });
@@ -101,27 +90,16 @@ class OltClient {
       stripShellPrompt: false,
     });
 
-    // Huawei a veces termina banners un poco después
+    // Huawei a veces termina banners un poquito después
     await sleep(120);
     await this.ensurePrompt();
 
-    // Opcional: intenta desactivar paginado si existe (no rompe si no existe)
-    await this.connection.send("screen-length 0 temporary", {
-      ors: "\r\n",
-      waitFor: WAIT_PROMPT_OR_MORE,
-      timeout: 1500,
-    }).catch(() => {});
-    await this.connection.send("scroll", {
-      ors: "\r\n",
-      waitFor: WAIT_PROMPT_OR_MORE,
-      timeout: 1500,
-    }).catch(() => {});
+    // ✅ deja sesión lista: enable + scroll 512 + config
+    await this.bootstrap();
 
-    await this.ensurePrompt();
     return this;
   }
 
-  /** Deja la consola lista en prompt (ENTER vacío) */
   async ensurePrompt() {
     try {
       await this.connection.send("", {
@@ -132,50 +110,47 @@ class OltClient {
     } catch {}
   }
 
-  /**
-   * Ejecuta comando y maneja:
-   *  - "{ <cr> ... }:"  -> manda ENTER extra
-   *  - "---- More ----" -> manda SPACE hasta terminar
-   */
+  // ✅ bootstrap para “scroll 512” (y entrar a config)
+  async bootstrap() {
+    if (this._bootstrapped) return;
+    this._bootstrapped = true;
+
+    const scrollLines = Number(process.env.OLT_SCROLL_LINES || 512);
+
+    // no queremos que falle por “Unknown command”
+    try { await this.exec("enable", { timeout: 2500 }); } catch {}
+    try { await this.exec(`scroll ${scrollLines}`, { timeout: 2500 }); } catch {}
+    try { await this.exec("config", { timeout: 2500 }); } catch {}
+  }
+
   async exec(cmd, opts = {}) {
     const c = String(cmd || "").trim();
     if (!c) return "";
 
     await this.ensurePrompt();
 
-    // 1) manda comando esperando prompt / <cr> / more
     let raw = await this.connection.send(c, {
       ors: "\r\n",
-      waitFor: WAIT_PROMPT_OR_CR_OR_MORE,
+      waitFor: WAIT_PROMPT_OR_CR,
       timeout: this.timeout,
       ...opts,
     });
 
-    let acc = String(raw);
+    let clean = sanitize(raw);
 
-    // 2) si pidió <cr>, manda ENTER y sigue esperando (puede caer en more también)
-    if (NEEDS_CR.test(acc)) {
+    // Si el CLI pide <cr>, mandamos ENTER y ahora sí esperamos el prompt final
+    if (NEEDS_CR.test(clean)) {
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
-        waitFor: WAIT_PROMPT_OR_CR_OR_MORE,
+        waitFor: PROMPT_ANY,
         timeout: this.timeout,
       });
-      acc += "\n" + String(raw2);
+
+      raw = String(raw) + "\n" + String(raw2);
+      clean = sanitize(raw);
     }
 
-    // 3) si hay "More", manda SPACE hasta que termine y aparezca prompt
-    let guard = 0;
-    while (MORE_PROMPT.test(acc) && guard < 80) {
-      guard++;
-      const more = await this.connection.send(" ", {
-        ors: "", // 👈 tecla, no comando
-        waitFor: WAIT_PROMPT_OR_MORE,
-        timeout: this.timeout,
-      });
-      acc += "\n" + String(more);
-    }
-
-    return sanitize(acc);
+    return clean;
   }
 
   async end() {
@@ -202,6 +177,11 @@ class OltClient {
     try {
       await this.connection.end();
     } catch {}
+  }
+
+  // opcional (si lo llamas en session manager)
+  async destroy() {
+    try { await this.connection.end(); } catch {}
   }
 }
 
