@@ -34,6 +34,12 @@ function extractStrField(raw, labelRe) {
   return m ? String(m[1]).trim() : null;
 }
 
+function extractFloatField(raw, labelRe) {
+  const re = new RegExp(`^\\s*${labelRe}\\s*:\\s*([+-]?[0-9]+(?:\\.[0-9]+)?)\\s*$`, "im");
+  const m = String(raw).match(re);
+  return m ? Number(m[1]) : null;
+}
+
 function extractDescription(raw = "") {
   const lines = String(raw).split("\n");
   const idx = lines.findIndex((l) => /^\s*Description\s*:/.test(l));
@@ -46,10 +52,10 @@ function extractDescription(raw = "") {
   for (let i = idx + 1; i < lines.length; i++) {
     const l = lines[i];
 
-    // cortar si aparece otro campo tipo "Last down cause :"
+    // corta si aparece otro campo "Last down cause :"
     if (/^\s*[A-Za-z].*?:\s+/.test(l)) break;
 
-    // ignorar paging
+    // ignora paging
     if (/----\s*More\s*\(/i.test(l)) continue;
 
     const t = l.trim();
@@ -60,12 +66,27 @@ function extractDescription(raw = "") {
   return joined || null;
 }
 
+// ✅ asegura que estemos en config sin romper si ya estamos ahí
+async function ensureConfig(session, debug) {
+  const mode = session.status().mode; // user | enable | config | unknown
+
+  if (mode === "config") return;
+
+  if (mode === "enable") {
+    await session.run("config", { debug }).catch(() => {});
+    return;
+  }
+
+  // user o unknown
+  await session.run("enable", { debug }).catch(() => {});
+  await session.run("config", { debug }).catch(() => {});
+}
+
 async function status(req, res) {
   const session = getOltSession("default");
   return res.json({ ok: true, status: session.status() });
 }
 
-// GET /api/olt/test  -> display time
 async function testTime(req, res) {
   const debug = parseBool(req.query.debug);
   const session = getOltSession("default");
@@ -111,6 +132,7 @@ async function exec(req, res) {
 
     if (cmdId === "ONT_INFO_BY_SN") {
       const sn = String(args?.sn || "").trim().toUpperCase();
+      const includeOptical = parseBool(args?.includeOptical);
 
       if (!/^[0-9A-F]{16}$/i.test(sn)) {
         return res.status(400).json({
@@ -119,21 +141,18 @@ async function exec(req, res) {
         });
       }
 
-      // asegurar contexto (si ya estás, no pasa nada relevante)
-      await session.run("enable", { debug }).catch(() => {});
-      await session.run("config", { debug }).catch(() => {});
+      await ensureConfig(session, debug);
 
+      // 1) info principal
       const cmd = `display ont info by-sn  ${sn}`;
       const raw = await session.run(cmd, { debug });
 
-      // parse
       const fsp = extractStrField(raw, "F\\/S\\/P");
       const ontId = extractIntField(raw, "ONT-ID");
       const runState = extractStrField(raw, "Run state");
       const description = extractDescription(raw);
 
       const ontLastDistanceM = extractIntField(raw, "ONT last distance\\(m\\)");
-
       const lastDownCause = extractStrField(raw, "Last down cause");
       const lastUpTime = extractStrField(raw, "Last up time");
       const lastDownTime = extractStrField(raw, "Last down time");
@@ -155,6 +174,51 @@ async function exec(req, res) {
         lastDyingGaspTime,
         onlineDuration,
       };
+
+      // 2) optical (opcional)
+      if (includeOptical && fsp && ontId && String(runState || "").toLowerCase() === "online") {
+        const parts = fsp.split("/").map((x) => Number(x));
+        const [f, s, p] = parts;
+
+        if (Number.isFinite(f) && Number.isFinite(s) && Number.isFinite(p)) {
+          // entra a interface gpon f/s
+          await ensureConfig(session, debug);
+          await session.run(`interface gpon ${f}/${s}`, { debug });
+
+          const rawOpt = await session.run(`display ont optical-info ${p} ${ontId}`, { debug });
+
+          // vuelve a config (sin arriesgar logout)
+          await session.run("quit", { debug }).catch(() => {});
+          await ensureConfig(session, debug);
+
+          if (/Failure:\s*The ONT is not online/i.test(rawOpt)) {
+            payload.optical = {
+              available: false,
+              reason: "ONT is not online",
+              rxDbm: null,
+              txDbm: null,
+              oltRxDbm: null,
+            };
+          } else {
+            payload.optical = {
+              available: true,
+              rxDbm: extractFloatField(rawOpt, "Rx optical power\\(dBm\\)"),
+              txDbm: extractFloatField(rawOpt, "Tx optical power\\(dBm\\)"),
+              oltRxDbm: extractFloatField(rawOpt, "OLT Rx ONT optical power\\(dBm\\)"),
+            };
+          }
+
+          if (debug) payload.rawOpt = rawOpt;
+        }
+      } else if (includeOptical) {
+        payload.optical = {
+          available: false,
+          reason: "No optical (ONT offline o sin datos F/S/P u ONT-ID)",
+          rxDbm: null,
+          txDbm: null,
+          oltRxDbm: null,
+        };
+      }
 
       if (debug) payload.raw = raw;
       return res.json(payload);
@@ -186,7 +250,6 @@ async function exec(req, res) {
   }
 }
 
-// POST /api/olt/close  (opcional)
 async function close(req, res) {
   const session = getOltSession("default");
   await session.close("manual");
