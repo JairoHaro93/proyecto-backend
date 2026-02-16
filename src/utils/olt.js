@@ -167,8 +167,14 @@ class OltClient {
       await this.exec("config", { timeout: 2500 });
     } catch {}
 
-    // ✅ Delay extra después de bootstrap para asegurar estabilidad
-    await sleep(1500);
+    // ✅ Delay después de bootstrap
+    await sleep(800);
+
+    // ✅ Comando dummy para "calentar" la sesión y evitar concatenación en el primer comando real
+    try {
+      await this.exec("display version", { timeout: 2500 });
+      console.log("[OLT] 🔥 Sesión calentada - lista para comandos");
+    } catch {}
 
     // por si acaso
     this.mode = this.mode || "config";
