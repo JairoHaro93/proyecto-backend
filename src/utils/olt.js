@@ -201,6 +201,14 @@ class OltClient {
       clean = sanitize(raw);
     }
 
+    // ✅ Detectar comando concatenado (palabras sin espacios)
+    if (c.startsWith("display ") && /display\w+info\w+by-sn\w+/i.test(clean)) {
+      console.log(
+        `[OLT] ❌ Comando concatenado detectado, forzando error para reconexión`,
+      );
+      throw new Error("Comando concatenado - sesión corrupta");
+    }
+
     this._updateModeFromText(clean);
     return clean;
   }
