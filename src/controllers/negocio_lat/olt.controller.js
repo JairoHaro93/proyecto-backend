@@ -207,13 +207,9 @@ async function exec(req, res) {
       await ensureConfig(session, debug);
 
       // ✅ Pequeño delay después de ensureConfig
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       const opts = debug ? { debug: true } : {};
-
-      // 1) info principal
-      const cmd = `display ont info by-sn  ${sn}`;
-      const raw = await session.run(cmd, opts);
 
       console.log(`[OLT] 📄 Respuesta recibida, longitud: ${raw.length} chars`);
 
@@ -385,7 +381,7 @@ async function exec(req, res) {
       await ensureConfig(session, debug);
 
       // ✅ Pequeño delay después de ensureConfig
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       const opts = debug ? { debug: true } : {};
 
