@@ -207,7 +207,7 @@ async function exec(req, res) {
       await ensureConfig(session, debug);
 
       // ✅ Pequeño delay después de ensureConfig
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const opts = debug ? { debug: true } : {};
 
@@ -387,7 +387,7 @@ async function exec(req, res) {
       await ensureConfig(session, debug);
 
       // ✅ Pequeño delay después de ensureConfig
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const opts = debug ? { debug: true } : {};
 

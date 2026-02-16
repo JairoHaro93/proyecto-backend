@@ -178,9 +178,9 @@ class OltClient {
     // si no sabemos dónde estamos, pedimos prompt
     if (this.mode === "unknown") await this.ensurePrompt();
 
-    // ✅ SOLUCIÓN: Para comandos "display", enviar palabra por palabra
+    // ✅ Para comandos display, agregar un pequeño delay antes de enviar
     if (c.startsWith("display ")) {
-      return await this._execWordByWord(c, opts);
+      await sleep(50);
     }
 
     let raw = await this.connection.send(c, {
@@ -193,55 +193,6 @@ class OltClient {
     let clean = sanitize(raw);
 
     // Si el CLI pide <cr>, mandamos ENTER extra y ahora sí esperamos prompt final
-    if (NEEDS_CR.test(clean)) {
-      const raw2 = await this.connection.send("", {
-        ors: "\r\n",
-        waitFor: PROMPT_ANY,
-        timeout: this.timeout,
-      });
-      raw = String(raw) + "\n" + String(raw2);
-      clean = sanitize(raw);
-    }
-
-    this._updateModeFromText(clean);
-    return clean;
-  }
-
-  // ✅ NUEVO: Envía comandos display palabra por palabra para evitar concatenación
-  async _execWordByWord(cmd, opts = {}) {
-    const words = cmd.split(/\s+/); // divide por espacios
-    let buffer = "";
-
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-
-      // Envía cada palabra
-      await this.connection
-        .send(word, {
-          ors: i === words.length - 1 ? "\r\n" : " ", // último con ENTER, resto con espacio
-          waitFor: WAIT_PROMPT_OR_CR,
-          timeout: this.timeout,
-          sendTimeout: this.timeout,
-          ...opts,
-        })
-        .catch(() => {});
-
-      // Pequeño delay entre palabras (20ms)
-      if (i < words.length - 1) {
-        await sleep(20);
-      }
-    }
-
-    // Ahora espera la respuesta completa
-    let raw = await this.connection.send("", {
-      ors: "\r\n",
-      waitFor: WAIT_PROMPT_OR_CR,
-      timeout: this.timeout,
-    });
-
-    let clean = sanitize(raw);
-
-    // Si el CLI pide <cr>, mandamos ENTER extra
     if (NEEDS_CR.test(clean)) {
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
