@@ -229,6 +229,10 @@ async function exec(req, res) {
       if (!fsp || ontId === null) {
         console.log(`[OLT] ⚠️  Parseo incompleto: FSP=${fsp}, ONT-ID=${ontId}`);
         console.log(`[OLT] 📝 Primeras 500 chars: ${raw.substring(0, 500)}`);
+        // ✅ Lanzar error para forzar reconexión automática
+        throw new Error(
+          "Parseo incompleto - comando no ejecutado correctamente",
+        );
       }
 
       const ontLastDistanceM = extractIntField(raw, "ONT last distance\\(m\\)");
