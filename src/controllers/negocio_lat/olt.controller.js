@@ -14,8 +14,7 @@ function serializeErr(err) {
   };
 }
 
-const RE_TIME =
-  /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
+const RE_TIME = /\b\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\b/;
 
 function extractTime(raw = "") {
   const m = String(raw).match(RE_TIME);
@@ -37,7 +36,7 @@ function extractStrField(raw, labelRe) {
 function extractFloatField(raw, labelRe) {
   const re = new RegExp(
     `^\\s*${labelRe}\\s*:\\s*([+-]?[0-9]+(?:\\.[0-9]+)?)\\s*$`,
-    "im"
+    "im",
   );
   const m = String(raw).match(re);
   return m ? Number(m[1]) : null;
@@ -67,6 +66,35 @@ function extractDescription(raw = "") {
 
   const joined = out.join(" ").replace(/\s+/g, " ").trim();
   return joined || null;
+}
+
+// ✅ parsea service-ports de "display service-port port F/S/P ont ONTID"
+function parseServicePorts(raw = "") {
+  const lines = String(raw).split("\n");
+  const servicePorts = [];
+
+  for (const line of lines) {
+    // busca líneas con índice numérico al inicio
+    // Ejemplo: "    1386  100 common   gpon 0/1 /14 77   10    vlan  100        41   40   down"
+    const match = line.match(
+      /^\s*(\d+)\s+(\d+)\s+\S+\s+gpon\s+(\S+)\s+\/(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+\d+\s+\d+\s+(\S+)/,
+    );
+
+    if (match) {
+      servicePorts.push({
+        index: Number(match[1]),
+        vlanId: Number(match[2]),
+        fsp: match[3],
+        ontId: Number(match[5]),
+        gemIndex: Number(match[6]),
+        flowType: match[7],
+        flowPara: match[8],
+        state: match[9],
+      });
+    }
+  }
+
+  return servicePorts;
 }
 
 // ✅ asegura que estemos en config sin romper si ya estamos ahí
@@ -108,7 +136,9 @@ async function testTime(req, res) {
     const msg = String(err?.message || "");
 
     if (err instanceof OltHttpError && err.status) {
-      return res.status(err.status).json({ ok: false, error: { message: msg } });
+      return res
+        .status(err.status)
+        .json({ ok: false, error: { message: msg } });
     }
 
     if (/IP address has been locked|cannot log on|locked/i.test(msg)) {
@@ -139,8 +169,11 @@ async function exec(req, res) {
         .json({ ok: false, error: { message: "cmdId requerido" } });
     }
 
+    // ========== ONT_INFO_BY_SN ==========
     if (cmdId === "ONT_INFO_BY_SN") {
-      const sn = String(args?.sn || "").trim().toUpperCase();
+      const sn = String(args?.sn || "")
+        .trim()
+        .toUpperCase();
       const includeOptical = parseBool(args?.includeOptical);
 
       if (!/^[0-9A-F]{16}$/i.test(sn)) {
@@ -201,7 +234,7 @@ async function exec(req, res) {
 
           const rawOpt = await session.run(
             `display ont optical-info ${p} ${ontId}`,
-            { debug }
+            { debug },
           );
 
           // vuelve a config
@@ -223,7 +256,7 @@ async function exec(req, res) {
               txDbm: extractFloatField(rawOpt, "Tx optical power\\(dBm\\)"),
               oltRxDbm: extractFloatField(
                 rawOpt,
-                "OLT Rx ONT optical power\\(dBm\\)"
+                "OLT Rx ONT optical power\\(dBm\\)",
               ),
             };
           }
@@ -244,6 +277,154 @@ async function exec(req, res) {
       return res.json(payload);
     }
 
+    // ========== ONT_DELETE ==========
+    if (cmdId === "ONT_DELETE") {
+      const sn = String(args?.sn || "")
+        .trim()
+        .toUpperCase();
+
+      if (!/^[0-9A-F]{16}$/i.test(sn)) {
+        return res.status(400).json({
+          ok: false,
+          error: { message: "SN inválido (debe ser HEX de 16 chars)" },
+        });
+      }
+
+      await ensureConfig(session, debug);
+
+      // 1) Obtener info de la ONT
+      const cmdInfo = `display ont info by-sn  ${sn}`;
+      const rawInfo = await session.run(cmdInfo, { debug });
+
+      // Verificar si la ONT existe
+      if (
+        /Failure:\s*The ONT does not exist/i.test(rawInfo) ||
+        /Failure:/i.test(rawInfo)
+      ) {
+        return res.status(404).json({
+          ok: false,
+          error: { message: "La ONT no existe en la OLT" },
+        });
+      }
+
+      const fsp = extractStrField(rawInfo, "F\\/S\\/P");
+      const ontId = extractIntField(rawInfo, "ONT-ID");
+      const runState = extractStrField(rawInfo, "Run state");
+      const description = extractDescription(rawInfo);
+
+      if (!fsp || ontId === null) {
+        return res.status(500).json({
+          ok: false,
+          error: { message: "No se pudo extraer F/S/P u ONT-ID de la ONT" },
+        });
+      }
+
+      const isOnline = String(runState || "").toLowerCase() === "online";
+
+      // 2) Buscar service-ports
+      const cmdSp = `display service-port port ${fsp} ont ${ontId}`;
+      const rawSp = await session.run(cmdSp, { debug });
+
+      const servicePorts = parseServicePorts(rawSp);
+      const deletedServicePorts = [];
+      const failedServicePorts = [];
+
+      // 3) Eliminar service-ports
+      if (servicePorts.length === 0) {
+        // No hay service-ports configurados
+        deletedServicePorts.push({
+          warning: "No se encontraron service-ports para eliminar",
+        });
+      } else {
+        for (const sp of servicePorts) {
+          try {
+            const cmdUndo = `undo service-port ${sp.index}`;
+            await session.run(cmdUndo, { debug });
+            deletedServicePorts.push({
+              index: sp.index,
+              vlanId: sp.vlanId,
+              state: sp.state,
+              success: true,
+            });
+          } catch (err) {
+            failedServicePorts.push({
+              index: sp.index,
+              error: String(err?.message || err),
+            });
+          }
+        }
+      }
+
+      // 4) Eliminar ONT
+      const parts = fsp.split("/").map((x) => Number(x));
+      const [f, s, p] = parts;
+
+      if (!Number.isFinite(f) || !Number.isFinite(s) || !Number.isFinite(p)) {
+        return res.status(500).json({
+          ok: false,
+          error: { message: `F/S/P inválido: ${fsp}` },
+        });
+      }
+
+      await ensureConfig(session, debug);
+      await session.run(`interface gpon ${f}/${s}`, { debug });
+
+      const cmdDelete = `ont delete ${p} ${ontId}`;
+      const rawDelete = await session.run(cmdDelete, { debug });
+
+      // Volver a config
+      await session.run("quit", { debug }).catch(() => {});
+      await ensureConfig(session, debug);
+
+      // Verificar resultado
+      const successMatch = rawDelete.match(/success:\s*(\d+)/i);
+      const ontDeleteSuccess = successMatch
+        ? Number(successMatch[1]) === 1
+        : false;
+
+      if (!ontDeleteSuccess) {
+        return res.status(500).json({
+          ok: false,
+          error: {
+            message: "Fallo al eliminar la ONT",
+            details: rawDelete,
+          },
+          servicePorts: {
+            deleted: deletedServicePorts,
+            failed: failedServicePorts,
+          },
+        });
+      }
+
+      // Respuesta exitosa
+      const payload = {
+        ok: true,
+        cmdId: "ONT_DELETE",
+        message: "ONT eliminada exitosamente",
+        sn,
+        fsp,
+        ontId,
+        description,
+        wasOnline: isOnline,
+        servicePorts: {
+          deleted: deletedServicePorts,
+          failed: failedServicePorts,
+        },
+      };
+
+      if (isOnline) {
+        payload.warning = "⚠️ La ONT estaba ONLINE al momento de eliminarla";
+      }
+
+      if (debug) {
+        payload.rawInfo = rawInfo;
+        payload.rawSp = rawSp;
+        payload.rawDelete = rawDelete;
+      }
+
+      return res.json(payload);
+    }
+
     return res.status(400).json({
       ok: false,
       error: { message: `cmdId no soportado: ${cmdId}` },
@@ -252,7 +433,9 @@ async function exec(req, res) {
     const msg = String(err?.message || "");
 
     if (err instanceof OltHttpError && err.status) {
-      return res.status(err.status).json({ ok: false, error: { message: msg } });
+      return res
+        .status(err.status)
+        .json({ ok: false, error: { message: msg } });
     }
 
     if (/IP address has been locked|cannot log on|locked/i.test(msg)) {
