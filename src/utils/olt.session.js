@@ -93,15 +93,28 @@ class OltSessionManager {
         this.lastFailAt = Date.now();
         this.consecutiveFailures++;
 
-        // ✅ Si hay 2+ fallos consecutivos, forzar reconexión
-        if (this.consecutiveFailures >= 2) {
-          console.log(
-            `[OLT SESSION] ⚠️  ${this.consecutiveFailures} fallos consecutivos, forzando reconexión...`,
-          );
-          await this.close("consecutive_failures").catch(() => {});
-        }
+        // ✅ AUTO-CORRECCIÓN: Forzar reconexión inmediata y reintentar
+        console.log(
+          `[OLT SESSION] ⚠️  Fallo detectado, forzando reconexión y reintento...`,
+        );
+        await this.close("auto_recovery").catch(() => {});
 
-        throw e;
+        // ✅ Reintentar el comando con nueva conexión
+        try {
+          await this._ensureConnected(opts);
+          const out = await this.client.exec(cmd);
+          this.lastUsedAt = new Date();
+          this.consecutiveFailures = 0;
+          this._armIdleClose();
+          console.log(
+            `[OLT SESSION] ✅ Reintento exitoso después de reconexión`,
+          );
+          return out;
+        } catch (retryError) {
+          // Si el reintento también falla, lanzar el error
+          this.consecutiveFailures++;
+          throw retryError;
+        }
       } finally {
         this.busy = false;
       }

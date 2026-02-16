@@ -123,16 +123,21 @@ async function ensureConfig(session, debug) {
 
   if (mode === "gpon") {
     await session.run("quit", opts).catch(() => {});
-    // sigue a config
+    // ✅ Delay después de quit
+    await new Promise((resolve) => setTimeout(resolve, 300));
   }
 
   if (mode === "enable") {
     await session.run("config", opts).catch(() => {});
+    // ✅ Delay después de config
+    await new Promise((resolve) => setTimeout(resolve, 300));
     return;
   }
 
   await session.run("enable", opts).catch(() => {});
   await session.run("config", opts).catch(() => {});
+  // ✅ Delay después de enable + config
+  await new Promise((resolve) => setTimeout(resolve, 300));
 }
 
 async function status(req, res) {
@@ -205,9 +210,6 @@ async function exec(req, res) {
       }
 
       await ensureConfig(session, debug);
-
-      // ✅ Pequeño delay después de ensureConfig
-      await new Promise((resolve) => setTimeout(resolve, 200));
 
       const opts = debug ? { debug: true } : {};
 
@@ -385,9 +387,6 @@ async function exec(req, res) {
       }
 
       await ensureConfig(session, debug);
-
-      // ✅ Pequeño delay después de ensureConfig
-      await new Promise((resolve) => setTimeout(resolve, 200));
 
       const opts = debug ? { debug: true } : {};
 
