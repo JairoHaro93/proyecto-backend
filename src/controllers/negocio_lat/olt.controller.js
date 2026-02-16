@@ -30,7 +30,10 @@ function extractIntField(raw, labelRe) {
 function extractStrField(raw, labelRe) {
   const re = new RegExp(`^\\s*${labelRe}\\s*:\\s*(.+?)\\s*$`, "im");
   const m = String(raw).match(re);
-  return m ? String(m[1]).trim() : null;
+  if (!m) return null;
+
+  // Limpia espacios extras internos (ej: "0/4/2   " -> "0/4/2")
+  return String(m[1]).replace(/\s+/g, " ").trim();
 }
 
 function extractFloatField(raw, labelRe) {
@@ -66,6 +69,13 @@ function extractDescription(raw = "") {
 
   const joined = out.join(" ").replace(/\s+/g, " ").trim();
   return joined || null;
+}
+
+// ✅ Función específica para extraer F/S/P
+function extractFSP(raw = "") {
+  const re = /^\s*F\/S\/P\s*:\s*(\d+)\/(\d+)\/(\d+)\s*$/im;
+  const m = String(raw).match(re);
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : null;
 }
 
 // ✅ parsea service-ports de "display service-port port F/S/P ont ONTID"
@@ -189,7 +199,7 @@ async function exec(req, res) {
       const cmd = `display ont info by-sn  ${sn}`;
       const raw = await session.run(cmd, { debug });
 
-      const fsp = extractStrField(raw, "F\\/S\\/P");
+      const fsp = extractFSP(raw);
       const ontId = extractIntField(raw, "ONT-ID");
       const runState = extractStrField(raw, "Run state");
       const description = extractDescription(raw);
@@ -307,7 +317,7 @@ async function exec(req, res) {
         });
       }
 
-      const fsp = extractStrField(rawInfo, "F\\/S\\/P");
+      const fsp = extractFSP(rawInfo);
       const ontId = extractIntField(rawInfo, "ONT-ID");
       const runState = extractStrField(rawInfo, "Run state");
       const description = extractDescription(rawInfo);
