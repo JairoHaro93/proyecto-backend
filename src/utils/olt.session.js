@@ -1,4 +1,3 @@
-// src/utils/olt.session.js
 require("dotenv").config();
 const { OltClient } = require("./olt");
 
@@ -28,7 +27,7 @@ class OltSessionManager {
 
     this.lastUsedAt = null;
     this.lastFailAt = 0;
-    this.consecutiveFailures = 0; // ✅ NUEVO: contador de fallos consecutivos
+    this.consecutiveFailures = 0;
   }
 
   _armIdleClose() {
@@ -40,12 +39,14 @@ class OltSessionManager {
     }, IDLE_CLOSE_MS);
   }
 
-  async _ensureConnected({ debug = false } = {}) {
+  async _ensureConnected({ debug = false, bypassCooldown = false } = {}) {
     if (this.client) return;
 
     const now = Date.now();
     const diff = now - this.lastFailAt;
-    if (diff < FAIL_COOLDOWN_MS) {
+
+    // ✅ cooldown SOLO cuando NO es bypass (o sea, para requests normales)
+    if (!bypassCooldown && diff < FAIL_COOLDOWN_MS) {
       const s = Math.ceil((FAIL_COOLDOWN_MS - diff) / 1000);
       throw new OltHttpError(429, `OLT: espera ${s}s antes de reintentar`);
     }
@@ -63,7 +64,7 @@ class OltSessionManager {
       await client.connect();
       this.client = client;
       this.lastUsedAt = new Date();
-      this.consecutiveFailures = 0; // ✅ Reset contador
+      this.consecutiveFailures = 0;
       this._armIdleClose();
     } catch (e) {
       this.lastFailAt = Date.now();
@@ -84,34 +85,50 @@ class OltSessionManager {
 
       try {
         await this._ensureConnected(opts);
-        const out = await this.client.exec(cmd);
+
+        // ✅ IMPORTANTE: pasar opts a exec (timeout/debug)
+        const out = await this.client.exec(cmd, opts);
+
         this.lastUsedAt = new Date();
-        this.consecutiveFailures = 0; // ✅ Reset en éxito
+        this.consecutiveFailures = 0;
         this._armIdleClose();
         return out;
       } catch (e) {
-        this.lastFailAt = Date.now();
-        this.consecutiveFailures++;
+        const msg = String(e?.message || e);
 
-        // ✅ AUTO-CORRECCIÓN: Forzar reconexión inmediata y reintentar
+        const isLocked =
+          /IP address has been locked|cannot log on|locked/i.test(msg) ||
+          e?.name === "OltHttpError";
+
+        // ✅ Si es lock/cooldown/autenticación, NO insistir
+        if (isLocked) {
+          this.lastFailAt = Date.now();
+          this.consecutiveFailures++;
+          throw e;
+        }
+
+        // ✅ AUTO-RECOVERY: 1 reconexión inmediata SIN cooldown
         console.log(
-          `[OLT SESSION] ⚠️  Fallo detectado, forzando reconexión y reintento...`,
+          `[OLT SESSION] ⚠️ Fallo detectado, reconectando y reintentando (sin cooldown)...`,
         );
-        await this.close("auto_recovery").catch(() => {});
 
-        // ✅ Reintentar el comando con nueva conexión
         try {
-          await this._ensureConnected(opts);
-          const out = await this.client.exec(cmd);
+          await this.close("auto_recovery").catch(() => {});
+
+          // bypassCooldown=true SOLO para este reintento interno
+          await this._ensureConnected({ ...opts, bypassCooldown: true });
+
+          const out2 = await this.client.exec(cmd, opts);
+
           this.lastUsedAt = new Date();
           this.consecutiveFailures = 0;
           this._armIdleClose();
-          console.log(
-            `[OLT SESSION] ✅ Reintento exitoso después de reconexión`,
-          );
-          return out;
+
+          console.log(`[OLT SESSION] ✅ Reintento exitoso`);
+          return out2;
         } catch (retryError) {
-          // Si el reintento también falla, lanzar el error
+          // ✅ recién aquí marcamos failAt para enfriar futuros intentos
+          this.lastFailAt = Date.now();
           this.consecutiveFailures++;
           throw retryError;
         }
@@ -121,7 +138,6 @@ class OltSessionManager {
     };
 
     const p = this.queue.then(job, job);
-    // mantener la cola viva aunque una llamada falle
     this.queue = p.then(
       () => undefined,
       () => undefined,
