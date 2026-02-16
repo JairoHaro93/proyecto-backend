@@ -73,6 +73,7 @@ class OltClient {
 
     this._closing = false;
     this._bootstrapped = false;
+    this._needsPostBootstrapDelay = false; // ✅ NUEVO: flag para delay post-bootstrap
 
     // ✅ estado de prompt
     this.lastPrompt = null;
@@ -184,6 +185,9 @@ class OltClient {
     // ✅ Delay final para asegurar estabilidad total
     await sleep(500);
 
+    // ✅ Marcar que el próximo comando display necesita delay extra
+    this._needsPostBootstrapDelay = true;
+
     // por si acaso
     this.mode = this.mode || "config";
   }
@@ -194,6 +198,16 @@ class OltClient {
 
     // si no sabemos dónde estamos, pedimos prompt
     if (this.mode === "unknown") await this.ensurePrompt();
+
+    // ✅ Si es el primer comando display después del bootstrap, delay extra
+    if (this._needsPostBootstrapDelay && c.startsWith("display ")) {
+      console.log(
+        "[OLT] ⏳ Delay extra post-bootstrap antes del primer comando display...",
+      );
+      await sleep(2000); // 2 segundos
+      this._needsPostBootstrapDelay = false;
+      console.log("[OLT] ✅ Delay completado, ejecutando comando");
+    }
 
     let raw = await this.connection.send(c, {
       ors: "\r\n",
