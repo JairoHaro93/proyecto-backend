@@ -178,9 +178,9 @@ class OltClient {
     // si no sabemos dónde estamos, pedimos prompt
     if (this.mode === "unknown") await this.ensurePrompt();
 
-    // ✅ Para comandos display, agregar un pequeño delay antes de enviar
+    // ✅ Para comandos display, usar método especial de envío
     if (c.startsWith("display ")) {
-      await sleep(50);
+      return await this._execSlow(c, opts);
     }
 
     let raw = await this.connection.send(c, {
@@ -205,6 +205,60 @@ class OltClient {
 
     this._updateModeFromText(clean);
     return clean;
+  }
+
+  // ✅ Envío lento carácter por carácter para comandos display
+  async _execSlow(cmd, opts = {}) {
+    // Envía cada carácter con mini delay
+    for (let i = 0; i < cmd.length; i++) {
+      await this.connection.write(cmd[i]);
+      await sleep(5); // 5ms entre caracteres
+    }
+
+    // Envía ENTER al final
+    await this.connection.write("\r\n");
+    await sleep(100);
+
+    // Espera la respuesta
+    const buffers = [];
+    let timeoutId;
+
+    return new Promise((resolve, reject) => {
+      const handleData = (data) => {
+        buffers.push(data);
+        const text = Buffer.concat(buffers).toString("utf8");
+
+        // Si encontramos el prompt o needs CR, terminamos
+        if (PROMPT_ANY.test(text) || NEEDS_CR.test(text)) {
+          clearTimeout(timeoutId);
+          this.connection.off("data", handleData);
+
+          let clean = sanitize(text);
+
+          // Si necesita CR, lo manejamos
+          if (NEEDS_CR.test(clean)) {
+            this.connection.write("\r\n");
+            setTimeout(() => {
+              const finalText = Buffer.concat(buffers).toString("utf8");
+              this._updateModeFromText(finalText);
+              resolve(sanitize(finalText));
+            }, 200);
+          } else {
+            this._updateModeFromText(text);
+            resolve(clean);
+          }
+        }
+      };
+
+      this.connection.on("data", handleData);
+
+      timeoutId = setTimeout(() => {
+        this.connection.off("data", handleData);
+        const text = Buffer.concat(buffers).toString("utf8");
+        this._updateModeFromText(text);
+        resolve(sanitize(text));
+      }, this.timeout);
+    });
   }
 
   async end() {
