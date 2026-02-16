@@ -11,7 +11,7 @@ const {
 const { checkToken } = require("../../../utils/middlewares");
 
 // GET /api/olt/status
-router.get("/status", checkToken, status);
+router.get("/status", status);
 
 // GET /api/olt/test
 router.get("/test", checkToken, testTime);
