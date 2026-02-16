@@ -5,32 +5,25 @@ const { Telnet } = require("telnet-client");
 const PROMPT_ANY =
   /(?:MA5800[^\r\n]*[>#]\s*|<[^>\r\n]+>\s*|\[[^\]\r\n]+\]\s*|[>#]\s*)[\s\x00-\x1f\x7f-\x9f]*$/m;
 
-// Login prompts Huawei
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
 const PASS_PROMPT = /User\s*password\s*:\s*/i;
 
-// Fallos típicos (incluye lock)
 const FAILED_LOGIN =
   /Username\s+or\s+password\s+invalid|The IP address has been locked|cannot log on it|locked/i;
 
-// Caso especial del CLI: pide <cr> para ejecutar
 const NEEDS_CR = /\{\s*<cr>[\s\S]*\}\s*:\s*$/im;
-
-// Logout confirm Huawei
 const LOGOUT_CONFIRM = /Are you sure to log out\?\s*\(y\/n\)\[n\]\s*:\s*$/im;
 
-// Espera prompt o el bloque { <cr> ... }:
 const WAIT_PROMPT_OR_CR = new RegExp(
   `${PROMPT_ANY.source}|${NEEDS_CR.source}`,
   "im",
 );
 
-// limpia ANSI y cosas raras
 function sanitize(s = "") {
   return String(s)
-    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "") // ANSI
+    .replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "")
     .replace(/\r\n/g, "\n")
-    .replace(/\[37D/g, "") // a veces aparece por paging
+    .replace(/\[37D/g, "")
     .trim();
 }
 
@@ -45,8 +38,6 @@ function extractLastPrompt(text = "") {
 
 function modeFromPrompt(prompt = "") {
   const p = String(prompt);
-
-  // más específico primero
   if (/\(config-if-gpon-[^)]+\)#$/i.test(p)) return "gpon";
   if (/\(config\)#$/i.test(p)) return "config";
   if (/#$/.test(p)) return "enable";
@@ -73,9 +64,7 @@ class OltClient {
 
     this._closing = false;
     this._bootstrapped = false;
-    this._needsPostBootstrapDelay = false; // ✅ NUEVO: flag para delay post-bootstrap
 
-    // ✅ estado de prompt
     this.lastPrompt = null;
     this.mode = "unknown";
 
@@ -130,13 +119,8 @@ class OltClient {
     });
 
     await sleep(80);
-
-    // ✅ capturamos prompt y modo desde el inicio
     await this.ensurePrompt();
-
-    // ✅ deja sesión lista: enable + scroll 512 + config
     await this.bootstrap();
-
     return this;
   }
 
@@ -151,7 +135,6 @@ class OltClient {
     } catch {}
   }
 
-  // ✅ bootstrap para "scroll 512" (y entrar a config)
   async bootstrap() {
     if (this._bootstrapped) return;
     this._bootstrapped = true;
@@ -176,18 +159,7 @@ class OltClient {
     const c = String(cmd || "").trim();
     if (!c) return "";
 
-    // si no sabemos dónde estamos, pedimos prompt
     if (this.mode === "unknown") await this.ensurePrompt();
-
-    // ✅ Si es el primer comando display después del bootstrap, delay extra
-    /* if (this._needsPostBootstrapDelay && c.startsWith("display ")) {
-      console.log(
-        "[OLT] ⏳ Delay extra post-bootstrap antes del primer comando display...",
-      );
-      await sleep(2000); // 2 segundos
-      this._needsPostBootstrapDelay = false;
-      console.log("[OLT] ✅ Delay completado, ejecutando comando");
-    }*/
 
     let raw = await this.connection.send(c, {
       ors: "\r\n",
@@ -198,7 +170,6 @@ class OltClient {
 
     let clean = sanitize(raw);
 
-    // Si el CLI pide <cr>, mandamos ENTER extra y ahora sí esperamos prompt final
     if (NEEDS_CR.test(clean)) {
       const raw2 = await this.connection.send("", {
         ors: "\r\n",
@@ -209,11 +180,8 @@ class OltClient {
       clean = sanitize(raw);
     }
 
-    // ✅ Detectar comando concatenado (palabras sin espacios)
+    // ✅ comando concatenado típico de sesión sucia
     if (c.startsWith("display ") && /display\w+info\w+by-sn\w+/i.test(clean)) {
-      console.log(
-        `[OLT] ❌ Comando concatenado detectado, forzando error para reconexión`,
-      );
       throw new Error("Comando concatenado - sesión corrupta");
     }
 
@@ -223,13 +191,10 @@ class OltClient {
 
   async end() {
     this._closing = true;
-
     try {
       await this.ensurePrompt();
     } catch {}
 
-    // ✅ puede estar en config-if/config/enable/user
-    //    hacemos quit varias veces hasta ver confirmación de logout o al menos salir
     for (let i = 0; i < 4; i++) {
       const resp = await this.connection
         .send("quit", {
@@ -252,9 +217,7 @@ class OltClient {
         break;
       }
 
-      // si ya está en user/enable y no pide confirmación, con otro quit suele pedirlo
       if (this.mode === "user" || this.mode === "enable") continue;
-      // si sigue en config, otra vuelta también sirve
     }
 
     try {

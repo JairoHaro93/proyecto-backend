@@ -31,8 +31,6 @@ function extractStrField(raw, labelRe) {
   const re = new RegExp(`^\\s*${labelRe}\\s*:\\s*(.+?)\\s*$`, "im");
   const m = String(raw).match(re);
   if (!m) return null;
-
-  // Limpia espacios extras internos (ej: "0/4/2   " -> "0/4/2")
   return String(m[1]).replace(/\s+/g, " ").trim();
 }
 
@@ -71,27 +69,19 @@ function extractDescription(raw = "") {
   return joined || null;
 }
 
-// ✅ Función específica para extraer F/S/P
+// ✅ F/S/P
 function extractFSP(raw = "") {
   const re = /^\s*F\/S\/P\s*:\s*(\d+)\/(\d+)\/(\d+)\s*$/im;
   const m = String(raw).match(re);
-  if (!m) {
-    console.log(
-      `[OLT] ⚠️  No se pudo parsear F/S/P. Raw length: ${raw.length}`,
-    );
-    return null;
-  }
-  return `${m[1]}/${m[2]}/${m[3]}`;
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : null;
 }
 
-// ✅ parsea service-ports de "display service-port port F/S/P ont ONTID"
+// ✅ service-ports (tu parser lo dejo, pero ojo que la tabla varía según config)
 function parseServicePorts(raw = "") {
   const lines = String(raw).split("\n");
   const servicePorts = [];
 
   for (const line of lines) {
-    // busca líneas con índice numérico al inicio
-    // Ejemplo: "    1386  100 common   gpon 0/1 /14 77   10    vlan  100        41   40   down"
     const match = line.match(
       /^\s*(\d+)\s+(\d+)\s+\S+\s+gpon\s+(\S+)\s+\/(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+\d+\s+\d+\s+(\S+)/,
     );
@@ -113,17 +103,60 @@ function parseServicePorts(raw = "") {
   return servicePorts;
 }
 
-// ✅ asegura que estemos en config sin romper si ya estamos ahí
+// =========================
+//  SN NORMALIZATION
+// =========================
+function ascii4ToHex8(prefix4) {
+  // "TPLG" => "54504C47"
+  return prefix4
+    .split("")
+    .map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
+/**
+ * Acepta:
+ * - HEX16: 54504C479346E80F
+ * - TPLG934700ED
+ * - TPLG-934700ED
+ */
+function normalizeSn(input = "") {
+  const raw = String(input || "")
+    .trim()
+    .toUpperCase();
+  const compact = raw.replace(/[\s-]/g, "");
+
+  // HEX16
+  if (/^[0-9A-F]{16}$/.test(compact)) {
+    return { ok: true, snHex: compact, snInput: raw, snLabel: raw };
+  }
+
+  // AAAA + 8hex  => (ASCII AAAA en hex8) + 8hex
+  if (/^[A-Z]{4}[0-9A-F]{8}$/.test(compact)) {
+    const pref = compact.slice(0, 4);
+    const tail = compact.slice(4);
+    const snHex = ascii4ToHex8(pref) + tail;
+    const snLabel = `${pref}-${tail}`;
+    return { ok: true, snHex, snInput: raw, snLabel };
+  }
+
+  return { ok: false, snHex: null, snInput: raw, snLabel: null };
+}
+
+// =========================
+//  SESSION MODE GUARD
+// =========================
 async function ensureConfig(session, debug) {
   const opts = debug ? { debug: true } : {};
-
   const mode = session.status().mode; // user | enable | config | gpon | unknown
+
   if (mode === "config") return;
 
   if (mode === "gpon") {
     await session.run("quit", opts).catch(() => {});
     await new Promise((r) => setTimeout(r, 120));
-    return; // ✅ importante
+    return;
   }
 
   if (mode === "enable") {
@@ -132,12 +165,49 @@ async function ensureConfig(session, debug) {
     return;
   }
 
-  // user o unknown
   await session.run("enable", opts).catch(() => {});
   await session.run("config", opts).catch(() => {});
   await new Promise((r) => setTimeout(r, 120));
 }
 
+function isBadFirstResponse(raw = "") {
+  const s = String(raw || "");
+  return (
+    /% Unknown command/i.test(s) ||
+    /the error locates at/i.test(s) ||
+    /displayontinfo/i.test(s) ||
+    /displayontinfoby-sn/i.test(s) ||
+    /config\s+displayont/i.test(s)
+  );
+}
+
+async function runOntInfoBySnWithRetry(session, snHex, opts, debug) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await ensureConfig(session, debug);
+
+    const cmd = `display ont info by-sn  ${snHex}`;
+    const raw = await session.run(cmd, opts);
+
+    const fsp = extractFSP(raw);
+    const ontId = extractIntField(raw, "ONT-ID");
+
+    if (fsp && ontId !== null && !isBadFirstResponse(raw)) {
+      return { raw, fsp, ontId };
+    }
+
+    if (attempt === 1) {
+      await session.close("retry_bad_first_response").catch(() => {});
+      await new Promise((r) => setTimeout(r, 150));
+      continue;
+    }
+
+    return { raw, fsp: null, ontId: null };
+  }
+}
+
+// =========================
+//  ROUTE HANDLERS
+// =========================
 async function status(req, res) {
   const session = getOltSession("default");
   return res.json({ ok: true, status: session.status() });
@@ -151,7 +221,6 @@ async function testTime(req, res) {
     const opts = debug ? { debug: true } : {};
     const raw = await session.run("display time", opts);
     const time = extractTime(raw);
-
     if (!debug) return res.json({ ok: true, message: "OK", time });
     return res.json({ ok: true, message: "OK", time, raw });
   } catch (err) {
@@ -178,49 +247,12 @@ async function testTime(req, res) {
   }
 }
 
-function isBadFirstResponse(raw = "") {
-  const s = String(raw || "");
-  return (
-    /% Unknown command/i.test(s) ||
-    /the error locates at/i.test(s) ||
-    /displayontinfo/i.test(s) || // señal típica cuando se corrompe el eco
-    /displayontinfoby-sn/i.test(s)
-  );
-}
-
-async function runOntInfoBySnWithRetry(session, sn, opts, debug) {
-  // 2 intentos máximo
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    await ensureConfig(session, debug);
-
-    const cmd = `display ont info by-sn  ${sn}`;
-    const raw = await session.run(cmd, opts);
-
-    const fsp = extractFSP(raw);
-    const ontId = extractIntField(raw, "ONT-ID");
-
-    // ✅ OK
-    if (fsp && ontId !== null && !isBadFirstResponse(raw)) {
-      return { raw, fsp, ontId };
-    }
-
-    // ❌ si falló primer intento: cerramos sesión y reintentamos
-    if (attempt === 1) {
-      await session.close("retry_bad_first_response").catch(() => {});
-      await new Promise((r) => setTimeout(r, 150));
-      continue;
-    }
-
-    // ❌ si falló 2 veces, devolvemos lo que tenemos
-    return { raw, fsp: null, ontId: null };
-  }
-}
-
 // POST /api/olt/exec  { cmdId, args }
 async function exec(req, res) {
-  const debug = parseBool(req.query.debug);
+  const debug = parseBool(req.query.debug); // puedes dejarlo aunque Angular no lo use
   const { cmdId, args } = req.body || {};
   const session = getOltSession("default");
+  const opts = debug ? { debug: true } : {};
 
   try {
     if (!cmdId) {
@@ -229,98 +261,68 @@ async function exec(req, res) {
         .json({ ok: false, error: { message: "cmdId requerido" } });
     }
 
-    // ========== ONT_INFO_BY_SN ==========
+    // =======================
+    // ONT_INFO_BY_SN (SIEMPRE CON POTENCIA)
+    // =======================
     if (cmdId === "ONT_INFO_BY_SN") {
-      console.log(`[OLT] 📡 Solicitud consulta ONT: ${args?.sn}`);
+      const snInput = String(args?.sn || "").trim();
+      const n = normalizeSn(snInput);
 
-      const sn = String(args?.sn || "")
-        .trim()
-        .toUpperCase();
-      const includeOptical = parseBool(args?.includeOptical);
-
-      if (!/^[0-9A-F]{16}$/i.test(sn)) {
+      if (!n.ok) {
         return res.status(400).json({
           ok: false,
-          error: { message: "SN inválido (debe ser HEX de 16 chars)" },
+          error: {
+            message:
+              "SN inválido (use HEX16 o formato TPLG934700ED / TPLG-934700ED)",
+          },
         });
       }
 
-      await ensureConfig(session, debug);
+      console.log(
+        `[OLT] 📡 Consulta ONT: input="${n.snInput}" hex="${n.snHex}"`,
+      );
 
-      const opts = debug ? { debug: true } : {};
-
-      // 1) info principal
-      const cmd = `display ont info by-sn  ${sn}`;
-
-      console.log(`[OLT] 📤 Enviando comando: "${cmd}"`);
-      //const raw = await session.run(cmd, opts);
-
-      console.log(`[OLT] 📄 Respuesta recibida, longitud: ${raw.length} chars`);
-
-      //const fsp = extractFSP(raw);
-      //const ontId = extractIntField(raw, "ONT-ID");
-
-      const r = await runOntInfoBySnWithRetry(session, sn, opts, debug);
+      const r = await runOntInfoBySnWithRetry(session, n.snHex, opts, debug);
       const raw = r.raw;
-
       const fsp = r.fsp;
       const ontId = r.ontId;
 
-      const runState = extractStrField(raw, "Run state");
-      const description = extractDescription(raw);
-
       if (!fsp || ontId === null) {
-        // aquí sí ya es falla real
         return res.status(500).json({
           ok: false,
           error: { message: "No se pudo obtener F/S/P u ONT-ID (2 intentos)" },
         });
       }
 
-      /* if (!fsp || ontId === null) {
-        console.log(`[OLT] ⚠️  Parseo incompleto: FSP=${fsp}, ONT-ID=${ontId}`);
-        console.log(`[OLT] 📝 Primeras 500 chars: ${raw.substring(0, 500)}`);
-        // ✅ Lanzar error para forzar reconexión automática
-        throw new Error(
-          "Parseo incompleto - comando no ejecutado correctamente",
-        );
-      }
-*/
-      const ontLastDistanceM = extractIntField(raw, "ONT last distance\\(m\\)");
-      const lastDownCause = extractStrField(raw, "Last down cause");
-      const lastUpTime = extractStrField(raw, "Last up time");
-      const lastDownTime = extractStrField(raw, "Last down time");
-      const lastDyingGaspTime = extractStrField(raw, "Last dying gasp time");
-      const onlineDuration = extractStrField(raw, "ONT online duration");
+      const runState = extractStrField(raw, "Run state");
+      const description = extractDescription(raw);
 
       const payload = {
         ok: true,
         cmdId: "ONT_INFO_BY_SN",
-        sn,
+        sn: n.snHex, // ✅ siempre en HEX16
+        snLabel: n.snLabel, // ✅ ej: TPLG-934700ED
+        snInput: n.snInput,
         fsp,
         ontId,
         runState,
         description,
-        ontLastDistanceM,
-        lastDownCause,
-        lastUpTime,
-        lastDownTime,
-        lastDyingGaspTime,
-        onlineDuration,
+
+        ontLastDistanceM: extractIntField(raw, "ONT last distance\\(m\\)"),
+        lastDownCause: extractStrField(raw, "Last down cause"),
+        lastUpTime: extractStrField(raw, "Last up time"),
+        lastDownTime: extractStrField(raw, "Last down time"),
+        lastDyingGaspTime: extractStrField(raw, "Last dying gasp time"),
+        onlineDuration: extractStrField(raw, "ONT online duration"),
       };
 
-      // 2) optical (opcional)
-      if (
-        includeOptical &&
-        fsp &&
-        ontId !== null &&
-        String(runState || "").toLowerCase() === "online"
-      ) {
-        const parts = fsp.split("/").map((x) => Number(x));
-        const [f, s, p] = parts;
+      // ✅ SIEMPRE intentamos potencia cuando está ONLINE
+      const isOnline = String(runState || "").toLowerCase() === "online";
+
+      if (isOnline) {
+        const [f, s, p] = fsp.split("/").map((x) => Number(x));
 
         if (Number.isFinite(f) && Number.isFinite(s) && Number.isFinite(p)) {
-          // entra a interface gpon f/s
           await ensureConfig(session, debug);
           await session.run(`interface gpon ${f}/${s}`, opts);
 
@@ -329,7 +331,6 @@ async function exec(req, res) {
             opts,
           );
 
-          // vuelve a config
           await session.run("quit", opts).catch(() => {});
           await ensureConfig(session, debug);
 
@@ -342,123 +343,103 @@ async function exec(req, res) {
               oltRxDbm: null,
             };
           } else {
-            const rxDbm = extractFloatField(
-              rawOpt,
-              "Rx optical power\\(dBm\\)",
-            );
-            const txDbm = extractFloatField(
-              rawOpt,
-              "Tx optical power\\(dBm\\)",
-            );
-            const oltRxDbm = extractFloatField(
+            // parse
+            let rxDbm = extractFloatField(rawOpt, "Rx optical power\\(dBm\\)");
+            let txDbm = extractFloatField(rawOpt, "Tx optical power\\(dBm\\)");
+            let oltRxDbm = extractFloatField(
               rawOpt,
               "OLT Rx ONT optical power\\(dBm\\)",
             );
 
-            // ✅ Si no se obtienen las potencias, reintentar UNA vez
-            if (
-              (rxDbm === null || txDbm === null || oltRxDbm === null) &&
-              !debug
-            ) {
-              console.log(`[OLT] ⚠️  Potencias nulas, reintentando...`);
-
+            // retry 1 vez si sale null (sin depender de debug)
+            if (rxDbm === null || txDbm === null || oltRxDbm === null) {
               await ensureConfig(session, debug);
               await session.run(`interface gpon ${f}/${s}`, opts);
-
               const rawOpt2 = await session.run(
                 `display ont optical-info ${p} ${ontId}`,
                 opts,
               );
-
               await session.run("quit", opts).catch(() => {});
               await ensureConfig(session, debug);
 
-              const rxDbm2 = extractFloatField(
-                rawOpt2,
-                "Rx optical power\\(dBm\\)",
-              );
-              const txDbm2 = extractFloatField(
-                rawOpt2,
-                "Tx optical power\\(dBm\\)",
-              );
-              const oltRxDbm2 = extractFloatField(
-                rawOpt2,
-                "OLT Rx ONT optical power\\(dBm\\)",
-              );
-
-              payload.optical = {
-                available: true,
-                rxDbm: rxDbm2 ?? rxDbm,
-                txDbm: txDbm2 ?? txDbm,
-                oltRxDbm: oltRxDbm2 ?? oltRxDbm,
-              };
-
-              console.log(
-                `[OLT] 🔄 Reintento potencias: Rx=${rxDbm2}, Tx=${txDbm2}, OLT-Rx=${oltRxDbm2}`,
-              );
-            } else {
-              payload.optical = {
-                available: true,
-                rxDbm,
-                txDbm,
-                oltRxDbm,
-              };
+              rxDbm =
+                rxDbm ??
+                extractFloatField(rawOpt2, "Rx optical power\\(dBm\\)");
+              txDbm =
+                txDbm ??
+                extractFloatField(rawOpt2, "Tx optical power\\(dBm\\)");
+              oltRxDbm =
+                oltRxDbm ??
+                extractFloatField(rawOpt2, "OLT Rx ONT optical power\\(dBm\\)");
             }
+
+            payload.optical = { available: true, rxDbm, txDbm, oltRxDbm };
           }
 
           if (debug) payload.rawOpt = rawOpt;
+        } else {
+          payload.optical = {
+            available: false,
+            reason: `F/S/P inválido: ${fsp}`,
+            rxDbm: null,
+            txDbm: null,
+            oltRxDbm: null,
+          };
         }
-      } else if (includeOptical) {
+      } else {
         payload.optical = {
           available: false,
-          reason: "No optical (ONT offline o sin datos F/S/P u ONT-ID)",
+          reason: "ONT offline",
           rxDbm: null,
           txDbm: null,
           oltRxDbm: null,
         };
       }
 
+      if (debug) payload.raw = raw;
+
       console.log(
-        `[OLT] ✅ Consulta completa: SN=${sn}, FSP=${fsp}, Estado=${runState}, Potencias=${payload.optical ? "OK" : "N/A"}`,
+        `[OLT] ✅ OK: ${n.snHex} FSP=${fsp} ONT=${ontId} state=${runState} optical=${payload.optical?.available}`,
       );
 
-      if (debug) payload.raw = raw;
       return res.json(payload);
     }
 
-    // ========== ONT_DELETE ==========
+    // =======================
+    // ONT_DELETE (opcional, tu lógica)
+    // =======================
     if (cmdId === "ONT_DELETE") {
-      console.log(`[OLT] 🗑️  Solicitud eliminación ONT: ${args?.sn}`);
+      const snInput = String(args?.sn || "").trim();
+      const n = normalizeSn(snInput);
 
-      const sn = String(args?.sn || "")
-        .trim()
-        .toUpperCase();
-
-      if (!/^[0-9A-F]{16}$/i.test(sn)) {
+      if (!n.ok) {
         return res.status(400).json({
           ok: false,
-          error: { message: "SN inválido (debe ser HEX de 16 chars)" },
+          error: {
+            message:
+              "SN inválido (use HEX16 o formato TPLG934700ED / TPLG-934700ED)",
+          },
         });
       }
 
       await ensureConfig(session, debug);
 
-      const opts = debug ? { debug: true } : {};
+      // 1) info ONT
+      const rawInfo = await session.run(
+        `display ont info by-sn  ${n.snHex}`,
+        opts,
+      );
 
-      // 1) Obtener info de la ONT
-      const cmdInfo = `display ont info by-sn  ${sn}`;
-      const rawInfo = await session.run(cmdInfo, opts);
-
-      // Verificar si la ONT existe
       if (
         /Failure:\s*The ONT does not exist/i.test(rawInfo) ||
         /Failure:/i.test(rawInfo)
       ) {
-        console.log(`[OLT] ❌ ONT no existe: ${sn}`);
-        return res.status(404).json({
-          ok: false,
-          error: { message: "La ONT no existe en la OLT" },
-        });
+        return res
+          .status(404)
+          .json({
+            ok: false,
+            error: { message: "La ONT no existe en la OLT" },
+          });
       }
 
       const fsp = extractFSP(rawInfo);
@@ -467,10 +448,6 @@ async function exec(req, res) {
       const description = extractDescription(rawInfo);
 
       if (!fsp || ontId === null) {
-        console.log(`[OLT] ❌ Error parseando F/S/P u ONT-ID`);
-        console.log(
-          `[OLT] 📝 Primeras 500 chars: ${rawInfo.substring(0, 500)}`,
-        );
         return res.status(500).json({
           ok: false,
           error: { message: "No se pudo extraer F/S/P u ONT-ID de la ONT" },
@@ -478,84 +455,56 @@ async function exec(req, res) {
       }
 
       const isOnline = String(runState || "").toLowerCase() === "online";
-      console.log(
-        `[OLT] 📋 Info ONT: FSP=${fsp}, ONT-ID=${ontId}, Estado=${runState}`,
+
+      // 2) service-ports
+      const rawSp = await session.run(
+        `display service-port port ${fsp} ont ${ontId}`,
+        opts,
       );
-
-      // 2) Buscar service-ports
-      const cmdSp = `display service-port port ${fsp} ont ${ontId}`;
-      const rawSp = await session.run(cmdSp, opts);
-
       const servicePorts = parseServicePorts(rawSp);
+
       const deletedServicePorts = [];
       const failedServicePorts = [];
 
-      console.log(`[OLT] 📌 Service-ports encontrados: ${servicePorts.length}`);
-
-      // 3) Eliminar service-ports
-      if (servicePorts.length === 0) {
-        deletedServicePorts.push({
-          warning: "No se encontraron service-ports para eliminar",
-        });
-      } else {
-        for (const sp of servicePorts) {
-          try {
-            const cmdUndo = `undo service-port ${sp.index}`;
-            await session.run(cmdUndo, opts);
-            deletedServicePorts.push({
-              index: sp.index,
-              vlanId: sp.vlanId,
-              state: sp.state,
-              success: true,
-            });
-            console.log(`[OLT] ✅ Service-port eliminado: ${sp.index}`);
-          } catch (err) {
-            failedServicePorts.push({
-              index: sp.index,
-              error: String(err?.message || err),
-            });
-            console.log(
-              `[OLT] ❌ Falló eliminar service-port ${sp.index}: ${err?.message}`,
-            );
-          }
+      for (const sp of servicePorts) {
+        try {
+          await session.run(`undo service-port ${sp.index}`, opts);
+          deletedServicePorts.push({
+            index: sp.index,
+            vlanId: sp.vlanId,
+            success: true,
+          });
+        } catch (e) {
+          failedServicePorts.push({
+            index: sp.index,
+            error: String(e?.message || e),
+          });
         }
       }
 
-      // 4) Eliminar ONT
-      const parts = fsp.split("/").map((x) => Number(x));
-      const [f, s, p] = parts;
-
+      // 3) ont delete
+      const [f, s, p] = fsp.split("/").map((x) => Number(x));
       if (!Number.isFinite(f) || !Number.isFinite(s) || !Number.isFinite(p)) {
-        return res.status(500).json({
-          ok: false,
-          error: { message: `F/S/P inválido: ${fsp}` },
-        });
+        return res
+          .status(500)
+          .json({ ok: false, error: { message: `F/S/P inválido: ${fsp}` } });
       }
 
       await ensureConfig(session, debug);
       await session.run(`interface gpon ${f}/${s}`, opts);
 
-      const cmdDelete = `ont delete ${p} ${ontId}`;
-      const rawDelete = await session.run(cmdDelete, opts);
+      const rawDelete = await session.run(`ont delete ${p} ${ontId}`, opts);
 
-      // Volver a config
       await session.run("quit", opts).catch(() => {});
       await ensureConfig(session, debug);
 
-      // Verificar resultado
       const successMatch = rawDelete.match(/success:\s*(\d+)/i);
-      const ontDeleteSuccess = successMatch
-        ? Number(successMatch[1]) === 1
-        : false;
+      const okDel = successMatch ? Number(successMatch[1]) === 1 : false;
 
-      if (!ontDeleteSuccess) {
-        console.log(`[OLT] ❌ Falló eliminación ONT`);
+      if (!okDel) {
         return res.status(500).json({
           ok: false,
-          error: {
-            message: "Fallo al eliminar la ONT",
-            details: rawDelete,
-          },
+          error: { message: "Fallo al eliminar la ONT", details: rawDelete },
           servicePorts: {
             deleted: deletedServicePorts,
             failed: failedServicePorts,
@@ -563,16 +512,13 @@ async function exec(req, res) {
         });
       }
 
-      console.log(
-        `[OLT] ✅ Eliminación completa: SN=${sn}, FSP=${fsp}, ONT-ID=${ontId}, Online=${isOnline}`,
-      );
-
-      // Respuesta exitosa
       const payload = {
         ok: true,
         cmdId: "ONT_DELETE",
         message: "ONT eliminada exitosamente",
-        sn,
+        sn: n.snHex,
+        snLabel: n.snLabel,
+        snInput: n.snInput,
         fsp,
         ontId,
         description,
@@ -583,9 +529,8 @@ async function exec(req, res) {
         },
       };
 
-      if (isOnline) {
+      if (isOnline)
         payload.warning = "⚠️ La ONT estaba ONLINE al momento de eliminarla";
-      }
 
       if (debug) {
         payload.rawInfo = rawInfo;
