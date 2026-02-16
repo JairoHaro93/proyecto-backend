@@ -28,6 +28,7 @@ class OltSessionManager {
 
     this.lastUsedAt = null;
     this.lastFailAt = 0;
+    this.consecutiveFailures = 0; // ✅ NUEVO: contador de fallos consecutivos
   }
 
   _armIdleClose() {
@@ -62,10 +63,14 @@ class OltSessionManager {
       await client.connect();
       this.client = client;
       this.lastUsedAt = new Date();
+      this.consecutiveFailures = 0; // ✅ Reset contador
       this._armIdleClose();
     } catch (e) {
       this.lastFailAt = Date.now();
-      try { await client.destroy(); } catch {}
+      this.consecutiveFailures++;
+      try {
+        await client.destroy();
+      } catch {}
       throw e;
     }
   }
@@ -81,11 +86,21 @@ class OltSessionManager {
         await this._ensureConnected(opts);
         const out = await this.client.exec(cmd);
         this.lastUsedAt = new Date();
+        this.consecutiveFailures = 0; // ✅ Reset en éxito
         this._armIdleClose();
         return out;
       } catch (e) {
-        // si falla, registra para cooldown
         this.lastFailAt = Date.now();
+        this.consecutiveFailures++;
+
+        // ✅ Si hay 2+ fallos consecutivos, forzar reconexión
+        if (this.consecutiveFailures >= 2) {
+          console.log(
+            `[OLT SESSION] ⚠️  ${this.consecutiveFailures} fallos consecutivos, forzando reconexión...`,
+          );
+          await this.close("consecutive_failures").catch(() => {});
+        }
+
         throw e;
       } finally {
         this.busy = false;
@@ -94,12 +109,17 @@ class OltSessionManager {
 
     const p = this.queue.then(job, job);
     // mantener la cola viva aunque una llamada falle
-    this.queue = p.then(() => undefined, () => undefined);
+    this.queue = p.then(
+      () => undefined,
+      () => undefined,
+    );
     return p;
   }
 
   status() {
-    const idleLeftMs = this.idleCloseAt ? Math.max(0, this.idleCloseAt - Date.now()) : 0;
+    const idleLeftMs = this.idleCloseAt
+      ? Math.max(0, this.idleCloseAt - Date.now())
+      : 0;
 
     return {
       profile: this.profile,
@@ -109,6 +129,7 @@ class OltSessionManager {
       mode: this.client?.mode || "unknown",
       idleLeftSec: Math.ceil(idleLeftMs / 1000),
       lastUsedAt: this.lastUsedAt ? this.lastUsedAt.toISOString() : null,
+      consecutiveFailures: this.consecutiveFailures,
     };
   }
 
@@ -125,7 +146,9 @@ class OltSessionManager {
     try {
       await c.end();
     } finally {
-      try { await c.destroy(); } catch {}
+      try {
+        await c.destroy();
+      } catch {}
     }
   }
 }
