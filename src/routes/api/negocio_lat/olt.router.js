@@ -17,7 +17,7 @@ router.get("/status", checkToken, status);
 router.get("/test", checkToken, testTime);
 
 // POST /api/olt/exec
-router.post("/exec", checkToken, exec);
+router.post("/exec", exec);
 
 // POST /api/olt/close (opcional)
 router.post("/close", checkToken, close);

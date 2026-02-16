@@ -168,28 +168,8 @@ class OltClient {
       await this.exec("config", { timeout: 2500 });
     } catch {}
 
-    // ✅ Delay después de config
-    await sleep(1000);
-
-    // ✅ Comando display real para "quemar" el primer comando que siempre falla
-    try {
-      const warmupCmd = "display ont info 0";
-      console.log(`[OLT] 🔥 Calentando sesión con: ${warmupCmd}`);
-      await this.exec(warmupCmd, { timeout: 3000 });
-      console.log("[OLT] ✅ Sesión calentada - lista para comandos");
-    } catch (e) {
-      // Si falla el warmup, no importa - era solo para calentar
-      console.log("[OLT] ⚠️  Warmup falló (esperado), pero sesión lista");
-    }
-
-    // ✅ Delay final para asegurar estabilidad total
-    await sleep(500);
-
-    // ✅ Marcar que el próximo comando display necesita delay extra
-    this._needsPostBootstrapDelay = true;
-
-    // por si acaso
-    this.mode = this.mode || "config";
+    await sleep(120);
+    await this.ensurePrompt();
   }
 
   async exec(cmd, opts = {}) {
@@ -200,14 +180,14 @@ class OltClient {
     if (this.mode === "unknown") await this.ensurePrompt();
 
     // ✅ Si es el primer comando display después del bootstrap, delay extra
-    if (this._needsPostBootstrapDelay && c.startsWith("display ")) {
+    /* if (this._needsPostBootstrapDelay && c.startsWith("display ")) {
       console.log(
         "[OLT] ⏳ Delay extra post-bootstrap antes del primer comando display...",
       );
       await sleep(2000); // 2 segundos
       this._needsPostBootstrapDelay = false;
       console.log("[OLT] ✅ Delay completado, ejecutando comando");
-    }
+    }*/
 
     let raw = await this.connection.send(c, {
       ors: "\r\n",

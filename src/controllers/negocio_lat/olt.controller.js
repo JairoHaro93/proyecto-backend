@@ -115,29 +115,27 @@ function parseServicePorts(raw = "") {
 
 // ✅ asegura que estemos en config sin romper si ya estamos ahí
 async function ensureConfig(session, debug) {
-  const mode = session.status().mode; // user | enable | config | gpon | unknown
-
-  if (mode === "config") return;
-
   const opts = debug ? { debug: true } : {};
+
+  const mode = session.status().mode; // user | enable | config | gpon | unknown
+  if (mode === "config") return;
 
   if (mode === "gpon") {
     await session.run("quit", opts).catch(() => {});
-    // ✅ Delay después de quit
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((r) => setTimeout(r, 120));
+    return; // ✅ importante
   }
 
   if (mode === "enable") {
     await session.run("config", opts).catch(() => {});
-    // ✅ Delay después de config
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((r) => setTimeout(r, 120));
     return;
   }
 
+  // user o unknown
   await session.run("enable", opts).catch(() => {});
   await session.run("config", opts).catch(() => {});
-  // ✅ Delay después de enable + config
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  await new Promise((r) => setTimeout(r, 120));
 }
 
 async function status(req, res) {
@@ -180,6 +178,44 @@ async function testTime(req, res) {
   }
 }
 
+function isBadFirstResponse(raw = "") {
+  const s = String(raw || "");
+  return (
+    /% Unknown command/i.test(s) ||
+    /the error locates at/i.test(s) ||
+    /displayontinfo/i.test(s) || // señal típica cuando se corrompe el eco
+    /displayontinfoby-sn/i.test(s)
+  );
+}
+
+async function runOntInfoBySnWithRetry(session, sn, opts, debug) {
+  // 2 intentos máximo
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await ensureConfig(session, debug);
+
+    const cmd = `display ont info by-sn  ${sn}`;
+    const raw = await session.run(cmd, opts);
+
+    const fsp = extractFSP(raw);
+    const ontId = extractIntField(raw, "ONT-ID");
+
+    // ✅ OK
+    if (fsp && ontId !== null && !isBadFirstResponse(raw)) {
+      return { raw, fsp, ontId };
+    }
+
+    // ❌ si falló primer intento: cerramos sesión y reintentamos
+    if (attempt === 1) {
+      await session.close("retry_bad_first_response").catch(() => {});
+      await new Promise((r) => setTimeout(r, 150));
+      continue;
+    }
+
+    // ❌ si falló 2 veces, devolvemos lo que tenemos
+    return { raw, fsp: null, ontId: null };
+  }
+}
+
 // POST /api/olt/exec  { cmdId, args }
 async function exec(req, res) {
   const debug = parseBool(req.query.debug);
@@ -217,16 +253,31 @@ async function exec(req, res) {
       const cmd = `display ont info by-sn  ${sn}`;
 
       console.log(`[OLT] 📤 Enviando comando: "${cmd}"`);
-      const raw = await session.run(cmd, opts);
+      //const raw = await session.run(cmd, opts);
 
       console.log(`[OLT] 📄 Respuesta recibida, longitud: ${raw.length} chars`);
 
-      const fsp = extractFSP(raw);
-      const ontId = extractIntField(raw, "ONT-ID");
+      //const fsp = extractFSP(raw);
+      //const ontId = extractIntField(raw, "ONT-ID");
+
+      const r = await runOntInfoBySnWithRetry(session, sn, opts, debug);
+      const raw = r.raw;
+
+      const fsp = r.fsp;
+      const ontId = r.ontId;
+
       const runState = extractStrField(raw, "Run state");
       const description = extractDescription(raw);
 
       if (!fsp || ontId === null) {
+        // aquí sí ya es falla real
+        return res.status(500).json({
+          ok: false,
+          error: { message: "No se pudo obtener F/S/P u ONT-ID (2 intentos)" },
+        });
+      }
+
+      /* if (!fsp || ontId === null) {
         console.log(`[OLT] ⚠️  Parseo incompleto: FSP=${fsp}, ONT-ID=${ontId}`);
         console.log(`[OLT] 📝 Primeras 500 chars: ${raw.substring(0, 500)}`);
         // ✅ Lanzar error para forzar reconexión automática
@@ -234,7 +285,7 @@ async function exec(req, res) {
           "Parseo incompleto - comando no ejecutado correctamente",
         );
       }
-
+*/
       const ontLastDistanceM = extractIntField(raw, "ONT last distance\\(m\\)");
       const lastDownCause = extractStrField(raw, "Last down cause");
       const lastUpTime = extractStrField(raw, "Last up time");
