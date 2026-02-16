@@ -113,18 +113,20 @@ async function ensureConfig(session, debug) {
 
   if (mode === "config") return;
 
+  const opts = debug ? { debug: true } : {};
+
   if (mode === "gpon") {
-    await session.run("quit", { debug }).catch(() => {});
+    await session.run("quit", opts).catch(() => {});
     // sigue a config
   }
 
   if (mode === "enable") {
-    await session.run("config", { debug }).catch(() => {});
+    await session.run("config", opts).catch(() => {});
     return;
   }
 
-  await session.run("enable", { debug }).catch(() => {});
-  await session.run("config", { debug }).catch(() => {});
+  await session.run("enable", opts).catch(() => {});
+  await session.run("config", opts).catch(() => {});
 }
 
 async function status(req, res) {
@@ -137,7 +139,8 @@ async function testTime(req, res) {
   const session = getOltSession("default");
 
   try {
-    const raw = await session.run("display time", { debug });
+    const opts = debug ? { debug: true } : {};
+    const raw = await session.run("display time", opts);
     const time = extractTime(raw);
 
     if (!debug) return res.json({ ok: true, message: "OK", time });
@@ -195,9 +198,11 @@ async function exec(req, res) {
 
       await ensureConfig(session, debug);
 
+      const opts = debug ? { debug: true } : {};
+
       // 1) info principal
       const cmd = `display ont info by-sn  ${sn}`;
-      const raw = await session.run(cmd, { debug });
+      const raw = await session.run(cmd, opts);
 
       const fsp = extractFSP(raw);
       const ontId = extractIntField(raw, "ONT-ID");
@@ -240,15 +245,15 @@ async function exec(req, res) {
         if (Number.isFinite(f) && Number.isFinite(s) && Number.isFinite(p)) {
           // entra a interface gpon f/s
           await ensureConfig(session, debug);
-          await session.run(`interface gpon ${f}/${s}`, { debug });
+          await session.run(`interface gpon ${f}/${s}`, opts);
 
           const rawOpt = await session.run(
             `display ont optical-info ${p} ${ontId}`,
-            { debug },
+            opts,
           );
 
           // vuelve a config
-          await session.run("quit", { debug }).catch(() => {});
+          await session.run("quit", opts).catch(() => {});
           await ensureConfig(session, debug);
 
           if (/Failure:\s*The ONT is not online/i.test(rawOpt)) {
@@ -302,9 +307,11 @@ async function exec(req, res) {
 
       await ensureConfig(session, debug);
 
+      const opts = debug ? { debug: true } : {};
+
       // 1) Obtener info de la ONT
       const cmdInfo = `display ont info by-sn  ${sn}`;
-      const rawInfo = await session.run(cmdInfo, { debug });
+      const rawInfo = await session.run(cmdInfo, opts);
 
       // Verificar si la ONT existe
       if (
@@ -333,7 +340,7 @@ async function exec(req, res) {
 
       // 2) Buscar service-ports
       const cmdSp = `display service-port port ${fsp} ont ${ontId}`;
-      const rawSp = await session.run(cmdSp, { debug });
+      const rawSp = await session.run(cmdSp, opts);
 
       const servicePorts = parseServicePorts(rawSp);
       const deletedServicePorts = [];
@@ -349,7 +356,7 @@ async function exec(req, res) {
         for (const sp of servicePorts) {
           try {
             const cmdUndo = `undo service-port ${sp.index}`;
-            await session.run(cmdUndo, { debug });
+            await session.run(cmdUndo, opts);
             deletedServicePorts.push({
               index: sp.index,
               vlanId: sp.vlanId,
@@ -377,13 +384,13 @@ async function exec(req, res) {
       }
 
       await ensureConfig(session, debug);
-      await session.run(`interface gpon ${f}/${s}`, { debug });
+      await session.run(`interface gpon ${f}/${s}`, opts);
 
       const cmdDelete = `ont delete ${p} ${ontId}`;
-      const rawDelete = await session.run(cmdDelete, { debug });
+      const rawDelete = await session.run(cmdDelete, opts);
 
       // Volver a config
-      await session.run("quit", { debug }).catch(() => {});
+      await session.run("quit", opts).catch(() => {});
       await ensureConfig(session, debug);
 
       // Verificar resultado
