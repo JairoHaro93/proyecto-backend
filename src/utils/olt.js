@@ -7,7 +7,7 @@ const PROMPT_ANY =
 
 // Login prompts Huawei
 const LOGIN_PROMPT = /User\s*name\s*:\s*/i;
-const PASS_PROMPT  = /User\s*password\s*:\s*/i;
+const PASS_PROMPT = /User\s*password\s*:\s*/i;
 
 // Fallos típicos (incluye lock)
 const FAILED_LOGIN =
@@ -22,7 +22,7 @@ const LOGOUT_CONFIRM = /Are you sure to log out\?\s*\(y\/n\)\[n\]\s*:\s*$/im;
 // Espera prompt o el bloque { <cr> ... }:
 const WAIT_PROMPT_OR_CR = new RegExp(
   `${PROMPT_ANY.source}|${NEEDS_CR.source}`,
-  "im"
+  "im",
 );
 
 // limpia ANSI y cosas raras
@@ -55,7 +55,14 @@ function modeFromPrompt(prompt = "") {
 }
 
 class OltClient {
-  constructor({ host, port = 23, username, password, timeout = 20000, debug = false }) {
+  constructor({
+    host,
+    port = 23,
+    username,
+    password,
+    timeout = 20000,
+    debug = false,
+  }) {
     this.connection = new Telnet();
     this.host = host;
     this.port = Number(port || 23);
@@ -143,16 +150,22 @@ class OltClient {
     } catch {}
   }
 
-  // ✅ bootstrap para “scroll 512” (y entrar a config)
+  // ✅ bootstrap para "scroll 512" (y entrar a config)
   async bootstrap() {
     if (this._bootstrapped) return;
     this._bootstrapped = true;
 
     const scrollLines = Number(process.env.OLT_SCROLL_LINES || 512);
 
-    try { await this.exec("enable", { timeout: 2500 }); } catch {}
-    try { await this.exec(`scroll ${scrollLines}`, { timeout: 2500 }); } catch {}
-    try { await this.exec("config", { timeout: 2500 }); } catch {}
+    try {
+      await this.exec("enable", { timeout: 2500 });
+    } catch {}
+    try {
+      await this.exec(`scroll ${scrollLines}`, { timeout: 2500 });
+    } catch {}
+    try {
+      await this.exec("config", { timeout: 2500 });
+    } catch {}
 
     // por si acaso
     this.mode = this.mode || "config";
@@ -164,6 +177,11 @@ class OltClient {
 
     // si no sabemos dónde estamos, pedimos prompt
     if (this.mode === "unknown") await this.ensurePrompt();
+
+    // ✅ SOLUCIÓN: Para comandos "display", enviar palabra por palabra
+    if (c.startsWith("display ")) {
+      return await this._execWordByWord(c, opts);
+    }
 
     let raw = await this.connection.send(c, {
       ors: "\r\n",
@@ -189,10 +207,61 @@ class OltClient {
     return clean;
   }
 
+  // ✅ NUEVO: Envía comandos display palabra por palabra para evitar concatenación
+  async _execWordByWord(cmd, opts = {}) {
+    const words = cmd.split(/\s+/); // divide por espacios
+    let buffer = "";
+
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+
+      // Envía cada palabra
+      await this.connection
+        .send(word, {
+          ors: i === words.length - 1 ? "\r\n" : " ", // último con ENTER, resto con espacio
+          waitFor: WAIT_PROMPT_OR_CR,
+          timeout: this.timeout,
+          sendTimeout: this.timeout,
+          ...opts,
+        })
+        .catch(() => {});
+
+      // Pequeño delay entre palabras (20ms)
+      if (i < words.length - 1) {
+        await sleep(20);
+      }
+    }
+
+    // Ahora espera la respuesta completa
+    let raw = await this.connection.send("", {
+      ors: "\r\n",
+      waitFor: WAIT_PROMPT_OR_CR,
+      timeout: this.timeout,
+    });
+
+    let clean = sanitize(raw);
+
+    // Si el CLI pide <cr>, mandamos ENTER extra
+    if (NEEDS_CR.test(clean)) {
+      const raw2 = await this.connection.send("", {
+        ors: "\r\n",
+        waitFor: PROMPT_ANY,
+        timeout: this.timeout,
+      });
+      raw = String(raw) + "\n" + String(raw2);
+      clean = sanitize(raw);
+    }
+
+    this._updateModeFromText(clean);
+    return clean;
+  }
+
   async end() {
     this._closing = true;
 
-    try { await this.ensurePrompt(); } catch {}
+    try {
+      await this.ensurePrompt();
+    } catch {}
 
     // ✅ puede estar en config-if/config/enable/user
     //    hacemos quit varias veces hasta ver confirmación de logout o al menos salir
@@ -200,7 +269,10 @@ class OltClient {
       const resp = await this.connection
         .send("quit", {
           ors: "\r\n",
-          waitFor: new RegExp(`${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`, "im"),
+          waitFor: new RegExp(
+            `${LOGOUT_CONFIRM.source}|${PROMPT_ANY.source}`,
+            "im",
+          ),
           timeout: 2500,
         })
         .catch(() => "");
@@ -209,7 +281,9 @@ class OltClient {
       this._updateModeFromText(txt);
 
       if (LOGOUT_CONFIRM.test(txt)) {
-        await this.connection.send("y", { ors: "\r\n", timeout: 1500 }).catch(() => {});
+        await this.connection
+          .send("y", { ors: "\r\n", timeout: 1500 })
+          .catch(() => {});
         break;
       }
 
@@ -224,7 +298,9 @@ class OltClient {
   }
 
   async destroy() {
-    try { await this.connection.end(); } catch {}
+    try {
+      await this.connection.end();
+    } catch {}
   }
 }
 
