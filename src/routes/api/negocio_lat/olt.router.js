@@ -9,6 +9,7 @@ const {
   close,
 } = require("../../../controllers/negocio_lat/olt.controller");
 const { checkToken } = require("../../../utils/middlewares");
+
 // GET /api/olt/status
 router.get("/status", checkToken, status);
 
@@ -16,7 +17,7 @@ router.get("/status", checkToken, status);
 router.get("/test", checkToken, testTime);
 
 // POST /api/olt/exec
-router.post("/exec", exec);
+router.post("/exec", checkToken, exec);
 
 // POST /api/olt/close (opcional)
 router.post("/close", checkToken, close);

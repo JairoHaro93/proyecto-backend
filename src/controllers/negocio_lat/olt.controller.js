@@ -184,6 +184,8 @@ async function exec(req, res) {
 
     // ========== ONT_INFO_BY_SN ==========
     if (cmdId === "ONT_INFO_BY_SN") {
+      console.log(`[OLT] 📡 Solicitud consulta ONT: ${args?.sn}`);
+
       const sn = String(args?.sn || "")
         .trim()
         .toUpperCase();
@@ -265,15 +267,68 @@ async function exec(req, res) {
               oltRxDbm: null,
             };
           } else {
-            payload.optical = {
-              available: true,
-              rxDbm: extractFloatField(rawOpt, "Rx optical power\\(dBm\\)"),
-              txDbm: extractFloatField(rawOpt, "Tx optical power\\(dBm\\)"),
-              oltRxDbm: extractFloatField(
-                rawOpt,
+            const rxDbm = extractFloatField(
+              rawOpt,
+              "Rx optical power\\(dBm\\)",
+            );
+            const txDbm = extractFloatField(
+              rawOpt,
+              "Tx optical power\\(dBm\\)",
+            );
+            const oltRxDbm = extractFloatField(
+              rawOpt,
+              "OLT Rx ONT optical power\\(dBm\\)",
+            );
+
+            // ✅ Si no se obtienen las potencias, reintentar UNA vez
+            if (
+              (rxDbm === null || txDbm === null || oltRxDbm === null) &&
+              !debug
+            ) {
+              console.log(`[OLT] ⚠️  Potencias nulas, reintentando...`);
+
+              await ensureConfig(session, debug);
+              await session.run(`interface gpon ${f}/${s}`, opts);
+
+              const rawOpt2 = await session.run(
+                `display ont optical-info ${p} ${ontId}`,
+                opts,
+              );
+
+              await session.run("quit", opts).catch(() => {});
+              await ensureConfig(session, debug);
+
+              const rxDbm2 = extractFloatField(
+                rawOpt2,
+                "Rx optical power\\(dBm\\)",
+              );
+              const txDbm2 = extractFloatField(
+                rawOpt2,
+                "Tx optical power\\(dBm\\)",
+              );
+              const oltRxDbm2 = extractFloatField(
+                rawOpt2,
                 "OLT Rx ONT optical power\\(dBm\\)",
-              ),
-            };
+              );
+
+              payload.optical = {
+                available: true,
+                rxDbm: rxDbm2 ?? rxDbm,
+                txDbm: txDbm2 ?? txDbm,
+                oltRxDbm: oltRxDbm2 ?? oltRxDbm,
+              };
+
+              console.log(
+                `[OLT] 🔄 Reintento potencias: Rx=${rxDbm2}, Tx=${txDbm2}, OLT-Rx=${oltRxDbm2}`,
+              );
+            } else {
+              payload.optical = {
+                available: true,
+                rxDbm,
+                txDbm,
+                oltRxDbm,
+              };
+            }
           }
 
           if (debug) payload.rawOpt = rawOpt;
@@ -288,12 +343,18 @@ async function exec(req, res) {
         };
       }
 
+      console.log(
+        `[OLT] ✅ Consulta completa: SN=${sn}, FSP=${fsp}, Estado=${runState}, Potencias=${payload.optical ? "OK" : "N/A"}`,
+      );
+
       if (debug) payload.raw = raw;
       return res.json(payload);
     }
 
     // ========== ONT_DELETE ==========
     if (cmdId === "ONT_DELETE") {
+      console.log(`[OLT] 🗑️  Solicitud eliminación ONT: ${args?.sn}`);
+
       const sn = String(args?.sn || "")
         .trim()
         .toUpperCase();
@@ -318,6 +379,7 @@ async function exec(req, res) {
         /Failure:\s*The ONT does not exist/i.test(rawInfo) ||
         /Failure:/i.test(rawInfo)
       ) {
+        console.log(`[OLT] ❌ ONT no existe: ${sn}`);
         return res.status(404).json({
           ok: false,
           error: { message: "La ONT no existe en la OLT" },
@@ -330,6 +392,7 @@ async function exec(req, res) {
       const description = extractDescription(rawInfo);
 
       if (!fsp || ontId === null) {
+        console.log(`[OLT] ❌ Error parseando F/S/P u ONT-ID`);
         return res.status(500).json({
           ok: false,
           error: { message: "No se pudo extraer F/S/P u ONT-ID de la ONT" },
@@ -337,6 +400,9 @@ async function exec(req, res) {
       }
 
       const isOnline = String(runState || "").toLowerCase() === "online";
+      console.log(
+        `[OLT] 📋 Info ONT: FSP=${fsp}, ONT-ID=${ontId}, Estado=${runState}`,
+      );
 
       // 2) Buscar service-ports
       const cmdSp = `display service-port port ${fsp} ont ${ontId}`;
@@ -346,9 +412,10 @@ async function exec(req, res) {
       const deletedServicePorts = [];
       const failedServicePorts = [];
 
+      console.log(`[OLT] 📌 Service-ports encontrados: ${servicePorts.length}`);
+
       // 3) Eliminar service-ports
       if (servicePorts.length === 0) {
-        // No hay service-ports configurados
         deletedServicePorts.push({
           warning: "No se encontraron service-ports para eliminar",
         });
@@ -363,11 +430,15 @@ async function exec(req, res) {
               state: sp.state,
               success: true,
             });
+            console.log(`[OLT] ✅ Service-port eliminado: ${sp.index}`);
           } catch (err) {
             failedServicePorts.push({
               index: sp.index,
               error: String(err?.message || err),
             });
+            console.log(
+              `[OLT] ❌ Falló eliminar service-port ${sp.index}: ${err?.message}`,
+            );
           }
         }
       }
@@ -400,6 +471,7 @@ async function exec(req, res) {
         : false;
 
       if (!ontDeleteSuccess) {
+        console.log(`[OLT] ❌ Falló eliminación ONT`);
         return res.status(500).json({
           ok: false,
           error: {
@@ -412,6 +484,10 @@ async function exec(req, res) {
           },
         });
       }
+
+      console.log(
+        `[OLT] ✅ Eliminación completa: SN=${sn}, FSP=${fsp}, ONT-ID=${ontId}, Online=${isOnline}`,
+      );
 
       // Respuesta exitosa
       const payload = {
@@ -466,6 +542,7 @@ async function exec(req, res) {
       });
     }
 
+    console.log(`[OLT] ❌ Error general: ${msg}`);
     return res.status(500).json({ ok: false, error: serializeErr(err) });
   }
 }
