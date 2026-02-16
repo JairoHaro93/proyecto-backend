@@ -144,6 +144,61 @@ function normalizeSn(input = "") {
   return { ok: false, snHex: null, snInput: raw, snLabel: null };
 }
 
+// dentro de olt.controller.js (mismo archivo donde están status/testTime/exec/close)
+
+async function ready(req, res) {
+  const debug = parseBool(req.query.debug);
+  const session = getOltSession("default");
+  const opts = debug ? { debug: true, timeout: 12000 } : { timeout: 12000 };
+
+  try {
+    // 1) fuerza modo config (si está gpon/enable/user lo corrige)
+    await ensureConfig(session, debug);
+
+    // 2) comando simple de salud
+    const raw = await session.run("display time", opts);
+    const time = extractTime(raw);
+
+    // 3) vuelve a asegurar config por si el comando movió algo
+    await ensureConfig(session, debug);
+
+    const payload = {
+      ok: true,
+      ready: true,
+      message: "OLT READY",
+      time,
+      status: session.status(),
+    };
+
+    if (debug) payload.raw = raw;
+    return res.json(payload);
+  } catch (err) {
+    const msg = String(err?.message || "");
+
+    if (err instanceof OltHttpError && err.status) {
+      return res
+        .status(err.status)
+        .json({ ok: false, ready: false, error: { message: msg } });
+    }
+
+    if (/IP address has been locked|cannot log on|locked/i.test(msg)) {
+      return res.status(500).json({
+        ok: false,
+        ready: false,
+        error: {
+          name: "Error",
+          message:
+            "OLT: la IP/usuario está bloqueada por intentos. Desbloquear en OLT o esperar expiración.",
+        },
+      });
+    }
+
+    return res
+      .status(500)
+      .json({ ok: false, ready: false, error: serializeErr(err) });
+  }
+}
+
 // =========================
 //  SESSION MODE GUARD
 // =========================
@@ -434,12 +489,10 @@ async function exec(req, res) {
         /Failure:\s*The ONT does not exist/i.test(rawInfo) ||
         /Failure:/i.test(rawInfo)
       ) {
-        return res
-          .status(404)
-          .json({
-            ok: false,
-            error: { message: "La ONT no existe en la OLT" },
-          });
+        return res.status(404).json({
+          ok: false,
+          error: { message: "La ONT no existe en la OLT" },
+        });
       }
 
       const fsp = extractFSP(rawInfo);
@@ -576,4 +629,4 @@ async function close(req, res) {
   return res.json({ ok: true, message: "Sesión cerrada" });
 }
 
-module.exports = { status, testTime, exec, close };
+module.exports = { status, testTime, ready, exec, close };

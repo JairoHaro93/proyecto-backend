@@ -1,7 +1,8 @@
+// src/utils/olt.session.js
 require("dotenv").config();
 const { OltClient } = require("./olt");
 
-const IDLE_CLOSE_MS = Number(process.env.OLT_IDLE_CLOSE_MS || 180000); // 180s
+const IDLE_CLOSE_MS = Number(process.env.OLT_IDLE_CLOSE_MS || 180000);
 const FAIL_COOLDOWN_MS = Number(process.env.OLT_FAIL_COOLDOWN_MS || 30000);
 
 class OltHttpError extends Error {
@@ -15,10 +16,9 @@ class OltHttpError extends Error {
 class OltSessionManager {
   constructor(profile = "default") {
     this.profile = profile;
-
     this.client = null;
 
-    this.queue = Promise.resolve(); // FIFO
+    this.queue = Promise.resolve();
     this.pending = 0;
     this.busy = false;
 
@@ -32,7 +32,6 @@ class OltSessionManager {
 
   _armIdleClose() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
-
     this.idleCloseAt = Date.now() + IDLE_CLOSE_MS;
     this.idleTimer = setTimeout(() => {
       this.close("idle").catch(() => {});
@@ -45,7 +44,6 @@ class OltSessionManager {
     const now = Date.now();
     const diff = now - this.lastFailAt;
 
-    // ✅ cooldown SOLO cuando NO es bypass (o sea, para requests normales)
     if (!bypassCooldown && diff < FAIL_COOLDOWN_MS) {
       const s = Math.ceil((FAIL_COOLDOWN_MS - diff) / 1000);
       throw new OltHttpError(429, `OLT: espera ${s}s antes de reintentar`);
@@ -86,7 +84,7 @@ class OltSessionManager {
       try {
         await this._ensureConnected(opts);
 
-        // ✅ IMPORTANTE: pasar opts a exec (timeout/debug)
+        // ✅ pasar opts a exec
         const out = await this.client.exec(cmd, opts);
 
         this.lastUsedAt = new Date();
@@ -98,24 +96,21 @@ class OltSessionManager {
 
         const isLocked =
           /IP address has been locked|cannot log on|locked/i.test(msg) ||
-          e?.name === "OltHttpError";
+          e instanceof OltHttpError;
 
-        // ✅ Si es lock/cooldown/autenticación, NO insistir
+        // ❌ No auto-recovery si es lock/cooldown
         if (isLocked) {
           this.lastFailAt = Date.now();
           this.consecutiveFailures++;
           throw e;
         }
 
-        // ✅ AUTO-RECOVERY: 1 reconexión inmediata SIN cooldown
+        // ✅ Auto-recovery (1 vez) SIN cooldown interno
         console.log(
-          `[OLT SESSION] ⚠️ Fallo detectado, reconectando y reintentando (sin cooldown)...`,
+          "[OLT SESSION] ⚠️ fallo, auto_recovery + retry (no cooldown)",
         );
-
         try {
           await this.close("auto_recovery").catch(() => {});
-
-          // bypassCooldown=true SOLO para este reintento interno
           await this._ensureConnected({ ...opts, bypassCooldown: true });
 
           const out2 = await this.client.exec(cmd, opts);
@@ -124,10 +119,9 @@ class OltSessionManager {
           this.consecutiveFailures = 0;
           this._armIdleClose();
 
-          console.log(`[OLT SESSION] ✅ Reintento exitoso`);
+          console.log("[OLT SESSION] ✅ retry OK");
           return out2;
         } catch (retryError) {
-          // ✅ recién aquí marcamos failAt para enfriar futuros intentos
           this.lastFailAt = Date.now();
           this.consecutiveFailures++;
           throw retryError;
