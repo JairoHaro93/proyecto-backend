@@ -211,6 +211,12 @@ async function exec(req, res) {
 
       const opts = debug ? { debug: true } : {};
 
+      // 1) info principal
+      const cmd = `display ont info by-sn  ${sn}`;
+
+      console.log(`[OLT] 📤 Enviando comando: "${cmd}"`);
+      const raw = await session.run(cmd, opts);
+
       console.log(`[OLT] 📄 Respuesta recibida, longitud: ${raw.length} chars`);
 
       const fsp = extractFSP(raw);
