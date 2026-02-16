@@ -167,6 +167,9 @@ class OltClient {
       await this.exec("config", { timeout: 2500 });
     } catch {}
 
+    // ✅ Delay extra después de bootstrap para asegurar estabilidad
+    await sleep(1500);
+
     // por si acaso
     this.mode = this.mode || "config";
   }
