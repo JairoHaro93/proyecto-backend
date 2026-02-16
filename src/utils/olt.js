@@ -167,14 +167,22 @@ class OltClient {
       await this.exec("config", { timeout: 2500 });
     } catch {}
 
-    // ✅ Delay después de bootstrap
-    await sleep(800);
+    // ✅ Delay después de config
+    await sleep(1000);
 
-    // ✅ Comando dummy para "calentar" la sesión y evitar concatenación en el primer comando real
+    // ✅ Comando display real para "quemar" el primer comando que siempre falla
     try {
-      await this.exec("display version", { timeout: 2500 });
-      console.log("[OLT] 🔥 Sesión calentada - lista para comandos");
-    } catch {}
+      const warmupCmd = "display ont info 0";
+      console.log(`[OLT] 🔥 Calentando sesión con: ${warmupCmd}`);
+      await this.exec(warmupCmd, { timeout: 3000 });
+      console.log("[OLT] ✅ Sesión calentada - lista para comandos");
+    } catch (e) {
+      // Si falla el warmup, no importa - era solo para calentar
+      console.log("[OLT] ⚠️  Warmup falló (esperado), pero sesión lista");
+    }
+
+    // ✅ Delay final para asegurar estabilidad total
+    await sleep(500);
 
     // por si acaso
     this.mode = this.mode || "config";
