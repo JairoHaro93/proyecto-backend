@@ -75,7 +75,13 @@ function extractDescription(raw = "") {
 function extractFSP(raw = "") {
   const re = /^\s*F\/S\/P\s*:\s*(\d+)\/(\d+)\/(\d+)\s*$/im;
   const m = String(raw).match(re);
-  return m ? `${m[1]}/${m[2]}/${m[3]}` : null;
+  if (!m) {
+    console.log(
+      `[OLT] ⚠️  No se pudo parsear F/S/P. Raw length: ${raw.length}`,
+    );
+    return null;
+  }
+  return `${m[1]}/${m[2]}/${m[3]}`;
 }
 
 // ✅ parsea service-ports de "display service-port port F/S/P ont ONTID"
@@ -200,16 +206,26 @@ async function exec(req, res) {
 
       await ensureConfig(session, debug);
 
+      // ✅ Pequeño delay después de ensureConfig
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
       const opts = debug ? { debug: true } : {};
 
       // 1) info principal
       const cmd = `display ont info by-sn  ${sn}`;
       const raw = await session.run(cmd, opts);
 
+      console.log(`[OLT] 📄 Respuesta recibida, longitud: ${raw.length} chars`);
+
       const fsp = extractFSP(raw);
       const ontId = extractIntField(raw, "ONT-ID");
       const runState = extractStrField(raw, "Run state");
       const description = extractDescription(raw);
+
+      if (!fsp || ontId === null) {
+        console.log(`[OLT] ⚠️  Parseo incompleto: FSP=${fsp}, ONT-ID=${ontId}`);
+        console.log(`[OLT] 📝 Primeras 500 chars: ${raw.substring(0, 500)}`);
+      }
 
       const ontLastDistanceM = extractIntField(raw, "ONT last distance\\(m\\)");
       const lastDownCause = extractStrField(raw, "Last down cause");
@@ -238,7 +254,7 @@ async function exec(req, res) {
       if (
         includeOptical &&
         fsp &&
-        ontId &&
+        ontId !== null &&
         String(runState || "").toLowerCase() === "online"
       ) {
         const parts = fsp.split("/").map((x) => Number(x));
@@ -368,6 +384,9 @@ async function exec(req, res) {
 
       await ensureConfig(session, debug);
 
+      // ✅ Pequeño delay después de ensureConfig
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
       const opts = debug ? { debug: true } : {};
 
       // 1) Obtener info de la ONT
@@ -393,6 +412,9 @@ async function exec(req, res) {
 
       if (!fsp || ontId === null) {
         console.log(`[OLT] ❌ Error parseando F/S/P u ONT-ID`);
+        console.log(
+          `[OLT] 📝 Primeras 500 chars: ${rawInfo.substring(0, 500)}`,
+        );
         return res.status(500).json({
           ok: false,
           error: { message: "No se pudo extraer F/S/P u ONT-ID de la ONT" },
