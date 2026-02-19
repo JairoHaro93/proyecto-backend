@@ -81,10 +81,13 @@ class OltSessionManager {
       this.pending = Math.max(0, this.pending - 1);
       this.busy = true;
 
+      // ✅ evita cierre por idle mientras ejecutas
+      if (this.idleTimer) clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+      this.idleCloseAt = 0;
+
       try {
         await this._ensureConnected(opts);
-
-        // ✅ pasar opts a exec
         const out = await this.client.exec(cmd, opts);
 
         this.lastUsedAt = new Date();
