@@ -296,14 +296,12 @@ async function insertTurnoVacacion(
     INSERT INTO neg_t_turnos_diarios (
       usuario_id, fecha, sucursal,
       hora_entrada_prog, hora_salida_prog,
-      min_toler_atraso, min_toler_salida,
       estado_asistencia,
       tipo_dia
     )
     VALUES (
       ?, ?, ?,
       '00:00:00', '00:00:00',
-      0, 0,
       'SIN_MARCA',
       'VACACIONES'
     )
@@ -534,6 +532,78 @@ async function getVacacionesDisponiblesDias(usuarioId, refDate = new Date()) {
   return format2(saldoVisible);
 }
 
+// ✅ Borra huellas crudas en rango (evita que vuelvan a regenerar marcas)
+async function deleteAsistenciasEnRango(conn, { usuarioId, desde, hasta }) {
+  const desdeDT = `${desde} 00:00:00`;
+  const hastaDT = `${hasta} 00:00:00`;
+
+  await conn.query(
+    `
+    DELETE FROM neg_t_asistencia
+    WHERE usuario_id = ?
+      AND fecha_hora >= ?
+      AND fecha_hora < DATE_ADD(?, INTERVAL 1 DAY)
+    `,
+    [usuarioId, desdeDT, hastaDT],
+  );
+}
+
+// ✅ Convierte un turno existente a "VACACIONES" limpiando TODAS las marcas
+async function resetTurnoToVacaciones(conn, { turnoId, nota = null }) {
+  const note =
+    nota && String(nota).trim()
+      ? String(nota).trim()
+      : "VACACIONES: marcas limpiadas";
+
+  await conn.query(
+    `
+    UPDATE neg_t_turnos_diarios
+    SET
+      tipo_dia = 'VACACIONES',
+      estado_asistencia = 'SIN_MARCA',
+
+      -- marcas (huellas) y reales
+      hora_entrada_1 = NULL,
+      hora_salida_1  = NULL,
+      hora_entrada_2 = NULL,
+      hora_salida_2  = NULL,
+      hora_entrada_real = NULL,
+      hora_salida_real  = NULL,
+
+      -- métricas
+      min_atraso = 0,
+      min_salida_temprana = 0,
+
+      -- almuerzo
+      almuerzo_permitido_min = 0,
+      almuerzo_real_min = NULL,
+      almuerzo_excedido_min = 0,
+
+      -- hora acumulada
+      estado_hora_acumulada = 'NO',
+      hora_acum_aprobado_por = NULL,
+      num_minutos_acumulados = NULL,
+
+      -- justificaciones
+      just_atraso_estado = 'NO',
+      just_atraso_motivo = NULL,
+      just_atraso_minutos = NULL,
+      just_atraso_jefe_id = NULL,
+
+      just_salida_estado = 'NO',
+      just_salida_motivo = NULL,
+      just_salida_minutos = NULL,
+      just_salida_jefe_id = NULL,
+
+      -- nota en observación (sin pisar lo anterior)
+      observacion = CONCAT_WS(' | ', NULLIF(TRIM(observacion), ''), ?)
+
+    WHERE id = ?
+    `,
+    [note, turnoId],
+  );
+}
+
 module.exports = {
   getConfig,
   getUsuarioBaseById,
@@ -564,4 +634,7 @@ module.exports = {
 
   getSucursalRecienteFromTurnos,
   nextSolicitudConsecutivo,
+
+  deleteAsistenciasEnRango,
+  resetTurnoToVacaciones,
 };

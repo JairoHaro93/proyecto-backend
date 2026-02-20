@@ -131,7 +131,7 @@ function calcGenerados({ fechaContYMD, hastaDate, config }) {
 
     const segDays = Math.max(
       0,
-      Math.floor((segEnd.getTime() - cursor.getTime()) / (24 * 3600 * 1000))
+      Math.floor((segEnd.getTime() - cursor.getTime()) / (24 * 3600 * 1000)),
     );
 
     let extra = 0;
@@ -145,7 +145,9 @@ function calcGenerados({ fechaContYMD, hastaDate, config }) {
     const yearEnd = addYears(start, yearNum);
     const yearLenDays = Math.max(
       1,
-      Math.floor((yearEnd.getTime() - yearStart.getTime()) / (24 * 3600 * 1000))
+      Math.floor(
+        (yearEnd.getTime() - yearStart.getTime()) / (24 * 3600 * 1000),
+      ),
     );
 
     total += (entitlement * segDays) / yearLenDays;
@@ -249,7 +251,7 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
       maxW,
       font = "Helvetica",
       size = 8.5,
-      min = 6
+      min = 6,
     ) => {
       let s = size;
       doc.font(font);
@@ -325,7 +327,7 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
     // ===== Data =====
     const noSolicitud = String(data.no_solicitud || "");
     const fechaElab = String(
-      data.fecha_elaboracion_larga || data.fecha_elaboracion || ""
+      data.fecha_elaboracion_larga || data.fecha_elaboracion || "",
     );
 
     const col = data.colaborador || {};
@@ -432,7 +434,7 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
         M + mm(2) + (cfg.leftLabelW || mm(30)),
         y + mm(1.5),
         split - mm(2) - (M + mm(2) + (cfg.leftLabelW || mm(30))),
-        { size: 8.5 }
+        { size: 8.5 },
       );
 
       doc
@@ -445,7 +447,7 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
         split + mm(2) + (cfg.rightLabelW || mm(34)),
         y + mm(1.5),
         M + (W - 2 * M) - mm(2) - (split + mm(2) + (cfg.rightLabelW || mm(34))),
-        { size: 8.5 }
+        { size: 8.5 },
       );
 
       y += rowH;
@@ -459,7 +461,7 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
       {
         leftLabelW: mm(30),
         rightLabelW: mm(34),
-      }
+      },
     );
 
     draw40_60(
@@ -472,7 +474,7 @@ function pdfWriteSolicitudV19({ absPath, data, logoAbsPath = null }) {
         rightLabelW: mm(46),
         labelLeftSize: 6.7,
         labelRightSize: 6.7,
-      }
+      },
     );
 
     draw40_60("Departamento/Sucursal:", sucursal, "Cargo:", cargo, {
@@ -787,10 +789,10 @@ async function previewAsignacion(req, res) {
     });
 
     const tienePermisoDevol = conflictos.filter((x) =>
-      ["PERMISO", "DEVOLUCION"].includes(String(x.tipo_dia || ""))
+      ["PERMISO", "DEVOLUCION"].includes(String(x.tipo_dia || "")),
     );
     const tieneVac = conflictos.filter(
-      (x) => String(x.tipo_dia || "") === "VACACIONES"
+      (x) => String(x.tipo_dia || "") === "VACACIONES",
     );
 
     if (tienePermisoDevol.length) {
@@ -872,10 +874,10 @@ async function createAsignacion(req, res) {
     });
 
     const tienePermisoDevol = conflictos.filter((x) =>
-      ["PERMISO", "DEVOLUCION"].includes(String(x.tipo_dia || ""))
+      ["PERMISO", "DEVOLUCION"].includes(String(x.tipo_dia || "")),
     );
     const tieneVac = conflictos.filter(
-      (x) => String(x.tipo_dia || "") === "VACACIONES"
+      (x) => String(x.tipo_dia || "") === "VACACIONES",
     );
 
     if (tienePermisoDevol.length) {
@@ -908,6 +910,17 @@ async function createAsignacion(req, res) {
 
     // ========== Transacción ==========
     await conn.beginTransaction();
+
+    // ✅ por defecto: SI limpiamos huellas para poder convertir a VACACIONES
+    const limpiarHuellas = req.body?.limpiar_huellas !== false;
+
+    if (limpiarHuellas) {
+      await Vac.deleteAsistenciasEnRango(conn, {
+        usuarioId,
+        desde: fecha_desde,
+        hasta: fecha_hasta,
+      });
+    }
 
     // ✅ Consecutivo POR USUARIO + AÑO
     const stamp = new Date();
@@ -972,9 +985,9 @@ async function createAsignacion(req, res) {
           tipo_dia_anterior: t.tipo_dia || "NORMAL",
         });
 
-        await Vac.updateTurnoTipoDia(conn, {
+        await Vac.resetTurnoToVacaciones(conn, {
           turnoId: t.id,
-          tipoDia: "VACACIONES",
+          nota: `VACACIONES (asig ${asignacionId}) - limpiado por jefe ${req.user.id}`,
         });
       } else {
         const turnoId = await Vac.insertTurnoVacacion(conn, {
@@ -998,7 +1011,7 @@ async function createAsignacion(req, res) {
 
     // 3) PDF + files + file_links
     const docsRoot = path.resolve(
-      process.env.RUTA_DOCS_ROOT || process.env.RUTA_DESTINO || "uploads"
+      process.env.RUTA_DOCS_ROOT || process.env.RUTA_DESTINO || "uploads",
     );
     const relDir = process.env.RUTA_DOCS_VACACIONES || "docs/pdfs/vacaciones";
 
@@ -1158,7 +1171,10 @@ async function anularAsignacion(req, res) {
           t.hora_entrada_real ||
           t.hora_salida_real;
 
-        const tieneHorarioProg = t.hora_entrada_prog || t.hora_salida_prog;
+        function isZeroTime(v) {
+          const s = String(v ?? "").trim();
+          return s === "00:00:00" || s === "" || s === "0:00:00";
+        }
 
         const esBorrable =
           !tieneMarcas &&
