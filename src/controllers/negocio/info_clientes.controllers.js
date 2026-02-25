@@ -102,15 +102,24 @@ const getDataArrayActivos = async (req, res, next) => {
 };
 
 //CONTROLADOR PARA OBTENER LOS DATOS DE TODOS LOS CLIENTES PARA MOSTRARLOS EN EL MAPA
+// controllers/negocio/info_clientes.controllers.js
 const getAllDataMapa = async (req, res, next) => {
   try {
-    const result = await selectAllDataMapa();
-    res.json(result); // Enviar la respuesta con el JSON estructurado
+    const suc_id = Number(req.query.suc_id || 0) || null; // opcional
+    const min_meses = Number(req.query.min_meses || 0) || 0; // opcional
+    const incluir_eliminados =
+      String(req.query.incluir_eliminados ?? "true").toLowerCase() !== "false";
+
+    const result = await selectAllDataMapa({
+      suc_id,
+      min_meses,
+      incluir_eliminados,
+    });
+    res.json(result);
   } catch (error) {
     next(error);
   }
 };
-
 //CONTROLADOR PARA OBTENER UN SOPORTE POR ORDINS
 const getServicioByOrdIns = async (req, res, next) => {
   const { servicioOrdIns } = req.params;
