@@ -368,12 +368,46 @@ async function selectAllDataMapa({
 }
 /** ===================== DETALLE POR ORD_INS ===================== */
 
-async function selectByOrdnIns(servicioOrdIns) {
+/** ===================== DETALLE POR ORD_INS ===================== */
+async function selectByOrdnIns(
+  servicioOrdIns,
+  { incluirEliminados = true } = {},
+) {
   try {
     const request = await getRequest();
-    request.input("servicioOrdIns", sql.VarChar, servicioOrdIns);
+    request.input("servicioOrdIns", sql.Int, Number(servicioOrdIns));
+    request.input("incl_elim", sql.Int, incluirEliminados ? 1 : 0);
 
     const q = `
+      WITH TABLA_PENDIENTE_PAGOS AS (
+        SELECT 
+          TABLA_DEUDAS.ORDEN_ID as ORDEN_ID,
+          SUM(TABLA_DEUDAS.NUMERO_MESES) as NUMERO_MESES,
+          SUM(TABLA_DEUDAS.TOTAL) AS TOTAL
+        FROM (
+          SELECT 
+            pmi.ord_ins_id as ORDEN_ID,
+            COUNT(pmi.ord_ins_id) as NUMERO_MESES,
+            SUM(pmi.pag_men_int_total) TOTAL
+          FROM t_Pagos_Mensual_Internet pmi
+          WHERE pmi.est_pag_fac_int = 1 -- PENDIENTE PAGO
+            AND pmi.ser_int_id = 50
+          GROUP BY pmi.ord_ins_id
+
+          UNION ALL
+
+          SELECT 
+            pmi.ord_ins_id as ORDEN_ID,
+            0 as NUMERO_MESES,
+            SUM(pmi.pag_men_int_total) TOTAL
+          FROM t_Pagos_Mensual_Internet pmi
+          WHERE pmi.est_pag_fac_int = 1 -- PENDIENTE PAGO
+            AND pmi.ser_int_id <> 50
+          GROUP BY pmi.ord_ins_id
+        ) TABLA_DEUDAS
+        GROUP BY TABLA_DEUDAS.ORDEN_ID
+      )
+
       SELECT 
         ORDEN_CLIENTE.cli_cedula AS cedula,
         c.cli_nombres + ' ' + c.cli_apellidos AS nombre_completo,
@@ -388,20 +422,28 @@ async function selectByOrdnIns(servicioOrdIns) {
         ORDEN_CLIENTE.ord_ins_fecha_prorroga_corte AS fecha_prorroga,
         ORDEN_CLIENTE.ord_ins_coordenadas_x + ',' + ORDEN_CLIENTE.ord_ins_coordenadas_y AS coordenadas,
         IIF(ORDEN_CLIENTE.ord_ins_estado_sin_servicio = 'True', 'SI', 'NO') AS cortado,
+
         t_Estado_Ordenes_Instalaciones.est_ord_ins_nombre AS estado_instalacion,
         t_Estado_Servicio_Internet.est_ser_int_nombre AS servicio,
         ORDEN_CLIENTE.est_ser_int_id AS estado_servicio_id,
+
         t_Servicios_Internet.ser_int_nombre AS tipo_instalacion,
         t_Forma_Servicio.for_ser_nombre AS tipo,
         t_Planes_Internet.pla_int_nombre AS plan_nombre,
         t_Planes_Internet.pla_int_precio AS precio,
+
         CASE 
           WHEN ORDEN_CLIENTE.ord_ins_fecha_pago IS NOT NULL THEN 'PAGADO'
           ELSE 'PENDIENTE'
         END AS estado,
-        EMPLEADO_TECNICO.emp_nombres + ' ' + EMPLEADO_TECNICO.emp_apellidos AS instalado_por
-      FROM 
-        t_Ordenes_Instalaciones AS ORDEN_CLIENTE
+
+        EMPLEADO_TECNICO.emp_nombres + ' ' + EMPLEADO_TECNICO.emp_apellidos AS instalado_por,
+
+        -- 👇 NUEVO: deuda + meses deuda calculados por pagos pendientes
+        COALESCE(pp.TOTAL, 0) AS deuda,
+        COALESCE(pp.NUMERO_MESES, 0) AS meses_deuda
+
+      FROM t_Ordenes_Instalaciones AS ORDEN_CLIENTE
         INNER JOIN t_Planes_Internet ON t_Planes_Internet.pla_int_id = ORDEN_CLIENTE.pla_int_id
         INNER JOIN t_Forma_Servicio ON t_Forma_Servicio.for_ser_id = ORDEN_CLIENTE.for_ser_id
         INNER JOIN t_Estado_Ordenes_Instalaciones ON t_Estado_Ordenes_Instalaciones.est_ord_ins_id = ORDEN_CLIENTE.est_ord_id
@@ -409,10 +451,12 @@ async function selectByOrdnIns(servicioOrdIns) {
         INNER JOIN t_Servicios_Internet ON t_Servicios_Internet.ser_int_id = ORDEN_CLIENTE.ser_int_id
         LEFT JOIN t_Empleados AS EMPLEADO_TECNICO ON EMPLEADO_TECNICO.emp_id = ORDEN_CLIENTE.emp_id
         LEFT JOIN t_Clientes AS c ON c.cli_cedula = ORDEN_CLIENTE.cli_cedula
-      WHERE ORDEN_CLIENTE.est_ser_int_id <> 10
-        AND ORDEN_CLIENTE.ord_ins_id = @servicioOrdIns
-      ORDER BY 
-        ORDEN_CLIENTE.ord_ins_fecha_instalacion DESC;
+        LEFT JOIN TABLA_PENDIENTE_PAGOS pp ON pp.ORDEN_ID = ORDEN_CLIENTE.ord_ins_id
+
+      WHERE ORDEN_CLIENTE.ord_ins_id = @servicioOrdIns
+        AND (@incl_elim = 1 OR ORDEN_CLIENTE.est_ser_int_id <> 10)
+
+      ORDER BY ORDEN_CLIENTE.ord_ins_fecha_instalacion DESC;
     `;
 
     const result = await request.query(q);
@@ -420,6 +464,7 @@ async function selectByOrdnIns(servicioOrdIns) {
     if (rows.length === 0) return null;
 
     const { cedula, nombre_completo } = rows[0];
+
     const servicios = rows
       .map((row) => ({
         coordenadas: row.coordenadas?.trim() ?? "",
@@ -428,20 +473,28 @@ async function selectByOrdnIns(servicioOrdIns) {
         referencia: row.referencia,
         orden_instalacion: row.orden_instalacion,
         fecha_instalacion: row.fecha_instalacion,
+
         onu: row.onu,
         prorroga: row.prorroga,
         fecha_prorroga: row.fecha_prorroga,
         telefonos: row.telefonos,
-        estado: row.estado,
+
+        estado: row.estado, // PAGADO / PENDIENTE
         instalado_por: row.instalado_por,
         plan_nombre: row.plan_nombre,
         precio: row.precio,
-        servicio: row.servicio,
+
+        servicio: row.servicio, // nombre estado servicio
         estado_instalacion: row.estado_instalacion,
         tipo_instalacion: row.tipo_instalacion,
         tipo: row.tipo,
         cortado: row.cortado,
-        estado_servicio_id: row.estado_servicio_id,
+
+        // 👇 NUEVO
+        deuda: Number(row.deuda || 0),
+        meses_deuda: Number(row.meses_deuda || 0),
+
+        estado_servicio_id: Number(row.estado_servicio_id || 0),
       }))
       .sort((a, b) => b.estado_servicio_id - a.estado_servicio_id)
       .map(({ estado_servicio_id, ...rest }) => rest);
@@ -452,7 +505,6 @@ async function selectByOrdnIns(servicioOrdIns) {
     throw error;
   }
 }
-
 /** ===================== INSTALACIONES PENDIENTES ===================== */
 
 async function selectAllInstPend() {
