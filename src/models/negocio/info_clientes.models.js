@@ -260,111 +260,131 @@ async function selectDataArrayActivosByCed(cedulaParam) {
 
 /** ===================== MAPA ===================== */
 
+// models/negocio/info_clientes.models.js
 async function selectAllDataMapa({
   suc_id = null,
-  min_meses = 0,
+  num_meses = 0,
+  meses_modo = "GTE", // "GTE" (>=) | "EQ" (=)
   incluir_eliminados = true,
 } = {}) {
-  const request = await getRequest();
+  try {
+    const request = await getRequest();
 
-  // params
-  request.input("suc_id", sql.Int, suc_id ?? 0);
-  request.input("min_meses", sql.Int, Number(min_meses || 0));
-  request.input("incl_elim", sql.Int, incluir_eliminados ? 1 : 0);
+    request.input("suc_id", sql.Int, suc_id ?? 0);
+    request.input("num_meses", sql.Int, Number(num_meses || 0));
+    request.input(
+      "meses_modo",
+      sql.VarChar(3),
+      meses_modo === "EQ" ? "EQ" : "GTE",
+    );
+    request.input("incl_elim", sql.Int, incluir_eliminados ? 1 : 0);
 
-  // si no viene suc_id, mantenemos tu comportamiento actual por nombre
-  request.input("suc_nombre", sql.VarChar, "LATACUNGA");
+    // compat: si no mandas suc_id, mantiene tu comportamiento actual
+    request.input("suc_nombre", sql.VarChar, "LATACUNGA");
 
-  const q = `
-    WITH TABLA_PENDIENTE_PAGOS AS (
-      SELECT 
-        TABLA_DEUDAS.ORDEN_ID as ORDEN_ID,
-        SUM(TABLA_DEUDAS.NUMERO_MESES) as NUMERO_MESES,
-        SUM(TABLA_DEUDAS.TOTAL) as TOTAL
-      FROM (
+    const q = `
+      WITH TABLA_PENDIENTE_PAGOS AS (
         SELECT 
-          pmi.ord_ins_id as ORDEN_ID,
-          COUNT(pmi.ord_ins_id) as NUMERO_MESES,
-          SUM(pmi.pag_men_int_total) TOTAL
-        FROM t_Pagos_Mensual_Internet pmi
-        WHERE pmi.est_pag_fac_int = 1
-          AND pmi.ser_int_id = 50
-        GROUP BY pmi.ord_ins_id
+          TABLA_DEUDAS.ORDEN_ID as ORDEN_ID,
+          SUM(TABLA_DEUDAS.NUMERO_MESES) as NUMERO_MESES,
+          SUM(TABLA_DEUDAS.TOTAL) AS TOTAL
+        FROM (
+          SELECT 
+            pmi.ord_ins_id as ORDEN_ID,
+            COUNT(pmi.ord_ins_id) as NUMERO_MESES,
+            SUM(pmi.pag_men_int_total) TOTAL
+          FROM t_Pagos_Mensual_Internet pmi
+          WHERE pmi.est_pag_fac_int = 1 -- PENDIENTE PAGO
+            AND pmi.ser_int_id = 50
+          GROUP BY pmi.ord_ins_id
 
-        UNION ALL
+          UNION ALL
 
-        SELECT 
-          pmi.ord_ins_id as ORDEN_ID,
-          0 as NUMERO_MESES,
-          SUM(pmi.pag_men_int_total) TOTAL
-        FROM t_Pagos_Mensual_Internet pmi
-        WHERE pmi.est_pag_fac_int = 1
-          AND pmi.ser_int_id <> 50
-        GROUP BY pmi.ord_ins_id
-      ) TABLA_DEUDAS
-      GROUP BY TABLA_DEUDAS.ORDEN_ID
-    )
-    SELECT 
-      c.cli_cedula AS cedula,
-      CONCAT(COALESCE(c.cli_nombres,''),' ',COALESCE(c.cli_apellidos,'')) AS nombre_completo,
-      (COALESCE(o.ord_ins_coordenadas_x,'') + ',' + COALESCE(o.ord_ins_coordenadas_y,'')) AS coordenadas,
-      o.ord_ins_ip_equipo_final AS ip,
-      o.ord_ins_id AS orden_instalacion,
-      t.tip_enl_nombre_1 AS enlace,
-
-      o.est_ser_int_id AS estado_servicio_id,
-      esi.est_ser_int_nombre AS estado_servicio_nombre,
-
-      COALESCE(pp.TOTAL, 0) AS deuda,
-      COALESCE(pp.NUMERO_MESES, 0) AS meses_deuda
-    FROM t_Clientes c
-    JOIN t_Ordenes_Instalaciones o ON c.cli_cedula = o.cli_cedula
-    JOIN t_Sucursales s ON o.suc_id = s.suc_id
-    JOIN t_Planes_Internet p ON o.pla_int_id = p.pla_int_id
-    JOIN t_Tipos_Enlace t ON p.tip_enl_id = t.tip_enl_id
-    LEFT JOIN t_Estado_Servicio_Internet esi ON esi.est_ser_int_id = o.est_ser_int_id
-    LEFT JOIN TABLA_PENDIENTE_PAGOS pp ON pp.ORDEN_ID = o.ord_ins_id
-    WHERE
-      -- sucursal: si viene suc_id usamos eso; si no, por nombre LATACUNGA
-      (
-        (@suc_id <> 0 AND o.suc_id = @suc_id)
-        OR
-        (@suc_id = 0 AND s.suc_nombre = @suc_nombre)
+          SELECT 
+            pmi.ord_ins_id as ORDEN_ID,
+            0 as NUMERO_MESES,
+            SUM(pmi.pag_men_int_total) TOTAL
+          FROM t_Pagos_Mensual_Internet pmi
+          WHERE pmi.est_pag_fac_int = 1 -- PENDIENTE PAGO
+            AND pmi.ser_int_id <> 50
+          GROUP BY pmi.ord_ins_id
+        ) TABLA_DEUDAS
+        GROUP BY TABLA_DEUDAS.ORDEN_ID
       )
-      -- incluir o no eliminados
-      AND (@incl_elim = 1 OR o.est_ser_int_id <> 10)
-      -- filtro opcional por meses deuda
-      AND (@min_meses = 0 OR COALESCE(pp.NUMERO_MESES,0) >= @min_meses)
-    ORDER BY c.cli_cedula, nombre_completo;
-  `;
+      SELECT 
+        c.cli_cedula AS cedula,
+        CONCAT(COALESCE(c.cli_nombres, ''), ' ', COALESCE(c.cli_apellidos, '')) AS nombre_completo,
+        CONCAT(COALESCE(o.ord_ins_coordenadas_x, ''), ',', COALESCE(o.ord_ins_coordenadas_y, '')) AS coordenadas,
+        o.ord_ins_ip_equipo_final AS ip,
+        o.ord_ins_id AS orden_instalacion,
+        COALESCE(pp.TOTAL, 0) AS deuda,
+        COALESCE(pp.NUMERO_MESES, 0) AS meses_deuda,
+        t.tip_enl_nombre_1 AS enlace,
+        o.est_ser_int_id AS estado_servicio_id
+      FROM t_Clientes c
+      JOIN t_Ordenes_Instalaciones o ON c.cli_cedula = o.cli_cedula
+      JOIN t_Sucursales s ON o.suc_id = s.suc_id
+      JOIN t_Planes_Internet p ON o.pla_int_id = p.pla_int_id
+      JOIN t_Tipos_Enlace t ON p.tip_enl_id = t.tip_enl_id
+      LEFT JOIN TABLA_PENDIENTE_PAGOS pp ON pp.ORDEN_ID = o.ord_ins_id
+      WHERE
+        (
+          (@suc_id <> 0 AND o.suc_id = @suc_id)
+          OR
+          (@suc_id = 0 AND s.suc_nombre = @suc_nombre)
+        )
+        AND (@incl_elim = 1 OR o.est_ser_int_id <> 10)
+        AND (
+          @num_meses = 0
+          OR (
+            @meses_modo = 'EQ' AND COALESCE(pp.NUMERO_MESES, 0) = @num_meses
+          )
+          OR (
+            @meses_modo <> 'EQ' AND COALESCE(pp.NUMERO_MESES, 0) >= @num_meses
+          )
+        )
+      ORDER BY c.cli_cedula, nombre_completo;
+    `;
 
-  const result = await request.query(q);
+    const result = await request.query(q);
 
-  const grouped = result.recordset.reduce((acc, row) => {
-    const key = row.cedula;
-    let cliente = acc.find((c) => c.cedula === key);
-    if (!cliente) {
-      cliente = {
-        cedula: row.cedula,
-        nombre_completo: row.nombre_completo,
-        servicios: [],
-      };
-      acc.push(cliente);
-    }
-    cliente.servicios.push({
-      coordenadas: (row.coordenadas || "").trim(),
-      ip: row.ip,
-      orden_instalacion: row.orden_instalacion,
-      deuda: Number(row.deuda || 0),
-      meses_deuda: Number(row.meses_deuda || 0),
-      enlace: row.enlace,
-      estado_servicio_id: Number(row.estado_servicio_id || 0),
-      estado_servicio_nombre: row.estado_servicio_nombre || "",
-    });
-    return acc;
-  }, []);
+    const grouped = result.recordset.reduce((acc, row) => {
+      const {
+        cedula,
+        nombre_completo,
+        coordenadas,
+        ip,
+        orden_instalacion,
+        deuda,
+        meses_deuda,
+        enlace,
+        estado_servicio_id,
+      } = row;
 
-  return grouped;
+      let cliente = acc.find((c) => c.cedula === cedula);
+      if (!cliente) {
+        cliente = { cedula, nombre_completo, servicios: [] };
+        acc.push(cliente);
+      }
+
+      cliente.servicios.push({
+        coordenadas: (coordenadas || "").trim(),
+        ip,
+        orden_instalacion,
+        deuda: Number(deuda || 0),
+        meses_deuda: Number(meses_deuda || 0),
+        enlace,
+        estado_servicio_id: Number(estado_servicio_id || 0),
+      });
+
+      return acc;
+    }, []);
+
+    return grouped;
+  } catch (error) {
+    console.error("❌ Error en selectAllDataMapa:", error.message);
+    throw error;
+  }
 }
 /** ===================== DETALLE POR ORD_INS ===================== */
 

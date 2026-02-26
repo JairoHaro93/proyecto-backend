@@ -105,16 +105,30 @@ const getDataArrayActivos = async (req, res, next) => {
 // controllers/negocio/info_clientes.controllers.js
 const getAllDataMapa = async (req, res, next) => {
   try {
-    const suc_id = Number(req.query.suc_id || 0) || null; // opcional
-    const min_meses = Number(req.query.min_meses || 0) || 0; // opcional
+    const suc_id_raw = req.query.suc_id;
+    const suc_id = suc_id_raw != null ? Number(suc_id_raw) : null;
+
+    // soporta num_meses o min_meses (compat)
+    const num_meses_raw = req.query.num_meses ?? req.query.min_meses ?? 0;
+    const num_meses = Math.max(0, Number(num_meses_raw) || 0);
+
+    // modo: EQ (=) o GTE (>=)
+    const meses_modo_in = String(req.query.meses_modo || "GTE")
+      .trim()
+      .toUpperCase();
+
+    const meses_modo = meses_modo_in === "EQ" ? "EQ" : "GTE";
+
     const incluir_eliminados =
       String(req.query.incluir_eliminados ?? "true").toLowerCase() !== "false";
 
     const result = await selectAllDataMapa({
-      suc_id,
-      min_meses,
+      suc_id: Number.isFinite(suc_id) ? suc_id : null,
+      num_meses,
+      meses_modo,
       incluir_eliminados,
     });
+
     res.json(result);
   } catch (error) {
     next(error);
