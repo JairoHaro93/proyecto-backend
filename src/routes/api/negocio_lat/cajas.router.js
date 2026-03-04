@@ -1,17 +1,38 @@
 const router = require("express").Router();
 
 const {
+  // legacy
   createCaja,
   getCajas,
+  getCajaById,
+  updateCaja,
+
+  // nuevo flujo PON/NAP
+  createPon,
+  createNap,
+  addCajaSplitter,
+  getCajaDisponibilidad,
+  getCajaRutasDisponibles,
+  getDisponibilidadBatch,
 } = require("../../../controllers/negocio_lat/cajas.controllers");
+
 const { checkToken } = require("../../../utils/middlewares");
 
-//OBTIENE TODAS LAS CAJAS PARA MAPEARLEAS
+// ===== NUEVO: Crear PON / NAP =====
+router.post("/pon", checkToken, createPon);
+router.post("/nap", checkToken, createNap);
+
+// ===== NUEVO: Splitters y cálculos =====
+router.post("/:id/splitters", checkToken, addCajaSplitter);
+router.post("/disponibilidad-batch", checkToken, getDisponibilidadBatch);
+router.get("/:id/disponibilidad", checkToken, getCajaDisponibilidad);
+
+router.get("/:id/rutas-disponibles", checkToken, getCajaRutasDisponibles);
+
+// ===== LEGACY / BASE =====
 router.get("/", checkToken, getCajas);
-
-//CREA UNA CAJA
+router.get("/:id", checkToken, getCajaById);
 router.post("/", checkToken, createCaja);
-
-//ACTUALIZA UNA CAJA
+router.put("/:id", checkToken, updateCaja);
 
 module.exports = router;
