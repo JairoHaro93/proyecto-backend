@@ -26,6 +26,12 @@ function insertCaja({
   caja_segmento,
   caja_pon_id,
   caja_pon_ruta,
+
+  // ✅ OLT
+  olt_id,
+  olt_slot,
+  olt_pon,
+  olt_frame_override,
 }) {
   return poolmysql.query(
     `
@@ -40,8 +46,12 @@ function insertCaja({
       caja_root_split,
       caja_segmento,
       caja_pon_id,
-      caja_pon_ruta
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      caja_pon_ruta,
+      olt_id,
+      olt_slot,
+      olt_pon,
+      olt_frame_override
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `,
     [
       caja_ciudad ?? null,
@@ -55,6 +65,10 @@ function insertCaja({
       caja_segmento ?? null,
       caja_pon_id ?? null,
       caja_pon_ruta ?? null,
+      olt_id ?? null,
+      olt_slot ?? null,
+      olt_pon ?? null,
+      olt_frame_override ?? null,
     ],
   );
 }
@@ -67,19 +81,19 @@ function listCajas(filters = {}) {
   const params = [];
 
   if (ciudad) {
-    where.push(`caja_ciudad = ?`);
+    where.push(`C.caja_ciudad = ?`);
     params.push(ciudad);
   }
   if (tipo) {
-    where.push(`caja_tipo = ?`);
+    where.push(`C.caja_tipo = ?`);
     params.push(tipo);
   }
   if (estado) {
-    where.push(`caja_estado = ?`);
+    where.push(`C.caja_estado = ?`);
     params.push(estado);
   }
   if (q) {
-    where.push(`(caja_nombre LIKE ? OR caja_hilo LIKE ?)`);
+    where.push(`(C.caja_nombre LIKE ? OR C.caja_hilo LIKE ?)`);
     params.push(`%${q}%`, `%${q}%`);
   }
 
@@ -94,10 +108,10 @@ function listCajas(filters = {}) {
     const maxLng = Math.max(neLng, swLng);
 
     where.push(
-      `CAST(SUBSTRING_INDEX(caja_coordenadas, ',', 1) AS DECIMAL(10,6)) BETWEEN ? AND ?`,
+      `CAST(SUBSTRING_INDEX(C.caja_coordenadas, ',', 1) AS DECIMAL(10,6)) BETWEEN ? AND ?`,
     );
     where.push(
-      `CAST(SUBSTRING_INDEX(caja_coordenadas, ',', -1) AS DECIMAL(10,6)) BETWEEN ? AND ?`,
+      `CAST(SUBSTRING_INDEX(C.caja_coordenadas, ',', -1) AS DECIMAL(10,6)) BETWEEN ? AND ?`,
     );
     params.push(minLat, maxLat, minLng, maxLng);
   }
@@ -106,24 +120,39 @@ function listCajas(filters = {}) {
 
   const sql = `
     SELECT
-      id,
-      caja_ciudad,
-      caja_tipo,
-      caja_estado,
-      caja_nombre,
-      caja_hilo,
-      caja_coordenadas,
-      caja_observacion,
-      caja_root_split,
-      caja_segmento,
-      caja_pon_id,
-      caja_pon_ruta,
-      CAST(SUBSTRING_INDEX(caja_coordenadas, ',', 1) AS DECIMAL(10,6)) AS lat,
-      CAST(SUBSTRING_INDEX(caja_coordenadas, ',', -1) AS DECIMAL(10,6)) AS lng,
-      created_at
-    FROM neg_t_cajas
+      C.id,
+      C.caja_ciudad,
+      C.caja_tipo,
+      C.caja_estado,
+      C.caja_nombre,
+      C.caja_hilo,
+      C.caja_coordenadas,
+      C.caja_observacion,
+      C.caja_root_split,
+      C.caja_segmento,
+      C.caja_pon_id,
+      C.caja_pon_ruta,
+
+      -- ✅ OLT (guardado en caja)
+      C.olt_id,
+      C.olt_slot,
+      C.olt_pon,
+      C.olt_frame_override,
+
+      -- ✅ datos OLT (opcional para UI)
+      O.olt_nombre,
+      O.olt_frame_default,
+
+      -- ✅ frame efectivo
+      COALESCE(C.olt_frame_override, O.olt_frame_default) AS olt_frame,
+
+      CAST(SUBSTRING_INDEX(C.caja_coordenadas, ',', 1) AS DECIMAL(10,6)) AS lat,
+      CAST(SUBSTRING_INDEX(C.caja_coordenadas, ',', -1) AS DECIMAL(10,6)) AS lng,
+      C.created_at
+    FROM neg_t_cajas C
+    LEFT JOIN neg_t_olts O ON O.id = C.olt_id
     ${whereSql}
-    ORDER BY id DESC
+    ORDER BY C.id DESC
     LIMIT ? OFFSET ?;
   `;
 
@@ -135,21 +164,36 @@ function selectCajaById(id) {
   return poolmysql.query(
     `
     SELECT
-      id,
-      caja_ciudad,
-      caja_tipo,
-      caja_estado,
-      caja_nombre,
-      caja_hilo,
-      caja_coordenadas,
-      caja_observacion,
-      caja_root_split,
-      caja_segmento,
-      caja_pon_id,
-      caja_pon_ruta,
-      created_at
-    FROM neg_t_cajas
-    WHERE id = ?
+      C.id,
+      C.caja_ciudad,
+      C.caja_tipo,
+      C.caja_estado,
+      C.caja_nombre,
+      C.caja_hilo,
+      C.caja_coordenadas,
+      C.caja_observacion,
+      C.caja_root_split,
+      C.caja_segmento,
+      C.caja_pon_id,
+      C.caja_pon_ruta,
+
+      -- ✅ OLT (guardado en caja)
+      C.olt_id,
+      C.olt_slot,
+      C.olt_pon,
+      C.olt_frame_override,
+
+      -- ✅ datos OLT (opcional para UI)
+      O.olt_nombre,
+      O.olt_frame_default,
+
+      -- ✅ frame efectivo
+      COALESCE(C.olt_frame_override, O.olt_frame_default) AS olt_frame,
+
+      C.created_at
+    FROM neg_t_cajas C
+    LEFT JOIN neg_t_olts O ON O.id = C.olt_id
+    WHERE C.id = ?
     LIMIT 1;
     `,
     [id],
@@ -169,6 +213,12 @@ function updateCajaById(id, patch = {}) {
     "caja_segmento",
     "caja_pon_id",
     "caja_pon_ruta",
+
+    // ✅ OLT
+    "olt_id",
+    "olt_slot",
+    "olt_pon",
+    "olt_frame_override",
   ];
 
   const sets = [];
@@ -245,8 +295,6 @@ function countClientesByNap(nap_id) {
 }
 
 // ---------- BATCH HELPERS (para getCajas eficiente) ----------
-
-// NAP usados (clientes por NAP)
 function countClientesByNapIds(napIds) {
   const { uniq, ph } = buildIn(napIds);
   return poolmysql.query(
@@ -260,7 +308,6 @@ function countClientesByNapIds(napIds) {
   );
 }
 
-// PON usados (NAPs colgadas por PON)
 function countNapsByPonIds(ponIds) {
   const { uniq, ph } = buildIn(ponIds);
   return poolmysql.query(
@@ -274,7 +321,6 @@ function countNapsByPonIds(ponIds) {
   );
 }
 
-// Splitters por caja (PONs)
 function listSplittersByCajaIds(cajaIds) {
   const { uniq, ph } = buildIn(cajaIds);
   return poolmysql.query(
@@ -287,12 +333,51 @@ function listSplittersByCajaIds(cajaIds) {
   );
 }
 
-// (Opcional) si algún día lo quieres usar
 function selectCajasByIds(ids) {
   const { uniq, ph } = buildIn(ids);
   return poolmysql.query(
     `SELECT id, caja_tipo, caja_root_split FROM neg_t_cajas WHERE id IN (${ph});`,
     uniq,
+  );
+}
+
+// ---------- OLTs ----------
+function listOltsBySucursal(sucursalId) {
+  return poolmysql.query(
+    `
+    SELECT
+      id,
+      sucursal_id,
+      olt_ciudad,
+      olt_nombre,
+      olt_ip,
+      olt_vendor,
+      olt_frame_default,
+      estado,
+      created_at
+    FROM neg_t_olts
+    WHERE sucursal_id = ?
+      AND estado = 'ACTIVA'
+    ORDER BY olt_nombre ASC;
+    `,
+    [sucursalId],
+  );
+}
+
+function selectOltById(id) {
+  return poolmysql.query(
+    `
+    SELECT
+      id,
+      sucursal_id,
+      olt_ciudad,
+      olt_frame_default,
+      estado
+    FROM neg_t_olts
+    WHERE id = ?
+    LIMIT 1;
+    `,
+    [id],
   );
 }
 
@@ -318,4 +403,8 @@ module.exports = {
 
   // opcional
   selectCajasByIds,
+
+  // ✅ OLTs
+  listOltsBySucursal,
+  selectOltById,
 };

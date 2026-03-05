@@ -266,6 +266,18 @@ async function selectUsuariosParaTurnos({
   return rows;
 }
 
+// ciudades_cobertura.models.js
+async function selectCiudadesBySucursal(sucursalId) {
+  const [rows] = await poolmysql.query(
+    `SELECT ciudad
+     FROM sis_ciudades_cobertura
+     WHERE sucursal_id = ? AND estado='ACTIVA'
+     ORDER BY ciudad ASC`,
+    [sucursalId],
+  );
+  return rows;
+}
+
 module.exports = {
   selectAllUsuarios,
   selectUsuarioById,
@@ -275,4 +287,5 @@ module.exports = {
   deleteUsuario,
   updateUsuarioAuthFlag,
   selectUsuariosParaTurnos,
+  selectCiudadesBySucursal,
 };

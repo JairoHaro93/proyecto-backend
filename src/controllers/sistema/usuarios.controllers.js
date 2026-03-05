@@ -7,6 +7,7 @@ const {
   deleteUsuario,
   selectAllAgendaTecnicos,
   selectUsuariosParaTurnos,
+  selectCiudadesBySucursal,
 } = require("../../models/sistema/usuarios.models");
 
 // -------- helpers mínimos --------
@@ -327,6 +328,49 @@ const getUsuariosParaTurnos = async (req, res, next) => {
     next(err);
   }
 };
+
+// controllers/sistema/usuarios.controllers.js
+
+async function getMisCiudadesCobertura(req, res, next) {
+  try {
+    // checkToken normalmente deja el usuario en req.user
+    const usuarioId = Number(req.user?.id || req.usuario_id || req.usuario?.id);
+
+    if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+      return res
+        .status(400)
+        .json({ message: "El id del usuario es incorrecto" });
+    }
+
+    // 1) obtén el usuario (y su sucursal_id) desde BD
+    const u = await selectUsuarioById(usuarioId);
+    if (!u) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    const sucursalId = Number(u.sucursal_id);
+    if (!Number.isInteger(sucursalId) || sucursalId <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Sucursal inválida para el usuario" });
+    }
+
+    // 2) trae ciudades cobertura por sucursal (depende cómo retorne tu model)
+    const resp = await selectCiudadesBySucursal(sucursalId);
+
+    // normaliza: a veces mysql2 devuelve [rows]
+    const rows = Array.isArray(resp) && Array.isArray(resp[0]) ? resp[0] : resp;
+
+    const ciudades = (rows || [])
+      .map((x) => (x?.ciudad ?? x?.CIUDAD ?? x)?.toString()?.trim())
+      .filter(Boolean);
+
+    return res.json({ data: ciudades });
+  } catch (e) {
+    next(e);
+  }
+}
+
 module.exports = {
   getAllUsuarios,
   getUsuarioById,
@@ -335,4 +379,5 @@ module.exports = {
   updateUsuario,
   deleteByID,
   getUsuariosParaTurnos,
+  getMisCiudadesCobertura,
 };

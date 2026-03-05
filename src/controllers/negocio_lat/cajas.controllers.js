@@ -15,6 +15,10 @@ const {
   countClientesByNapIds,
   countNapsByPonIds,
   listSplittersByCajaIds,
+
+  // ✅ OLTs
+  listOltsBySucursal,
+  selectOltById,
 } = require("../../models/negocio_lat/cajas.model");
 
 // ---------- helpers ----------
@@ -23,6 +27,28 @@ const VALID_SPLITS = new Set([2, 8, 16]);
 function toInt(v, def) {
   const n = Number.parseInt(String(v), 10);
   return Number.isFinite(n) ? n : def;
+}
+
+function toUInt(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number.parseInt(String(v), 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function validateOltPort({ olt_id, olt_slot, olt_pon }) {
+  const oid = toUInt(olt_id);
+  const slot = toUInt(olt_slot);
+  const pon = toUInt(olt_pon);
+
+  if (!oid) return { ok: false, msg: "olt_id requerido" };
+  if (slot === null) return { ok: false, msg: "olt_slot requerido" };
+  if (pon === null) return { ok: false, msg: "olt_pon requerido" };
+
+  // rangos neutrales (ajusta luego si quieres)
+  if (slot > 31) return { ok: false, msg: "olt_slot fuera de rango (0-31)" };
+  if (pon > 31) return { ok: false, msg: "olt_pon fuera de rango (0-31)" };
+
+  return { ok: true, oid, slot, pon };
 }
 
 function normalizeCoords(s) {
@@ -121,7 +147,7 @@ async function getCajaOr404(id, res) {
   return caja;
 }
 
-// ---------- LEGACY (tu base actual) ----------
+// ---------- LEGACY ----------
 async function createCaja(req, res) {
   try {
     const {
@@ -133,11 +159,16 @@ async function createCaja(req, res) {
       caja_ciudad,
       caja_observacion,
 
-      // nuevos campos (opcionales en legacy)
       caja_root_split,
       caja_segmento,
       caja_pon_id,
       caja_pon_ruta,
+
+      // ✅ opcional legacy
+      olt_id,
+      olt_slot,
+      olt_pon,
+      olt_frame_override,
     } = req.body;
 
     if (!caja_tipo || !caja_nombre) {
@@ -164,25 +195,17 @@ async function createCaja(req, res) {
       caja_segmento,
       caja_pon_id,
       caja_pon_ruta,
+
+      olt_id: toUInt(olt_id),
+      olt_slot: toUInt(olt_slot),
+      olt_pon: toUInt(olt_pon),
+      olt_frame_override: toUInt(olt_frame_override),
     });
 
     return res.status(201).json({
       success: true,
       message: "Caja creada correctamente",
-      data: {
-        id: result.insertId,
-        caja_ciudad: caja_ciudad ?? null,
-        caja_tipo,
-        caja_estado: caja_estado || "DISEÑO",
-        caja_nombre,
-        caja_hilo: caja_hilo ?? null,
-        caja_coordenadas: coordsNorm ?? caja_coordenadas ?? null,
-
-        caja_root_split: caja_root_split ?? null,
-        caja_segmento: caja_segmento ?? null,
-        caja_pon_id: caja_pon_id ?? null,
-        caja_pon_ruta: caja_pon_ruta ?? null,
-      },
+      data: { id: result.insertId },
     });
   } catch (error) {
     console.error("Error al crear la caja:", error);
@@ -312,6 +335,7 @@ async function getCajas(req, res) {
     });
   }
 }
+
 async function getCajaById(req, res) {
   try {
     const id = toInt(req.params.id, 0);
@@ -357,6 +381,12 @@ async function updateCaja(req, res) {
       caja_segmento: req.body.caja_segmento,
       caja_pon_id: req.body.caja_pon_id,
       caja_pon_ruta: req.body.caja_pon_ruta,
+
+      // ✅ OLT
+      olt_id: req.body.olt_id,
+      olt_slot: req.body.olt_slot,
+      olt_pon: req.body.olt_pon,
+      olt_frame_override: req.body.olt_frame_override,
     };
 
     // 2) Verificar que venga algo
@@ -378,10 +408,14 @@ async function updateCaja(req, res) {
       // NO permitir que cambien estos campos en NAP (heredados del PON)
       delete patch.caja_ciudad;
       delete patch.caja_segmento;
-
-      // recomendado: bloquear mover NAP de PON o cambiar puerto desde PUT genérico
       delete patch.caja_pon_id;
       delete patch.caja_pon_ruta;
+
+      // ✅ bloquear OLT en NAP (heredado del PON)
+      delete patch.olt_id;
+      delete patch.olt_slot;
+      delete patch.olt_pon;
+      delete patch.olt_frame_override;
     }
 
     // 4) Normalizar/validar coords si vienen
@@ -415,43 +449,89 @@ async function updateCaja(req, res) {
     });
   } catch (error) {
     console.error("Error al actualizar caja:", error);
+
+    if (error && (error.code === "ER_DUP_ENTRY" || error.errno === 1062)) {
+      return res.status(409).json({
+        success: false,
+        message: "Valor duplicado (posible conflicto de OLT/slot/pon en PON)",
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Error interno del servidor al actualizar la caja",
     });
   }
 }
-// ---------- NUEVO: PON / NAP ----------
 
+// ---------- NUEVO: PON / NAP ----------
 async function createPon(req, res) {
   try {
     const {
-      caja_ciudad,
-      caja_segmento,
+      caja_segmento, // lo sigues usando (0/4/9 o 0/4/9/S2/1)
       caja_root_split,
       caja_estado,
       caja_hilo,
       caja_coordenadas,
       caja_observacion,
+
+      // OLT
+      olt_id,
+      olt_slot,
+      olt_pon,
     } = req.body;
 
     const root = Number(caja_root_split);
-    if (!caja_ciudad || !caja_segmento || !VALID_SPLITS.has(root)) {
+    if (!caja_segmento || !VALID_SPLITS.has(root)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Requerido: caja_ciudad, caja_segmento y caja_root_split (2|8|16)",
+        message: "Requerido: caja_segmento y caja_root_split (2|8|16)",
       });
     }
 
-    const abbr = cityAbbr(caja_ciudad);
-    const nombre = `${abbr}-PON-${String(caja_segmento).trim()}-R${root}`;
+    const v = validateOltPort({ olt_id, olt_slot, olt_pon });
+    if (!v.ok) {
+      return res.status(400).json({ success: false, message: v.msg });
+    }
+
+    // ✅ 1) cargar OLT y validar sucursal
+    const [oltRows] = await selectOltById(v.oid);
+    const olt = oltRows?.[0];
+    if (!olt) {
+      return res
+        .status(400)
+        .json({ success: false, message: "OLT no encontrada" });
+    }
+    if (String(olt.estado || "").toUpperCase() !== "ACTIVA") {
+      return res.status(400).json({ success: false, message: "OLT inactiva" });
+    }
+
+    const sucursalUser = Number(req.user?.sucursal_id || 0);
+    if (sucursalUser && Number(olt.sucursal_id) !== sucursalUser) {
+      return res.status(403).json({
+        success: false,
+        message: "La OLT no pertenece a tu sucursal",
+      });
+    }
+
+    const ciudadDesdeOlt = String(olt.olt_ciudad || "").trim();
+    if (!ciudadDesdeOlt) {
+      return res.status(400).json({
+        success: false,
+        message: "La OLT no tiene ciudad configurada (olt_ciudad).",
+      });
+    }
+
+    const abbr = cityAbbr(ciudadDesdeOlt);
+    const seg = String(caja_segmento).trim();
+
+    const nombre = `${abbr}-PON-${seg}-R${root}`;
     const coordsNorm = caja_coordenadas
       ? normalizeCoords(caja_coordenadas)
       : null;
 
     const [result] = await insertCaja({
-      caja_ciudad,
+      caja_ciudad: ciudadDesdeOlt,
       caja_tipo: "PON",
       caja_estado: caja_estado || "DISEÑO",
       caja_nombre: nombre,
@@ -460,9 +540,14 @@ async function createPon(req, res) {
       caja_observacion: caja_observacion ?? null,
 
       caja_root_split: root,
-      caja_segmento: String(caja_segmento).trim(),
+      caja_segmento: seg,
       caja_pon_id: null,
       caja_pon_ruta: null,
+
+      olt_id: v.oid,
+      olt_slot: v.slot,
+      olt_pon: v.pon,
+      olt_frame_override: null, // ✅ ya no lo usamos aquí
     });
 
     res.status(201).json({
@@ -472,31 +557,36 @@ async function createPon(req, res) {
     });
   } catch (error) {
     console.error("Error al crear PON:", error);
+
+    if (error && (error.code === "ER_DUP_ENTRY" || error.errno === 1062)) {
+      return res.status(409).json({
+        success: false,
+        message: "Ya existe un PON con esa OLT/slot/pon",
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Error interno del servidor al crear PON",
     });
   }
 }
-
 async function createNap(req, res) {
   try {
     const {
-      caja_root_split, // split hacia clientes (2|8|16)
+      caja_root_split,
       caja_estado,
       caja_hilo,
       caja_coordenadas,
       caja_observacion,
-
       caja_pon_id,
-      caja_pon_ruta, // "5" o "7/2"
+      caja_pon_ruta,
     } = req.body;
 
     const root = Number(caja_root_split);
     const ponId = Number(caja_pon_id);
     const ruta = String(caja_pon_ruta || "").trim();
 
-    // ✅ ya NO pedimos ciudad ni segmento aquí
     if (!VALID_SPLITS.has(root) || !ponId || !isRutaPath(ruta)) {
       return res.status(400).json({
         success: false,
@@ -515,7 +605,6 @@ async function createNap(req, res) {
       });
     }
 
-    // ✅ heredados del PON (OBLIGATORIO que el PON los tenga)
     const ciudadHeredada = String(pon.caja_ciudad || "").trim();
     const segHeredado = String(pon.caja_segmento || "").trim();
 
@@ -524,6 +613,19 @@ async function createNap(req, res) {
         success: false,
         message:
           "El PON padre no tiene caja_ciudad/caja_segmento. Corrige el PON.",
+      });
+    }
+
+    // ✅ OLT heredado del PON
+    const ponOltId = Number(pon.olt_id || 0);
+    const ponSlot = pon.olt_slot;
+    const ponPon = pon.olt_pon;
+
+    if (!ponOltId || ponSlot == null || ponPon == null) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "El PON padre no tiene OLT/slot/pon. Configúralo primero en el PON.",
       });
     }
 
@@ -572,6 +674,12 @@ async function createNap(req, res) {
       caja_segmento: segHeredado,
       caja_pon_id: ponId,
       caja_pon_ruta: ruta,
+
+      // ✅ OLT heredado
+      olt_id: ponOltId,
+      olt_slot: Number(ponSlot),
+      olt_pon: Number(ponPon),
+      olt_frame_override: pon.olt_frame_override ?? null,
     });
 
     return res.status(201).json({
@@ -592,8 +700,8 @@ async function createNap(req, res) {
     });
   }
 }
-// Registrar un splitter (expansión) en una caja
-// IMPORTANTE: en esta v1, lo usamos para PON (y también podría ser NAP si luego migramos clientes a rutas).
+
+// Registrar un splitter (expansión)
 async function addCajaSplitter(req, res) {
   try {
     const cajaId = toInt(req.params.id, 0);
@@ -614,7 +722,6 @@ async function addCajaSplitter(req, res) {
     const caja = await getCajaOr404(cajaId, res);
     if (!caja) return;
 
-    // obtener hojas actuales
     const [splRows] = await listSplittersByCaja(cajaId);
     const leaves = computeLeafPaths(caja.caja_root_split, splRows || []);
     if (!leaves.includes(p)) {
@@ -625,7 +732,6 @@ async function addCajaSplitter(req, res) {
       });
     }
 
-    // si es PON, no permitir expandir un path ya ocupado por una NAP
     if (String(caja.caja_tipo || "").toUpperCase() === "PON") {
       const [napRoutesRows] = await listNapRoutesByPon(cajaId);
       const used = new Set(
@@ -655,7 +761,7 @@ async function addCajaSplitter(req, res) {
   }
 }
 
-// Disponibilidad (capacidad/usados/disponibles) según tipo
+// Disponibilidad
 async function getCajaDisponibilidad(req, res) {
   try {
     const cajaId = toInt(req.params.id, 0);
@@ -679,7 +785,7 @@ async function getCajaDisponibilidad(req, res) {
       );
 
       const capacidad = leaves.length;
-      const usados = Array.from(used).filter((r) => leaves.includes(r)).length; // consistentes
+      const usados = Array.from(used).filter((r) => leaves.includes(r)).length;
       const disponibles = Math.max(0, capacidad - usados);
 
       return res.json({
@@ -700,7 +806,7 @@ async function getCajaDisponibilidad(req, res) {
 
       const [cntRows] = await countClientesByNap(cajaId);
       const usados = Number(cntRows?.[0]?.usados || 0);
-      const capacidad = root; // v1: NAP capacidad = root_split (2/8/16)
+      const capacidad = root;
       const disponibles = Math.max(0, capacidad - usados);
 
       return res.json({
@@ -782,7 +888,6 @@ async function getDisponibilidadBatch(req, res) {
       ),
     ];
 
-    // evita matar el server si el viewport devuelve demasiados
     ids = ids.slice(0, 300);
 
     if (!ids.length) {
@@ -792,7 +897,6 @@ async function getDisponibilidadBatch(req, res) {
     const data = [];
 
     for (const id of ids) {
-      // 1) caja
       const [rows] = await selectCajaById(id);
       const caja = rows?.[0];
       if (!caja) continue;
@@ -801,7 +905,6 @@ async function getDisponibilidadBatch(req, res) {
         .toUpperCase()
         .trim();
 
-      // 2) NAP -> capacidad = root_split; usados = COUNT clientes
       if (tipo === "NAP") {
         const root = Number(caja.caja_root_split);
         const capacidad = Number.isFinite(root) ? root : 0;
@@ -819,7 +922,6 @@ async function getDisponibilidadBatch(req, res) {
         continue;
       }
 
-      // 3) PON -> capacidad = hojas del árbol; usados = NAPs colgadas
       if (tipo === "PON") {
         const root = Number(caja.caja_root_split);
 
@@ -840,7 +942,6 @@ async function getDisponibilidadBatch(req, res) {
         continue;
       }
 
-      // otros tipos (si existieran)
       data.push({ id, tipo, capacidad: 0, usados: 0, disponibles: 0 });
     }
 
@@ -859,6 +960,32 @@ async function getDisponibilidadBatch(req, res) {
   }
 }
 
+// ✅ OLTs por sucursal del usuario logueado
+async function getOlts(req, res) {
+  try {
+    const sucursalId = Number(req.user?.sucursal_id);
+    if (!Number.isInteger(sucursalId) || sucursalId <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Sucursal inválida" });
+    }
+
+    const [rows] = await listOltsBySucursal(sucursalId);
+
+    return res.json({
+      success: true,
+      message: "OLTs obtenidas correctamente",
+      data: rows || [],
+    });
+  } catch (e) {
+    console.error("Error getOlts:", e);
+    return res.status(500).json({
+      success: false,
+      message: "Error interno al obtener OLTs",
+    });
+  }
+}
+
 module.exports = {
   // legacy
   createCaja,
@@ -873,4 +1000,7 @@ module.exports = {
   getCajaDisponibilidad,
   getCajaRutasDisponibles,
   getDisponibilidadBatch,
+
+  // ✅ OLTs
+  getOlts,
 };

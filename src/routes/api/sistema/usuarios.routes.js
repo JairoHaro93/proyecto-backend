@@ -1,4 +1,4 @@
-//C:\PROYECTO\Backend\src\routes\api\sistema\usuarios.routes.js
+// C:\PROYECTO\Backend\src\routes\api\sistema\usuarios.routes.js
 const router = require("express").Router();
 
 const {
@@ -9,28 +9,41 @@ const {
   deleteByID,
   getAllAgendaTecnicos,
   getUsuariosParaTurnos,
-} = require("../../../controllers//sistema/usuarios.controllers");
+  getMisCiudadesCobertura,
+} = require("../../../controllers/sistema/usuarios.controllers");
+
 const { checkUsuarioId, checkToken } = require("../../../utils/middlewares");
 
-//OBTENER TODOS LOS USUARIOS
+// ======================
+// RUTAS ESPECÍFICAS PRIMERO
+// ======================
+
+// OBTENER TODOS LOS USUARIOS
 router.get("/", checkToken, getAllUsuarios);
 
-//OBTENER LOS USUARIOS CON OPCION DE AGENDA TECNICOS
+// OBTENER LOS USUARIOS CON OPCION DE AGENDA TECNICOS
 router.get("/agenda-tecnicos", checkToken, getAllAgendaTecnicos);
 
-// 🔹 Lista de usuarios filtrados para módulo de turnos (IMPORTANTE: ANTES de :usuarioId)
+// Lista de usuarios filtrados para módulo de turnos
 router.get("/para-turnos", checkToken, getUsuariosParaTurnos);
 
-//OBTENER USUARIOS POR ID
-router.get("/:usuarioId", checkUsuarioId, getUsuarioById);
+// ✅ OBTENER LAS CIUDADES DE COBERTURA DE MI SUCURSAL (por usuario autenticado)
+router.get("/ciudades-cobertura/mias", checkToken, getMisCiudadesCobertura);
 
-//CREAR USUARIO
-router.post("/", createUsuario);
+// ======================
+// RUTAS CON PARAMETROS AL FINAL
+// ======================
 
-//ACTUALIZAR USUARIO
-router.put("/:usuarioId", checkUsuarioId, updateUsuario);
+// OBTENER USUARIO POR ID
+router.get("/:usuarioId", checkToken, checkUsuarioId, getUsuarioById);
 
-//BORRAR USUARIO
-router.delete("/:usuarioId", checkUsuarioId, deleteByID);
+// CREAR USUARIO
+router.post("/", checkToken, createUsuario);
+
+// ACTUALIZAR USUARIO
+router.put("/:usuarioId", checkToken, checkUsuarioId, updateUsuario);
+
+// BORRAR USUARIO
+router.delete("/:usuarioId", checkToken, checkUsuarioId, deleteByID);
 
 module.exports = router;

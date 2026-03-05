@@ -14,6 +14,9 @@ const {
   getCajaDisponibilidad,
   getCajaRutasDisponibles,
   getDisponibilidadBatch,
+
+  // ✅ OLTs
+  getOlts,
 } = require("../../../controllers/negocio_lat/cajas.controllers");
 
 const { checkToken } = require("../../../utils/middlewares");
@@ -26,8 +29,10 @@ router.post("/nap", checkToken, createNap);
 router.post("/:id/splitters", checkToken, addCajaSplitter);
 router.post("/disponibilidad-batch", checkToken, getDisponibilidadBatch);
 router.get("/:id/disponibilidad", checkToken, getCajaDisponibilidad);
-
 router.get("/:id/rutas-disponibles", checkToken, getCajaRutasDisponibles);
+
+// ✅ OLTs (IMPORTANTE: antes de "/:id")
+router.get("/olts", checkToken, getOlts);
 
 // ===== LEGACY / BASE =====
 router.get("/", checkToken, getCajas);
