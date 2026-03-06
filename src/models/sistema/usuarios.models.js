@@ -3,12 +3,11 @@ const { poolmysql } = require("../../config/db");
 // OBTENER TODOS LOS USUARIOS
 function selectAllUsuarios() {
   return poolmysql.query(`
-    SELECT * FROM sisusuarios`);
+    SELECT * FROM sisusuarios
+  `);
 }
 
 // OBTENER USUARIO POR ID
-// usuarios.models.js
-// src/models/sistema/usuarios.models.js
 async function selectUsuarioById(id) {
   const [rows] = await poolmysql.query(
     `
@@ -31,7 +30,6 @@ async function selectUsuarioById(id) {
       D.codigo  AS departamento_codigo,
       D.nombre  AS departamento_nombre,
 
-      -- 🔹 JSON con nombres de funciones/roles (SIN ORDER BY)
       COALESCE(
         (
           SELECT JSON_ARRAYAGG(F.nombre)
@@ -54,7 +52,6 @@ async function selectUsuarioById(id) {
 
   const usuario = rows[0];
 
-  // MySQL devuelve JSON_ARRAYAGG como string → lo parseamos
   if (usuario.rol && typeof usuario.rol === "string") {
     try {
       usuario.rol = JSON.parse(usuario.rol);
@@ -68,13 +65,14 @@ async function selectUsuarioById(id) {
 
   return usuario;
 }
+
 // OBTENER TODOS LOS USUARIOS CON AGENDA-TECNICOS
 async function selectAllAgendaTecnicos() {
   const query = `
     SELECT u.id, u.nombre, u.apellido
     FROM sisusuarios_has_sisfunciones uhf
     JOIN sisusuarios u ON uhf.sisusuarios_id = u.id
-    WHERE uhf.sisfunciones_id = 7;
+    WHERE uhf.sisfunciones_id = 7
   `;
   return poolmysql
     .query(query)
@@ -97,28 +95,18 @@ async function insertUsuario({
   genero,
 }) {
   return poolmysql.query(
-    ` INSERT INTO sisusuarios (
-  
-    nombre,
-    apellido,
-    ci,
-    usuario,
-    password,
-    fecha_nac,
-    fecha_cont,
-    genero
- 
-) VALUES (
-  
-   ?,
-   ?,
-   ?,
-   ?,
-   ?,
-   ?,
-   ?,
-   ?
-);`,
+    `
+    INSERT INTO sisusuarios (
+      nombre,
+      apellido,
+      ci,
+      usuario,
+      password,
+      fecha_nac,
+      fecha_cont,
+      genero
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
     [nombre, apellido, ci, usuario, password, fecha_nac, fecha_cont, genero],
   );
 }
@@ -131,15 +119,15 @@ async function updateUsuarioById(
   return poolmysql.query(
     `
     UPDATE sisusuarios SET 
-    nombre = ? ,
-    apellido = ?,
-    ci = ?,
-    usuario = ?,
-    password = ?,
-    fecha_nac = ?, 
-    fecha_cont = ?, 
-    genero = ?
-    WHERE id=?
+      nombre = ?,
+      apellido = ?,
+      ci = ?,
+      usuario = ?,
+      password = ?,
+      fecha_nac = ?, 
+      fecha_cont = ?, 
+      genero = ?
+    WHERE id = ?
     `,
     [
       nombre,
@@ -155,42 +143,30 @@ async function updateUsuarioById(
   );
 }
 
-//BORRAR USUARIO
+// BORRAR USUARIO
 async function deleteUsuario(usuarioId) {
-  return poolmysql.query(`DELETE FROM  sisusuarios WHERE id = ?`, [usuarioId]);
+  return poolmysql.query(`DELETE FROM sisusuarios WHERE id = ?`, [usuarioId]);
 }
 
-// Actualiza el flag is_auth de un usuario (0 = fuera, 1 = dentro)
+// Actualiza el flag is_auth_finger de un usuario
 async function updateUsuarioAuthFlag(usuario_id, is_auth_finger) {
   const [result] = await poolmysql.query(
     `UPDATE sisusuarios SET is_auth_finger = ? WHERE id = ?`,
     [Number(is_auth_finger), Number(usuario_id)],
   );
-  return result; // 👈 aquí tendrás affectedRows/changedRows
+  return result;
 }
 
-// models/sistema/usuarios.models.js
 /**
- * Devuelve los usuarios sobre los que el jefe puede gestionar turnos.
- *
- * Reglas:
- *  - Siempre se filtra por la sucursal del jefe (sucursalId).
- *  - Si NO tiene departamento_id  => se asume JEFE DE SUCURSAL:
- *        → devuelve sólo los jefes de departamento de esa sucursal
- *          (usuarios que están en sis_departamentos.jefe_usuario_id).
- *  - Si SÍ tiene departamento_id => JEFE DE DEPARTAMENTO (o area):
- *        → devuelve todos los usuarios cuyo departamento esté en el
- *          subárbol de ese departamento (padre + hijos + nietos...).
- *  - Siempre se EXCLUYE al propio jefe (excluirUsuarioId).
+ * Usuarios que se pueden gestionar en turnos,
+ * filtrados por un departamento concreto permitido.
  */
 async function selectUsuariosParaTurnos({
   sucursalId,
-  departamentoId,
   jefeUsuarioId,
   departamentoFiltro,
 }) {
   const params = [];
-
   let sql = `
     SELECT DISTINCT
       U.id,
@@ -235,7 +211,8 @@ async function selectUsuariosParaTurnos({
       GROUP BY usuario_id
     ) HM ON HM.usuario_id = U.id
 
-    WHERE 1 = 1
+    WHERE 1 = 1 
+    AND U.estado = 'ACTIVO'
   `;
 
   if (sucursalId) {
@@ -251,31 +228,92 @@ async function selectUsuariosParaTurnos({
   if (departamentoFiltro) {
     sql += " AND U.departamento_id = ?";
     params.push(departamentoFiltro);
-  } else if (departamentoId) {
-    sql += " AND D.parent_id = ?";
-    params.push(departamentoId);
   } else {
-    sql += " AND D.sucursal_id = ? AND D.parent_id IS NULL";
-    params.push(sucursalId);
-    sql += " AND D.jefe_usuario_id = U.id";
+    sql += " AND 1 = 0";
   }
 
-  sql += " ORDER BY D.id ASC, U.nombre ASC, U.apellido ASC";
+  sql += " ORDER BY D.nombre ASC, U.nombre ASC, U.apellido ASC";
 
   const [rows] = await poolmysql.query(sql, params);
   return rows;
 }
 
-// ciudades_cobertura.models.js
+// ciudades cobertura por sucursal
 async function selectCiudadesBySucursal(sucursalId) {
   const [rows] = await poolmysql.query(
-    `SELECT ciudad
-     FROM sis_ciudades_cobertura
-     WHERE sucursal_id = ? AND estado='ACTIVA'
-     ORDER BY ciudad ASC`,
+    `
+    SELECT ciudad
+    FROM sis_ciudades_cobertura
+    WHERE sucursal_id = ? AND estado = 'ACTIVA'
+    ORDER BY ciudad ASC
+    `,
     [sucursalId],
   );
   return rows;
+}
+
+/**
+ * Departamentos que el usuario autenticado puede controlar en turnos.
+ *
+ * Reglas:
+ *  - Jefe de sucursal: sucursal_id sí, departamento_id no
+ *      => ve todos los departamentos activos de su sucursal.
+ *
+ *  - Jefe/responsable de departamentos
+ *      => ve departamentos donde jefe_usuario_id = usuarioId.
+ *
+ *  - Sin coincidencias
+ *      => devuelve [].
+ */
+async function selectDepartamentosControladosPorUsuario({
+  usuarioId,
+  sucursalId,
+  departamentoId,
+}) {
+  // Caso 1: jefe de sucursal
+  if (sucursalId && !departamentoId) {
+    const [rows] = await poolmysql.query(
+      `
+      SELECT
+        d.id,
+        d.parent_id,
+        d.nivel,
+        d.sucursal_id,
+        d.codigo,
+        d.nombre,
+        d.estado,
+        d.jefe_usuario_id
+      FROM sis_departamentos d
+      WHERE d.sucursal_id = ?
+        AND d.estado = 'ACTIVO'
+      ORDER BY d.nivel ASC, d.nombre ASC
+      `,
+      [sucursalId],
+    );
+    return rows;
+  }
+
+  // Caso 2: jefe/responsable de uno o varios departamentos
+  const [rowsJefe] = await poolmysql.query(
+    `
+    SELECT
+      d.id,
+      d.parent_id,
+      d.nivel,
+      d.sucursal_id,
+      d.codigo,
+      d.nombre,
+      d.estado,
+      d.jefe_usuario_id
+    FROM sis_departamentos d
+    WHERE d.jefe_usuario_id = ?
+      AND d.estado = 'ACTIVO'
+    ORDER BY d.nivel ASC, d.nombre ASC
+    `,
+    [usuarioId],
+  );
+
+  return rowsJefe;
 }
 
 module.exports = {
@@ -288,4 +326,5 @@ module.exports = {
   updateUsuarioAuthFlag,
   selectUsuariosParaTurnos,
   selectCiudadesBySucursal,
+  selectDepartamentosControladosPorUsuario,
 };

@@ -10,6 +10,7 @@ const {
   getAllAgendaTecnicos,
   getUsuariosParaTurnos,
   getMisCiudadesCobertura,
+  getMisDepartamentosControl,
 } = require("../../../controllers/sistema/usuarios.controllers");
 
 const { checkUsuarioId, checkToken } = require("../../../utils/middlewares");
@@ -29,6 +30,12 @@ router.get("/para-turnos", checkToken, getUsuariosParaTurnos);
 
 // ✅ OBTENER LAS CIUDADES DE COBERTURA DE MI SUCURSAL (por usuario autenticado)
 router.get("/ciudades-cobertura/mias", checkToken, getMisCiudadesCobertura);
+
+router.get(
+  "/departamentos-control/mios",
+  checkToken,
+  getMisDepartamentosControl,
+);
 
 // ======================
 // RUTAS CON PARAMETROS AL FINAL

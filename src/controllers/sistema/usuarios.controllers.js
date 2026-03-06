@@ -1,4 +1,3 @@
-// src/controllers/sistema/usuarios.controllers.js
 const { poolmysql } = require("../../config/db");
 const bcrypt = require("bcryptjs");
 const {
@@ -8,12 +7,14 @@ const {
   selectAllAgendaTecnicos,
   selectUsuariosParaTurnos,
   selectCiudadesBySucursal,
+  selectDepartamentosControladosPorUsuario,
 } = require("../../models/sistema/usuarios.models");
 
 // -------- helpers mínimos --------
 function emptyToNull(v) {
   return v === undefined || v === "" ? null : v;
 }
+
 function parseDuplicateKey(mysqlError) {
   const msg = String(mysqlError.sqlMessage || mysqlError.message || "");
   let key = null;
@@ -21,8 +22,10 @@ function parseDuplicateKey(mysqlError) {
   const m2 = msg.match(/for key '(.+?)'/);
   if (m1 && m1[1]) key = m1[1];
   else if (m2 && m2[1]) key = m2[1];
+
   let field = (key || "").replace(/_UNIQUE$/i, "").replace(/^uniq_?/i, "");
   if (!field) field = "registro";
+
   const val = (msg.match(/Duplicate entry '(.+?)'/) || [])[1];
   return { field, value: val };
 }
@@ -69,7 +72,7 @@ const createUsuario = async (req, res, next) => {
     const payload = { ...req.body };
     payload.password = await bcrypt.hash(String(payload.password || ""), 8);
 
-    // Pre-check duplicados (rápido y mensaje claro)
+    // Pre-check duplicados
     const [[dups]] = await poolmysql.query(
       `SELECT 
          SUM(ci = ?) AS ci_dup,
@@ -78,6 +81,7 @@ const createUsuario = async (req, res, next) => {
        WHERE ci = ? OR usuario = ?`,
       [payload.ci, payload.usuario, payload.ci, payload.usuario],
     );
+
     if (dups.ci_dup) {
       return res.status(409).json({
         message: "La cédula ya está registrada.",
@@ -85,6 +89,7 @@ const createUsuario = async (req, res, next) => {
         code: "DUPLICATE",
       });
     }
+
     if (dups.usuario_dup) {
       return res.status(409).json({
         message: "El nombre de usuario ya está en uso.",
@@ -158,7 +163,6 @@ const updateUsuario = async (req, res, next) => {
       return res.status(404).json({ message: "El ID de usuario no existe." });
     }
 
-    // Hash solo si vino password no vacío; null => conservar
     if (
       typeof payload.password === "string" &&
       payload.password.trim() !== ""
@@ -168,11 +172,9 @@ const updateUsuario = async (req, res, next) => {
       payload.password = null;
     }
 
-    // Valores efectivos (para validar unicidad)
     const effectiveCi = payload.ci ?? current.ci;
     const effectiveUsuario = payload.usuario ?? current.usuario;
 
-    // Pre-check duplicados excluyendo al propio usuario
     if (effectiveCi) {
       const [[ciDup]] = await poolmysql.query(
         `SELECT COUNT(*) AS cnt FROM sisusuarios WHERE ci = ? AND id <> ?`,
@@ -186,6 +188,7 @@ const updateUsuario = async (req, res, next) => {
         });
       }
     }
+
     if (effectiveUsuario) {
       const [[usrDup]] = await poolmysql.query(
         `SELECT COUNT(*) AS cnt FROM sisusuarios WHERE usuario = ? AND id <> ?`,
@@ -222,7 +225,7 @@ const updateUsuario = async (req, res, next) => {
           emptyToNull(payload.apellido),
           emptyToNull(payload.ci),
           emptyToNull(payload.usuario),
-          payload.password, // null => conserva
+          payload.password,
           emptyToNull(payload.fecha_nac),
           emptyToNull(payload.fecha_cont),
           emptyToNull(payload.genero),
@@ -230,7 +233,6 @@ const updateUsuario = async (req, res, next) => {
         ],
       );
 
-      // Sincronía de roles: solo si viene "rol" en el body (aunque sea [])
       if (Array.isArray(payload.rol)) {
         await conn.query(
           `DELETE FROM sisusuarios_has_sisfunciones WHERE sisusuarios_id = ?`,
@@ -290,36 +292,68 @@ const deleteByID = async (req, res, next) => {
 };
 
 /**
- * Devuelve la lista de usuarios que se pueden gestionar en turnos
- * según la sucursal/departamento del usuario logueado.
+ * Devuelve los usuarios que el usuario autenticado puede gestionar en turnos.
  *
  * Reglas:
- *  - Si el usuario tiene sucursal_id pero NO tiene departamento_id
- *    => se considera Jefe de Sucursal → ve jefes de departamento.
+ *  - Si es jefe de sucursal (tiene sucursal_id y NO departamento_id):
+ *      puede gestionar cualquier departamento ACTIVO de su sucursal.
  *
- *  - Si tiene sucursal_id y departamento_id
- *    => se considera Jefe de Departamento → ve usuarios de su
- *       departamento y sub-departamentos (árbol recursivo).
+ *  - Si es jefe/responsable de uno o varios departamentos:
+ *      puede gestionar únicamente los departamentos donde
+ *      sis_departamentos.jefe_usuario_id = req.user.id.
+ *
+ *  - Si tiene varios departamentos permitidos, el frontend debe enviar
+ *      departamento_id.
+ *
+ *  - Si solo tiene uno, se toma automáticamente.
  */
 const getUsuariosParaTurnos = async (req, res, next) => {
   try {
-    const jefe = req.user; // ← viene de checkToken
+    const jefe = req.user;
 
-    if (!jefe) {
+    if (!jefe?.id) {
       return res.status(401).json({ message: "No autenticado" });
     }
 
-    // 🔹 viene desde Angular como query param (opcional)
     const { departamento_id } = req.query;
-    const departamentoFiltro = departamento_id
-      ? Number(departamento_id)
-      : undefined;
+    const departamentoFiltro = departamento_id ? Number(departamento_id) : null;
+
+    const departamentosPermitidos =
+      await selectDepartamentosControladosPorUsuario({
+        usuarioId: Number(jefe.id),
+        sucursalId: Number(jefe.sucursal_id || 0) || null,
+        departamentoId: Number(jefe.departamento_id || 0) || null,
+      });
+
+    if (!departamentosPermitidos.length) {
+      return res.json([]);
+    }
+
+    const idsPermitidos = departamentosPermitidos.map((d) => Number(d.id));
+
+    let departamentoFinal = null;
+
+    if (departamentoFiltro) {
+      if (!idsPermitidos.includes(departamentoFiltro)) {
+        return res.status(403).json({
+          message: "No tienes permiso para gestionar ese departamento",
+        });
+      }
+      departamentoFinal = departamentoFiltro;
+    } else if (idsPermitidos.length === 1) {
+      departamentoFinal = idsPermitidos[0];
+    } else {
+      return res.status(400).json({
+        message: "Debe seleccionar un departamento",
+        requiere_departamento: true,
+        departamentos: departamentosPermitidos,
+      });
+    }
 
     const lista = await selectUsuariosParaTurnos({
-      sucursalId: jefe.sucursal_id || null,
-      departamentoId: jefe.departamento_id || null,
-      jefeUsuarioId: jefe.id,
-      departamentoFiltro,
+      sucursalId: Number(jefe.sucursal_id || 0) || null,
+      jefeUsuarioId: Number(jefe.id),
+      departamentoFiltro: departamentoFinal,
     });
 
     return res.json(lista);
@@ -329,11 +363,8 @@ const getUsuariosParaTurnos = async (req, res, next) => {
   }
 };
 
-// controllers/sistema/usuarios.controllers.js
-
 async function getMisCiudadesCobertura(req, res, next) {
   try {
-    // checkToken normalmente deja el usuario en req.user
     const usuarioId = Number(req.user?.id || req.usuario_id || req.usuario?.id);
 
     if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
@@ -342,7 +373,6 @@ async function getMisCiudadesCobertura(req, res, next) {
         .json({ message: "El id del usuario es incorrecto" });
     }
 
-    // 1) obtén el usuario (y su sucursal_id) desde BD
     const u = await selectUsuarioById(usuarioId);
     if (!u) {
       return res.status(404).json({ message: "Usuario no encontrado" });
@@ -355,10 +385,7 @@ async function getMisCiudadesCobertura(req, res, next) {
         .json({ message: "Sucursal inválida para el usuario" });
     }
 
-    // 2) trae ciudades cobertura por sucursal (depende cómo retorne tu model)
     const resp = await selectCiudadesBySucursal(sucursalId);
-
-    // normaliza: a veces mysql2 devuelve [rows]
     const rows = Array.isArray(resp) && Array.isArray(resp[0]) ? resp[0] : resp;
 
     const ciudades = (rows || [])
@@ -371,6 +398,27 @@ async function getMisCiudadesCobertura(req, res, next) {
   }
 }
 
+const getMisDepartamentosControl = async (req, res, next) => {
+  try {
+    const jefe = req.user;
+
+    if (!jefe?.id) {
+      return res.status(401).json({ message: "No autenticado" });
+    }
+
+    const departamentos = await selectDepartamentosControladosPorUsuario({
+      usuarioId: Number(jefe.id),
+      sucursalId: Number(jefe.sucursal_id || 0) || null,
+      departamentoId: Number(jefe.departamento_id || 0) || null,
+    });
+
+    return res.json(departamentos);
+  } catch (err) {
+    console.error("❌ Error en getMisDepartamentosControl:", err.message);
+    next(err);
+  }
+};
+
 module.exports = {
   getAllUsuarios,
   getUsuarioById,
@@ -380,4 +428,5 @@ module.exports = {
   deleteByID,
   getUsuariosParaTurnos,
   getMisCiudadesCobertura,
+  getMisDepartamentosControl,
 };
