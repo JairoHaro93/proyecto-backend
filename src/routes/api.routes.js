@@ -3,10 +3,12 @@ const { checkToken } = require("../utils/middlewares");
 const router = require("express").Router();
 
 //SISTEMA
-
+//ENDPOINTS SIN REQUISITO AUTORIZACION
+router.use("/departamentos", require("./api/sistema/departamentos.routes"));
+router.use("/sucursales", require("./api/sistema/sucursales.routes"));
 router.use("/usuarios", require("./api/sistema/usuarios.routes"));
 router.use("/login", require("./api/sistema/login.routes"));
-router.use("/funciones", checkToken, require("./api/sistema/funciones.routes"));
+
 router.use("/asistencia", require("./api/negocio_lat/asistencia.router"));
 router.use("/huellas", require("./api/negocio_lat/huellas.router"));
 router.use("/timbres", require("./api/negocio_lat/timbres.routes"));
@@ -15,11 +17,20 @@ router.use(
   "/justificacion",
   require("./api/negocio_lat/justificaciones_turno.routes"),
 );
-
+//ENDPOINTS CON REQUISITO AUTORIZACION
 router.use("/files", checkToken, require("./api/sistema/files.routes"));
+router.use("/funciones", checkToken, require("./api/sistema/funciones.routes"));
+router.use(
+  "/vacaciones",
+  checkToken,
+  require("./api/negocio_lat/vacaciones.router"),
+);
 
-router.use("/departamentos", require("./api/sistema/departamentos.routes"));
-router.use("/sucursales", require("./api/sistema/sucursales.routes"));
+router.use(
+  "/horas-extra",
+  checkToken,
+  require("./api/negocio_lat/horas_extras.routes"),
+);
 
 //NEGOCIO ATUNTAQUI
 router.use("/clientes", checkToken, require("./api/negocio/clientes.router"));
@@ -46,17 +57,5 @@ router.use(
 router.use("/images", require("./api/negocio_lat/images.router"));
 router.use("/cajas", require("./api/negocio_lat/cajas.router"));
 router.use("/olt", require("./api/negocio_lat/olt.router"));
-
-router.use(
-  "/vacaciones",
-  checkToken,
-  require("./api/negocio_lat/vacaciones.router"),
-);
-
-router.use(
-  "/horas-extra",
-  checkToken,
-  require("./api/negocio_lat/horas_extras.routes"),
-);
 
 module.exports = router;
