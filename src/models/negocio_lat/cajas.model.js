@@ -381,6 +381,71 @@ function selectOltById(id) {
   );
 }
 
+// ✅ Crea 1 o varias PON (ramas) en transacción.
+// ramas: [{ segmento: '0/4/9/S2/1', nombre: 'LAT-PON-0/4/9/S2/1-R8' }, ...]
+async function insertPonRamasTx({
+  ciudad,
+  estado,
+  hilo,
+  coordenadas,
+  observacion,
+  root_split,
+  olt_id,
+  olt_slot,
+  olt_pon,
+  ramas = [],
+}) {
+  const conn = await poolmysql.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const created = [];
+
+    for (const r of ramas) {
+      const segmento = String(r.segmento || "").trim();
+      const nombre = String(r.nombre || "").trim();
+
+      const [result] = await conn.query(
+        `
+        INSERT INTO neg_t_cajas (
+          caja_ciudad, caja_tipo, caja_estado, caja_nombre, caja_hilo,
+          caja_coordenadas, caja_observacion,
+          caja_root_split, caja_segmento, caja_pon_id, caja_pon_ruta,
+          olt_id, olt_slot, olt_pon, olt_frame_override
+        ) VALUES (?, 'PON', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL);
+        `,
+        [
+          ciudad ?? null,
+          estado ?? "DISEÑO",
+          nombre ?? null,
+          hilo ?? null,
+          coordenadas ?? null,
+          observacion ?? null,
+          root_split ?? null,
+          segmento ?? null,
+          olt_id ?? null,
+          olt_slot ?? null,
+          olt_pon ?? null,
+        ],
+      );
+
+      created.push({
+        id: result.insertId,
+        caja_nombre: nombre,
+        caja_segmento: segmento,
+      });
+    }
+
+    await conn.commit();
+    return created;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
   // cajas
   insertCaja,
@@ -407,4 +472,5 @@ module.exports = {
   // ✅ OLTs
   listOltsBySucursal,
   selectOltById,
+  insertPonRamasTx,
 };

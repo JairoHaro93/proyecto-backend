@@ -19,6 +19,7 @@ const {
   // ✅ OLTs
   listOltsBySucursal,
   selectOltById,
+  insertPonRamasTx,
 } = require("../../models/negocio_lat/cajas.model");
 
 // ---------- helpers ----------
@@ -465,10 +466,10 @@ async function updateCaja(req, res) {
 }
 
 // ---------- NUEVO: PON / NAP ----------
+
 async function createPon(req, res) {
   try {
     const {
-      caja_segmento, // lo sigues usando (0/4/9 o 0/4/9/S2/1)
       caja_root_split,
       caja_estado,
       caja_hilo,
@@ -479,22 +480,22 @@ async function createPon(req, res) {
       olt_id,
       olt_slot,
       olt_pon,
+
+      // split modo: '' | 'S2/1' | 'S2/2'
+      split_mode,
     } = req.body;
 
     const root = Number(caja_root_split);
-    if (!caja_segmento || !VALID_SPLITS.has(root)) {
+    if (!VALID_SPLITS.has(root)) {
       return res.status(400).json({
         success: false,
-        message: "Requerido: caja_segmento y caja_root_split (2|8|16)",
+        message: "Requerido: caja_root_split (2|8|16)",
       });
     }
 
     const v = validateOltPort({ olt_id, olt_slot, olt_pon });
-    if (!v.ok) {
-      return res.status(400).json({ success: false, message: v.msg });
-    }
+    if (!v.ok) return res.status(400).json({ success: false, message: v.msg });
 
-    // ✅ 1) cargar OLT y validar sucursal
     const [oltRows] = await selectOltById(v.oid);
     const olt = oltRows?.[0];
     if (!olt) {
@@ -522,55 +523,74 @@ async function createPon(req, res) {
       });
     }
 
-    const abbr = cityAbbr(ciudadDesdeOlt);
-    const seg = String(caja_segmento).trim();
-
-    const nombre = `${abbr}-PON-${seg}-R${root}`;
-    const coordsNorm = caja_coordenadas
-      ? normalizeCoords(caja_coordenadas)
-      : null;
-
-    const [result] = await insertCaja({
-      caja_ciudad: ciudadDesdeOlt,
-      caja_tipo: "PON",
-      caja_estado: caja_estado || "DISEÑO",
-      caja_nombre: nombre,
-      caja_hilo: caja_hilo ?? null,
-      caja_coordenadas: coordsNorm ?? null,
-      caja_observacion: caja_observacion ?? null,
-
-      caja_root_split: root,
-      caja_segmento: seg,
-      caja_pon_id: null,
-      caja_pon_ruta: null,
-
-      olt_id: v.oid,
-      olt_slot: v.slot,
-      olt_pon: v.pon,
-      olt_frame_override: null, // ✅ ya no lo usamos aquí
-    });
-
-    res.status(201).json({
-      success: true,
-      message: "PON creada correctamente",
-      data: { id: result.insertId, caja_nombre: nombre },
-    });
-  } catch (error) {
-    console.error("Error al crear PON:", error);
-
-    if (error && (error.code === "ER_DUP_ENTRY" || error.errno === 1062)) {
-      return res.status(409).json({
+    const coordsNorm = normalizeCoords(caja_coordenadas);
+    if (!coordsNorm) {
+      return res.status(400).json({
         success: false,
-        message: "Ya existe un PON con esa OLT/slot/pon",
+        message: "caja_coordenadas es obligatorio y debe ser lat,lng válido",
       });
     }
 
-    res.status(500).json({
+    // base: F/S/P
+    const frame = Number(olt.olt_frame_default ?? 0);
+    const baseSeg = `${frame}/${v.slot}/${v.pon}`;
+
+    const mode = String(split_mode || "")
+      .toUpperCase()
+      .trim();
+    let segmentos = [];
+    if (!mode) segmentos = [baseSeg];
+    else if (mode === "S2/1" || mode === "S2/2")
+      segmentos = [`${baseSeg}/${mode}`];
+    else {
+      return res.status(400).json({
+        success: false,
+        message: "split_mode inválido. Usa: '', 'S2/1', 'S2/2' ",
+      });
+    }
+
+    const abbr = cityAbbr(ciudadDesdeOlt);
+
+    // ✅ construye ramas (segmento + nombre) y delega el INSERT transaccional al MODEL
+    const ramas = segmentos.map((seg) => ({
+      segmento: seg,
+      nombre: `${abbr}-PON-${seg}-R${root}`,
+    }));
+
+    const created = await insertPonRamasTx({
+      ciudad: ciudadDesdeOlt,
+      estado: caja_estado || "DISEÑO",
+      hilo: caja_hilo ?? null,
+      coordenadas: coordsNorm,
+      observacion: caja_observacion ?? null,
+      root_split: root,
+      olt_id: v.oid,
+      olt_slot: v.slot,
+      olt_pon: v.pon,
+      ramas,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "PON creada correctamente",
+      data: { created },
+    });
+  } catch (error) {
+    if (error && (error.code === "ER_DUP_ENTRY" || error.errno === 1062)) {
+      return res.status(409).json({
+        success: false,
+        message: "Ya existe un PON con ese SEG en esta OLT (rama duplicada).",
+      });
+    }
+
+    console.error("Error al crear PON:", error);
+    return res.status(500).json({
       success: false,
       message: "Error interno del servidor al crear PON",
     });
   }
 }
+
 async function createNap(req, res) {
   try {
     const {
