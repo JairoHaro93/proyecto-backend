@@ -138,6 +138,7 @@ async function generarTurnosDiariosLote({
   horaSalidaProg,
   excluirFinesSemana = true,
   sobrescribirExistentes = false,
+  tipoDia = "NORMAL", // 👈 nuevo
 }) {
   usuarioIds = (usuarioIds || [])
     .map((id) => Number(id))
@@ -149,6 +150,13 @@ async function generarTurnosDiariosLote({
   const fechas = enumerarFechas(fechaDesde, fechaHasta, excluirFinesSemana);
   if (!fechas.length)
     return { totalIntentos: 0, totalInsertados: 0, totalOmitidos: 0 };
+
+  const tipoDiaFinal = String(tipoDia || "NORMAL")
+    .toUpperCase()
+    .trim();
+  if (!["NORMAL", "CAMPO"].includes(tipoDiaFinal)) {
+    throw new Error("tipoDia inválido. Debe ser NORMAL o CAMPO");
+  }
 
   const combos = [];
   for (const usuarioId of usuarioIds)
@@ -196,23 +204,23 @@ async function generarTurnosDiariosLote({
       if (r.length) continue;
     }
 
-    // SOLO 5 valores por fila
     values.push(
       usuarioId,
       fecha,
       sucursal || null,
       horaEntradaProg,
       horaSalidaProg,
+      tipoDiaFinal, // 👈 nuevo
     );
   }
 
   if (!values.length)
     return { totalIntentos, totalInsertados: 0, totalOmitidos };
 
-  const rowsCount = values.length / 5;
+  const rowsCount = values.length / 6;
   const rowPlaceholders = Array.from(
     { length: rowsCount },
-    () => "(?, ?, ?, ?, ?, 'SIN_MARCA', 'NORMAL', 'NO', NULL, NULL)",
+    () => "(?, ?, ?, ?, ?, 'SIN_MARCA', ?, 'NO', NULL, NULL)",
   );
 
   const sqlInsert = `
@@ -401,7 +409,11 @@ async function updateObsHoraAcumuladaHoy(
     WHERE usuario_id = ?
       AND fecha = CURDATE()
       AND (estado_hora_acumulada IS NULL OR estado_hora_acumulada <> 'APROBADO')
-      AND (tipo_dia IS NULL OR tipo_dia = 'NORMAL')
+      AND (
+        tipo_dia IS NULL
+        OR tipo_dia = 'NORMAL'
+        OR tipo_dia = 'CAMPO'
+      )
   `;
 
   const [result] = await poolmysql.query(sql, [
@@ -664,8 +676,50 @@ async function updateTurnoFromAsistencia(usuario_id, fechaMarcacion) {
   if (!turnoRows.length) return { ok: false, reason: "SIN_TURNO" };
   const turno = turnoRows[0];
 
-  if (String(turno.tipo_dia || "NORMAL").toUpperCase() !== "NORMAL") {
+  const tipoDia = String(turno.tipo_dia || "NORMAL").toUpperCase();
+
+  // VACACIONES / PERMISO / DEVOLUCION no procesan asistencia
+  if (["VACACIONES", "PERMISO", "DEVOLUCION"].includes(tipoDia)) {
     return { ok: false, reason: `TIPO_DIA_${turno.tipo_dia}` };
+  }
+
+  // CAMPO: no espera marcas, no genera atraso/falta/incompleto
+  if (tipoDia === "CAMPO") {
+    await poolmysql.query(
+      `
+      UPDATE neg_t_turnos_diarios
+      SET
+        hora_entrada_1 = NULL,
+        hora_salida_1 = NULL,
+        hora_entrada_2 = NULL,
+        hora_salida_2 = NULL,
+        hora_entrada_real = NULL,
+        hora_salida_real = NULL,
+        min_atraso = 0,
+        min_salida_temprana = 0,
+        almuerzo_permitido_min = 0,
+        almuerzo_real_min = NULL,
+        almuerzo_excedido_min = 0,
+        estado_asistencia = 'OK',
+        updated_at = NOW()
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [turno.id],
+    );
+
+    return {
+      ok: true,
+      turno_id: turno.id,
+      estado_asistencia: "OK",
+      mins: {
+        min_atraso: 0,
+        min_salida_temprana: 0,
+        almuerzoPermitidoMin: 0,
+        almuerzoRealMin: null,
+        almuerzoExcedidoMin: 0,
+      },
+    };
   }
 
   const progStart = makeLocalDTFromTurno(fechaKey, turno.hora_entrada_prog);

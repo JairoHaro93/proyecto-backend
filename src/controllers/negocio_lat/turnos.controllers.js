@@ -94,6 +94,7 @@ const postGenerarTurnos = async (req, res, next) => {
       min_toler_salida,
       excluir_fines_semana,
       sobrescribir_existentes,
+      tipo_dia, // 👈 nuevo
     } = req.body || {};
 
     if (!Array.isArray(usuario_ids) || usuario_ids.length === 0) {
@@ -115,6 +116,16 @@ const postGenerarTurnos = async (req, res, next) => {
       });
     }
 
+    const tipoDiaFinal = String(tipo_dia || "NORMAL")
+      .toUpperCase()
+      .trim();
+    if (!["NORMAL", "CAMPO"].includes(tipoDiaFinal)) {
+      return res.status(400).json({
+        ok: false,
+        message: "tipo_dia debe ser 'NORMAL' o 'CAMPO'",
+      });
+    }
+
     const resumen = await generarTurnosDiariosLote({
       usuarioIds: usuario_ids,
       fechaDesde: fecha_desde,
@@ -122,10 +133,11 @@ const postGenerarTurnos = async (req, res, next) => {
       sucursal: sucursal || null,
       horaEntradaProg: hora_entrada_prog,
       horaSalidaProg: hora_salida_prog,
-      minTolerAtraso: min_toler_atraso ?? 1, //TIEMPO PARA TOLERANCIA DE ATRASO
+      minTolerAtraso: min_toler_atraso ?? 1,
       minTolerSalida: min_toler_salida ?? 0,
       excluirFinesSemana: excluir_fines_semana !== false,
       sobrescribirExistentes: !!sobrescribir_existentes,
+      tipoDia: tipoDiaFinal, // 👈 nuevo
     });
 
     return res
@@ -406,7 +418,7 @@ const putObservacionTurnoHoy = async (req, res, next) => {
         });
       }
 
-      if (tipo !== "NORMAL") {
+      if (!["NORMAL", "CAMPO"].includes(tipo)) {
         return res.status(409).json({
           success: false,
           message: `No se puede modificar: el día es ${tipo}`,
