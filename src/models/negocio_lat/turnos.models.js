@@ -265,7 +265,7 @@ async function actualizarTurnoProgramado(
      WHERE id = ?
        AND fecha >= CURDATE()
        AND estado_asistencia = 'SIN_MARCA'
-       AND (tipo_dia IS NULL OR tipo_dia = 'NORMAL')
+       AND (tipo_dia IS NULL OR tipo_dia IN ('NORMAL','CAMPO'))
     `,
     [horaEntradaProg, horaSalidaProg, turnoId],
   );
@@ -279,7 +279,7 @@ async function eliminarTurnoProgramado(turnoId) {
      WHERE id = ?
        AND fecha >= CURDATE()
        AND estado_asistencia = 'SIN_MARCA'
-       AND (tipo_dia IS NULL OR tipo_dia = 'NORMAL')
+    AND (tipo_dia IS NULL OR tipo_dia IN ('NORMAL','CAMPO'))
     `,
     [turnoId],
   );
