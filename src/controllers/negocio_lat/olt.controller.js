@@ -1,6 +1,8 @@
-// src/controllers/negocio_lat/olt.controller.js
 require("dotenv").config();
 const { getOltSession, OltHttpError } = require("../../utils/olt.session");
+const {
+  getOltConfigActivaById,
+} = require("../../models/negocio_lat/olts.model");
 
 // =========================
 //  HELPERS BASICOS
@@ -109,6 +111,68 @@ function sanitizeDesc(desc = "") {
     .slice(0, 64);
 }
 
+function buildOltMeta(olt) {
+  return {
+    olt: olt
+      ? {
+          id: olt.id,
+          nombre: olt.nombre,
+          ip: olt.ip,
+          vendor: olt.vendor,
+          ciudad: olt.ciudad,
+          sucursalId: olt.sucursalId,
+        }
+      : null,
+  };
+}
+
+// =========================
+//  RESOLVER OLT DESDE REQ
+// =========================
+async function resolveOltFromReq(req) {
+  const oltId =
+    req?.body?.args?.oltId ?? req?.body?.oltId ?? req?.query?.oltId ?? null;
+
+  const oltIdNum = Number(oltId);
+  if (!Number.isFinite(oltIdNum) || oltIdNum <= 0) {
+    throw new OltHttpError(400, "oltId requerido");
+  }
+
+  const olt = await getOltConfigActivaById(oltIdNum);
+  if (!olt) {
+    throw new OltHttpError(404, "OLT no encontrada o INACTIVA");
+  }
+
+  return {
+    id: Number(olt.id),
+    sucursalId: olt.sucursal_id ?? null,
+    ciudad: olt.olt_ciudad ?? null,
+    nombre: olt.olt_nombre ?? null,
+    ip: olt.olt_ip ?? null,
+    port: Number(olt.olt_port || 23),
+    username: olt.olt_username ?? "",
+    password: olt.olt_password ?? "",
+    timeoutMs: Number(olt.olt_timeout_ms || 20000),
+    vendor: olt.olt_vendor ?? null,
+    frameDefault: Number(olt.olt_frame_default ?? 0),
+    lineprofile: olt.olt_lineprofile ?? "",
+    srvprofile: olt.olt_srvprofile ?? "",
+    vlan: Number(olt.olt_vlan ?? 100),
+    gemport: Number(olt.olt_gemport ?? 10),
+    eth: Number(olt.olt_eth ?? 1),
+    ontIdMin: Number(olt.olt_ontid_min ?? 1),
+    ontIdMax: Number(olt.olt_ontid_max ?? 127),
+    estado: olt.estado ?? "ACTIVA",
+  };
+}
+
+async function resolveSessionFromReq(req, debug = false) {
+  const olt = await resolveOltFromReq(req);
+  const session = getOltSession(String(olt.id), olt);
+  const opts = debug ? { debug: true } : {};
+  return { olt, session, opts };
+}
+
 // =========================
 //  SESSION MODE GUARD
 // =========================
@@ -147,7 +211,6 @@ function parseServicePorts(raw = "") {
     if (!mIndex) continue;
     const index = Number(mIndex[1]);
 
-    // Caso A: línea con "ont" y "gemport" explícitos
     const mA = line.match(/\bgpon\b\s+(\d+\s*\/\s*\d+\s*\/\s*\d+)/i);
     const mOnt = line.match(/\bont\b\s+(\d+)/i);
     const mGem = line.match(/\bgemport\b\s+(\d+)/i);
@@ -162,7 +225,6 @@ function parseServicePorts(raw = "") {
       continue;
     }
 
-    // Caso B: tu tabla "Switch-Oriented Flow List"
     const tokens = line.trim().split(/\s+/);
     if (tokens.length < 8) continue;
 
@@ -411,9 +473,9 @@ function firstFreeId(usedIds = [], { min = 1, max = 127 } = {}) {
   return null;
 }
 
-async function findFirstFreeOntId(session, f, s, pon, opts, debug) {
-  const min = Number(process.env.OLT_ONTID_MIN ?? 1);
-  const max = Number(process.env.OLT_ONTID_MAX ?? 127);
+async function findFirstFreeOntId(session, f, s, pon, opts, debug, range = {}) {
+  const min = Number(range.min ?? 1);
+  const max = Number(range.max ?? 127);
 
   await ensureConfig(session, debug);
   await session.run(`interface gpon ${f}/${s}`, opts);
@@ -479,7 +541,6 @@ function needsOntTypePrompt(raw = "") {
 }
 
 async function sendEnter(session, opts) {
-  // Intenta enviar ENTER. Dependiendo de tu olt.session, "" o "\n" puede funcionar.
   try {
     return await session.run("\n", { ...opts, timeout: 12000 });
   } catch {
@@ -493,7 +554,6 @@ async function sendEnter(session, opts) {
 
 // rollback best-effort
 async function rollbackProvision(session, { f, s, p, ontId }, opts, debug) {
-  // 1) borrar service-ports (si existen)
   try {
     await ensureConfig(session, debug);
     const rawSp = await session.run(
@@ -516,7 +576,6 @@ async function rollbackProvision(session, { f, s, p, ontId }, opts, debug) {
     }
   } catch {}
 
-  // 2) borrar ONT
   try {
     await ensureConfig(session, debug);
     await session.run(`interface gpon ${f}/${s}`, opts);
@@ -530,20 +589,52 @@ async function rollbackProvision(session, { f, s, p, ontId }, opts, debug) {
 //  ROUTE HANDLERS
 // =========================
 async function status(req, res) {
-  const session = getOltSession("default");
-  return res.json({ ok: true, status: session.status() });
+  try {
+    const debug = parseBool(req.query.debug);
+    const { olt, session } = await resolveSessionFromReq(req, debug);
+
+    return res.json({
+      ok: true,
+      ...buildOltMeta(olt),
+      status: session.status(),
+    });
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (err instanceof OltHttpError && err.status) {
+      return res
+        .status(err.status)
+        .json({ ok: false, error: { message: msg } });
+    }
+    return res.status(500).json({ ok: false, error: serializeErr(err) });
+  }
 }
 
 async function testTime(req, res) {
   const debug = parseBool(req.query.debug);
-  const session = getOltSession("default");
 
   try {
+    const { olt, session } = await resolveSessionFromReq(req, debug);
     const opts = debug ? { debug: true } : {};
+
     const raw = await session.run("display time", opts);
     const time = extractTime(raw);
-    if (!debug) return res.json({ ok: true, message: "OK", time });
-    return res.json({ ok: true, message: "OK", time, raw });
+
+    if (!debug) {
+      return res.json({
+        ok: true,
+        message: "OK",
+        time,
+        ...buildOltMeta(olt),
+      });
+    }
+
+    return res.json({
+      ok: true,
+      message: "OK",
+      time,
+      raw,
+      ...buildOltMeta(olt),
+    });
   } catch (err) {
     const msg = String(err?.message || "");
     if (err instanceof OltHttpError && err.status) {
@@ -567,10 +658,11 @@ async function testTime(req, res) {
 
 async function ready(req, res) {
   const debug = parseBool(req.query.debug);
-  const session = getOltSession("default");
-  const opts = debug ? { debug: true, timeout: 12000 } : { timeout: 12000 };
 
   try {
+    const { olt, session } = await resolveSessionFromReq(req, debug);
+    const opts = debug ? { debug: true, timeout: 12000 } : { timeout: 12000 };
+
     await ensureConfig(session, debug);
 
     const raw = await session.run("display time", opts);
@@ -583,6 +675,7 @@ async function ready(req, res) {
       ready: true,
       message: "OLT READY",
       time,
+      ...buildOltMeta(olt),
       status: session.status(),
     };
     if (debug) payload.raw = raw;
@@ -617,8 +710,6 @@ async function ready(req, res) {
 async function exec(req, res) {
   const debug = parseBool(req.query.debug);
   const { cmdId, args } = req.body || {};
-  const session = getOltSession("default");
-  const opts = debug ? { debug: true } : {};
 
   try {
     if (!cmdId) {
@@ -626,6 +717,8 @@ async function exec(req, res) {
         .status(400)
         .json({ ok: false, error: { message: "cmdId requerido" } });
     }
+
+    const { olt, session, opts } = await resolveSessionFromReq(req, debug);
 
     // =======================
     // ONT_AUTOFIND_ALL
@@ -643,6 +736,7 @@ async function exec(req, res) {
         cmdId,
         total: parsed.total,
         items: parsed.items,
+        ...buildOltMeta(olt),
       };
       if (debug) payload.raw = raw;
       return res.json(payload);
@@ -685,7 +779,10 @@ async function exec(req, res) {
         }
       }
 
-      const r = await findFirstFreeOntId(session, ff, ss, pp, opts, debug);
+      const r = await findFirstFreeOntId(session, ff, ss, pp, opts, debug, {
+        min: olt.ontIdMin,
+        max: olt.ontIdMax,
+      });
 
       return res.json({
         ok: true,
@@ -696,6 +793,7 @@ async function exec(req, res) {
         usedIds: debug ? r.usedIds : undefined,
         freeId: r.free,
         ...(debug ? { rawList: r.rawList } : {}),
+        ...buildOltMeta(olt),
       });
     }
 
@@ -709,14 +807,16 @@ async function exec(req, res) {
       const trafficIn = Number(args?.trafficIn);
       const trafficOut = Number(args?.trafficOut);
 
-      if (!snInput)
+      if (!snInput) {
         return res
           .status(400)
           .json({ ok: false, error: { message: "sn requerido" } });
-      if (!descInput)
+      }
+      if (!descInput) {
         return res
           .status(400)
           .json({ ok: false, error: { message: "desc requerido" } });
+      }
       if (!Number.isFinite(trafficIn) || !Number.isFinite(trafficOut)) {
         return res.status(400).json({
           ok: false,
@@ -735,29 +835,31 @@ async function exec(req, res) {
         });
       }
 
-      // ENV (defaults)
-      const LINE = String(process.env.OLT_LINEPROFILE || "").trim();
-      const SRV = String(process.env.OLT_SRVPROFILE || "").trim();
-      const VLAN = Number(process.env.OLT_VLAN ?? 100);
-      const GEM = Number(process.env.OLT_GEMPORT ?? 10);
-      const ETH = Number(process.env.OLT_ETH ?? 1);
+      const LINE = String(olt.lineprofile || "").trim();
+      const SRV = String(olt.srvprofile || "").trim();
+      const VLAN = Number(olt.vlan ?? 100);
+      const GEM = Number(olt.gemport ?? 10);
+      const ETH = Number(olt.eth ?? 1);
 
       if (!LINE || !SRV) {
         return res.status(500).json({
           ok: false,
-          error: { message: "Falta OLT_LINEPROFILE u OLT_SRVPROFILE en env" },
+          error: {
+            message: "La OLT no tiene lineprofile/srvprofile configurados",
+          },
+          ...buildOltMeta(olt),
         });
       }
       if (![VLAN, GEM, ETH].every((x) => Number.isFinite(x))) {
         return res.status(500).json({
           ok: false,
           error: {
-            message: "Falta OLT_VLAN / OLT_GEMPORT / OLT_ETH válidos en env",
+            message: "La OLT no tiene vlan/gemport/eth válidos configurados",
           },
+          ...buildOltMeta(olt),
         });
       }
 
-      // 0) si ya existe -> 409
       const existsCheck = await runOntInfoBySnWithRetry(
         session,
         n.snHex,
@@ -779,10 +881,10 @@ async function exec(req, res) {
             snLabel: n.snLabel,
           },
           ...(debug ? { rawExists: existsCheck.raw } : {}),
+          ...buildOltMeta(olt),
         });
       }
 
-      // 1) obtener FSP desde autofind
       const af = await getAutofindItemBySnHex(session, n.snHex, opts, debug);
       if (!af.item || !af.item.fsp) {
         return res.status(404).json({
@@ -791,6 +893,7 @@ async function exec(req, res) {
             message: "La ONT no aparece en 'display ont autofind all'.",
           },
           ...(debug ? { rawAutofind: af.raw } : {}),
+          ...buildOltMeta(olt),
         });
       }
 
@@ -801,10 +904,10 @@ async function exec(req, res) {
           ok: false,
           error: { message: `F/S/P inválido obtenido desde autofind: ${fsp}` },
           ...(debug ? { item: af.item } : {}),
+          ...buildOltMeta(olt),
         });
       }
 
-      // 2) obtener ONT-ID libre
       const rFree = await findFirstFreeOntId(
         session,
         x.f,
@@ -812,6 +915,7 @@ async function exec(req, res) {
         x.p,
         opts,
         debug,
+        { min: olt.ontIdMin, max: olt.ontIdMax },
       );
       if (!rFree.free) {
         return res.status(409).json({
@@ -821,18 +925,15 @@ async function exec(req, res) {
           },
           usedCount: rFree.usedIds.length,
           ...(debug ? { usedIds: rFree.usedIds, rawList: rFree.rawList } : {}),
+          ...buildOltMeta(olt),
         });
       }
 
       const ontId = rFree.free;
       const desc = sanitizeDesc(descInput);
 
-      // ✅ ontType: args -> env -> autofind.ontEquipmentId (si sirve)
       const ontType = String(
-        args?.ontType ??
-          process.env.OLT_ONT_TYPE ??
-          af.item.ontEquipmentId ??
-          "",
+        args?.ontType ?? af.item.ontEquipmentId ?? "",
       ).trim();
 
       let rawAdd = null;
@@ -841,7 +942,6 @@ async function exec(req, res) {
       let rawSpList = null;
 
       try {
-        // 3) ont add
         await ensureConfig(session, debug);
         await session.run(`interface gpon ${x.f}/${x.s}`, opts);
 
@@ -851,7 +951,6 @@ async function exec(req, res) {
 
         rawAdd = await session.run(cmdAdd, { ...opts, timeout: 25000 });
 
-        // ✅ si apareció el prompt { <cr>|ont-type<K> }: => enviar ENTER
         if (needsOntTypePrompt(rawAdd)) {
           const rawCr = await sendEnter(session, opts);
           rawAdd = `${rawAdd}\n${rawCr}`;
@@ -859,29 +958,27 @@ async function exec(req, res) {
 
         if (isCliFailure(rawAdd)) throw new Error(`Fallo ont add: ${rawAdd}`);
 
-        // 4) native-vlan
         rawNative = await session.run(
           `ont port native-vlan ${x.p} ${ontId} eth ${ETH} vlan ${VLAN}`,
           { ...opts, timeout: 20000 },
         );
-        if (isCliFailure(rawNative))
+        if (isCliFailure(rawNative)) {
           throw new Error(`Fallo native-vlan: ${rawNative}`);
+        }
 
-        // salir de interfaz
         await session.run("quit", opts).catch(() => {});
         await ensureConfig(session, debug);
 
-        // 5) service-port
         rawSpCreate = await session.run(
           `service-port vlan ${VLAN} gpon ${x.f}/${x.s}/${x.p} ont ${ontId} gemport ${GEM} ` +
             `multi-service user-vlan ${VLAN} tag-transform translate ` +
             `inbound traffic-table index ${trafficIn} outbound traffic-table index ${trafficOut}`,
           { ...opts, timeout: 25000 },
         );
-        if (isCliFailure(rawSpCreate))
+        if (isCliFailure(rawSpCreate)) {
           throw new Error(`Fallo service-port create: ${rawSpCreate}`);
+        }
 
-        // 6) verificar lista
         rawSpList = await session.run(
           `display service-port port ${x.f}/${x.s}/${x.p} ont ${ontId}`,
           { ...opts, timeout: 20000 },
@@ -910,6 +1007,7 @@ async function exec(req, res) {
           ontType: ontType || null,
           traffic: { inbound: trafficIn, outbound: trafficOut },
           servicePorts: sps,
+          ...buildOltMeta(olt),
           ...(debug
             ? {
                 autofindItem: af.item,
@@ -936,6 +1034,7 @@ async function exec(req, res) {
             details: String(e?.message || e),
           },
           ctx: { sn: n.snHex, fsp, ontId },
+          ...buildOltMeta(olt),
           ...(debug ? { rawAdd, rawNative, rawSpCreate, rawSpList } : {}),
         });
       }
@@ -967,6 +1066,7 @@ async function exec(req, res) {
         return res.status(500).json({
           ok: false,
           error: { message: "No se pudo obtener F/S/P u ONT-ID (2 intentos)" },
+          ...buildOltMeta(olt),
         });
       }
 
@@ -989,6 +1089,7 @@ async function exec(req, res) {
         lastDownTime: extractStrField(raw, "Last down time"),
         lastDyingGaspTime: extractStrField(raw, "Last dying gasp time"),
         onlineDuration: extractStrField(raw, "ONT online duration"),
+        ...buildOltMeta(olt),
       };
 
       const isOnline = String(runState || "").toLowerCase() === "online";
@@ -1016,9 +1117,15 @@ async function exec(req, res) {
               oltRxDbm: null,
             };
           } else {
-            let rxDbm = extractFloatField(rawOpt, "Rx optical power\\(dBm\\)");
-            let txDbm = extractFloatField(rawOpt, "Tx optical power\\(dBm\\)");
-            let oltRxDbm = extractFloatField(
+            const rxDbm = extractFloatField(
+              rawOpt,
+              "Rx optical power\\(dBm\\)",
+            );
+            const txDbm = extractFloatField(
+              rawOpt,
+              "Tx optical power\\(dBm\\)",
+            );
+            const oltRxDbm = extractFloatField(
               rawOpt,
               "OLT Rx ONT optical power\\(dBm\\)",
             );
@@ -1076,6 +1183,7 @@ async function exec(req, res) {
         return res.status(404).json({
           ok: false,
           error: { message: "La ONT no existe en la OLT" },
+          ...buildOltMeta(olt),
         });
       }
 
@@ -1088,6 +1196,7 @@ async function exec(req, res) {
         return res.status(500).json({
           ok: false,
           error: { message: "No se pudo extraer F/S/P u ONT-ID de la ONT" },
+          ...buildOltMeta(olt),
         });
       }
 
@@ -1128,9 +1237,11 @@ async function exec(req, res) {
 
       const x = splitFspToNums(fsp);
       if (!x) {
-        return res
-          .status(500)
-          .json({ ok: false, error: { message: `F/S/P inválido: ${fsp}` } });
+        return res.status(500).json({
+          ok: false,
+          error: { message: `F/S/P inválido: ${fsp}` },
+          ...buildOltMeta(olt),
+        });
       }
 
       await ensureConfig(session, debug);
@@ -1154,6 +1265,7 @@ async function exec(req, res) {
             deleted: deletedServicePorts,
             failed: failedServicePorts,
           },
+          ...buildOltMeta(olt),
           ...(debug ? { rawInfo, rawSp, rawDelete } : {}),
         });
       }
@@ -1173,10 +1285,12 @@ async function exec(req, res) {
           deleted: deletedServicePorts,
           failed: failedServicePorts,
         },
+        ...buildOltMeta(olt),
       };
 
-      if (isOnline)
+      if (isOnline) {
         payload.warning = "⚠️ La ONT estaba ONLINE al momento de eliminarla";
+      }
       if (debug) {
         payload.rawInfo = rawInfo;
         payload.rawSp = rawSp;
@@ -1214,9 +1328,26 @@ async function exec(req, res) {
 }
 
 async function close(req, res) {
-  const session = getOltSession("default");
-  await session.close("manual");
-  return res.json({ ok: true, message: "Sesión cerrada" });
+  try {
+    const debug = parseBool(req.query.debug);
+    const { olt, session } = await resolveSessionFromReq(req, debug);
+
+    await session.close("manual");
+
+    return res.json({
+      ok: true,
+      message: "Sesión cerrada",
+      ...buildOltMeta(olt),
+    });
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (err instanceof OltHttpError && err.status) {
+      return res
+        .status(err.status)
+        .json({ ok: false, error: { message: msg } });
+    }
+    return res.status(500).json({ ok: false, error: serializeErr(err) });
+  }
 }
 
 module.exports = { status, testTime, ready, exec, close };

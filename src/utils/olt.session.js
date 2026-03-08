@@ -1,4 +1,3 @@
-// src/utils/olt.session.js
 require("dotenv").config();
 const { OltClient } = require("./olt");
 
@@ -15,7 +14,7 @@ class OltHttpError extends Error {
 
 class OltSessionManager {
   constructor(profile = "default") {
-    this.profile = profile;
+    this.profile = String(profile || "default");
     this.client = null;
 
     this.queue = Promise.resolve();
@@ -28,6 +27,40 @@ class OltSessionManager {
     this.lastUsedAt = null;
     this.lastFailAt = 0;
     this.consecutiveFailures = 0;
+
+    // ✅ config dinámica desde DB
+    this.oltConfig = null;
+  }
+
+  setConfig(config) {
+    if (!config || !config.id) {
+      throw new Error("Config OLT inválida");
+    }
+    this.oltConfig = {
+      id: Number(config.id),
+      ip: String(config.ip || "").trim(),
+      port: Number(config.port || 23),
+      username: String(config.username || "").trim(),
+      password: String(config.password || ""),
+      timeoutMs: Number(config.timeoutMs || 20000),
+      nombre: String(config.nombre || ""),
+      vendor: String(config.vendor || ""),
+      frameDefault: Number(config.frameDefault ?? 0),
+      lineprofile: String(config.lineprofile || "").trim(),
+      srvprofile: String(config.srvprofile || "").trim(),
+      vlan: Number(config.vlan ?? 100),
+      gemport: Number(config.gemport ?? 10),
+      eth: Number(config.eth ?? 1),
+      ontIdMin: Number(config.ontIdMin ?? 1),
+      ontIdMax: Number(config.ontIdMax ?? 127),
+      estado: String(config.estado || "ACTIVA"),
+      sucursalId: config.sucursalId ?? null,
+      ciudad: config.ciudad ?? null,
+    };
+  }
+
+  getConfig() {
+    return this.oltConfig;
   }
 
   _armIdleClose() {
@@ -38,8 +71,25 @@ class OltSessionManager {
     }, IDLE_CLOSE_MS);
   }
 
+  _assertConfig() {
+    if (!this.oltConfig) {
+      throw new Error(`OLT ${this.profile}: no tiene configuración cargada`);
+    }
+    if (!this.oltConfig.ip) {
+      throw new Error(`OLT ${this.profile}: ip no configurada`);
+    }
+    if (!this.oltConfig.username) {
+      throw new Error(`OLT ${this.profile}: username no configurado`);
+    }
+    if (!this.oltConfig.password) {
+      throw new Error(`OLT ${this.profile}: password no configurado`);
+    }
+  }
+
   async _ensureConnected({ debug = false, bypassCooldown = false } = {}) {
     if (this.client) return;
+
+    this._assertConfig();
 
     const now = Date.now();
     const diff = now - this.lastFailAt;
@@ -50,11 +100,11 @@ class OltSessionManager {
     }
 
     const client = new OltClient({
-      host: process.env.OLT_HOST,
-      port: Number(process.env.OLT_PORT || 8090),
-      username: process.env.OLT_USERNAME,
-      password: process.env.OLT_PASSWORD,
-      timeout: Number(process.env.OLT_TIMEOUT_MS || 20000),
+      host: this.oltConfig.ip,
+      port: Number(this.oltConfig.port || 23),
+      username: this.oltConfig.username,
+      password: this.oltConfig.password,
+      timeout: Number(this.oltConfig.timeoutMs || 20000),
       debug: !!debug,
     });
 
@@ -81,7 +131,6 @@ class OltSessionManager {
       this.pending = Math.max(0, this.pending - 1);
       this.busy = true;
 
-      // ✅ evita cierre por idle mientras ejecutas
       if (this.idleTimer) clearTimeout(this.idleTimer);
       this.idleTimer = null;
       this.idleCloseAt = 0;
@@ -101,17 +150,16 @@ class OltSessionManager {
           /IP address has been locked|cannot log on|locked/i.test(msg) ||
           e instanceof OltHttpError;
 
-        // ❌ No auto-recovery si es lock/cooldown
         if (isLocked) {
           this.lastFailAt = Date.now();
           this.consecutiveFailures++;
           throw e;
         }
 
-        // ✅ Auto-recovery (1 vez) SIN cooldown interno
         console.log(
-          "[OLT SESSION] ⚠️ fallo, auto_recovery + retry (no cooldown)",
+          `[OLT SESSION ${this.profile}] ⚠️ fallo, auto_recovery + retry (no cooldown)`,
         );
+
         try {
           await this.close("auto_recovery").catch(() => {});
           await this._ensureConnected({ ...opts, bypassCooldown: true });
@@ -122,7 +170,7 @@ class OltSessionManager {
           this.consecutiveFailures = 0;
           this._armIdleClose();
 
-          console.log("[OLT SESSION] ✅ retry OK");
+          console.log(`[OLT SESSION ${this.profile}] ✅ retry OK`);
           return out2;
         } catch (retryError) {
           this.lastFailAt = Date.now();
@@ -156,6 +204,9 @@ class OltSessionManager {
       idleLeftSec: Math.ceil(idleLeftMs / 1000),
       lastUsedAt: this.lastUsedAt ? this.lastUsedAt.toISOString() : null,
       consecutiveFailures: this.consecutiveFailures,
+      oltId: this.oltConfig?.id || null,
+      oltNombre: this.oltConfig?.nombre || null,
+      oltIp: this.oltConfig?.ip || null,
     };
   }
 
@@ -179,10 +230,40 @@ class OltSessionManager {
   }
 }
 
-let singleton = null;
-function getOltSession(profile = "default") {
-  if (!singleton) singleton = new OltSessionManager(profile);
-  return singleton;
+// ✅ sesiones por oltId
+const sessions = new Map();
+
+function getOltSession(profile = "default", config = null) {
+  const key = String(profile || "default");
+
+  if (!sessions.has(key)) {
+    sessions.set(key, new OltSessionManager(key));
+  }
+
+  const session = sessions.get(key);
+
+  if (config) {
+    session.setConfig(config);
+  }
+
+  return session;
 }
 
-module.exports = { getOltSession, OltHttpError };
+async function closeOltSession(profile = "default", reason = "manual") {
+  const key = String(profile || "default");
+  const session = sessions.get(key);
+  if (!session) return;
+  await session.close(reason);
+}
+
+async function closeAllOltSessions(reason = "manual") {
+  const all = [...sessions.values()];
+  await Promise.allSettled(all.map((s) => s.close(reason)));
+}
+
+module.exports = {
+  getOltSession,
+  closeOltSession,
+  closeAllOltSessions,
+  OltHttpError,
+};
