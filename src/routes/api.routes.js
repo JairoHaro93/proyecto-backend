@@ -57,5 +57,5 @@ router.use(
 router.use("/images", require("./api/negocio_lat/images.router"));
 router.use("/cajas", require("./api/negocio_lat/cajas.router"));
 router.use("/olt", require("./api/negocio_lat/olt.router"));
-
+router.use("/nap-clientes", require("./api/negocio_lat/nap_clientes.router"));
 module.exports = router;

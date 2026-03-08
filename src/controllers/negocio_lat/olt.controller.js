@@ -4,9 +4,29 @@ const {
   getOltConfigActivaById,
 } = require("../../models/negocio_lat/olts.model");
 
+const {
+  normalizeOnu: normalizeOnuForLocalControl,
+  getAsignacionActualByOnu,
+  liberarAsignacionByOnu,
+} = require("../../models/negocio_lat/nap_clientes.model");
+
 // =========================
 //  HELPERS BASICOS
 // =========================
+
+function onuVisibleFromSnHex(snHex = "") {
+  const hex = String(snHex || "")
+    .trim()
+    .toUpperCase();
+
+  if (!/^[0-9A-F]{16}$/.test(hex)) {
+    return normalizeOnuForLocalControl(hex);
+  }
+
+  const label = snLabelFromHex16(hex);
+  return normalizeOnuForLocalControl(label || hex);
+}
+
 function parseBool(v) {
   return String(v || "").toLowerCase() === "true";
 }
@@ -1162,6 +1182,10 @@ async function exec(req, res) {
     if (cmdId === "ONT_DELETE") {
       const snInput = String(args?.sn || "").trim();
       const n = normalizeSn(snInput);
+      const motivoLiberacion = String(args?.motivoLiberacion || "").trim();
+      const observacionLiberacion = String(
+        args?.observacionLiberacion || "",
+      ).trim();
 
       if (!n.ok) {
         return res.status(400).json({
@@ -1285,12 +1309,74 @@ async function exec(req, res) {
           deleted: deletedServicePorts,
           failed: failedServicePorts,
         },
+        localControl: {
+          found: false,
+          released: false,
+          onu: null,
+          ord_ins: null,
+          nap_id: null,
+          puerto: null,
+          message: null,
+        },
         ...buildOltMeta(olt),
       };
 
       if (isOnline) {
         payload.warning = "⚠️ La ONT estaba ONLINE al momento de eliminarla";
       }
+
+      // =======================
+      // Liberación en nap_clientes
+      // =======================
+      try {
+        const onuControl = onuVisibleFromSnHex(n.snHex);
+        payload.localControl.onu = onuControl;
+
+        const actualLocal = await getAsignacionActualByOnu(onuControl);
+
+        if (!actualLocal) {
+          payload.localControl.found = false;
+          payload.localControl.released = false;
+          payload.localControl.message =
+            "No existía asignación activa en nap_clientes para esta ONU";
+        } else {
+          const liberada = await liberarAsignacionByOnu(onuControl, {
+            motivo: motivoLiberacion || "Eliminación desde OLT",
+            observacion:
+              observacionLiberacion ||
+              `Liberación automática por eliminación de ONT desde OLT (${olt?.nombre || "OLT"})`,
+            actorUserId:
+              req?.user?.id ??
+              req?.usuario?.id ??
+              req?.auth?.id ??
+              req?.decoded?.id ??
+              null,
+          });
+
+          payload.localControl.found = true;
+          payload.localControl.released = true;
+          payload.localControl.ord_ins = liberada?.ord_ins ?? null;
+          payload.localControl.nap_id = liberada?.nap_id ?? null;
+          payload.localControl.puerto = liberada?.puerto ?? null;
+          payload.localControl.message =
+            "Asignación liberada correctamente en nap_clientes";
+        }
+      } catch (e) {
+        const localMsg = String(e?.message || e);
+
+        payload.localControl.released = false;
+        payload.localControl.message =
+          localMsg || "No se pudo liberar la asignación local";
+
+        payload.warning = payload.warning
+          ? `${payload.warning} | No se pudo liberar la asignación local en nap_clientes`
+          : "La ONT fue eliminada en la OLT, pero no se pudo liberar la asignación local en nap_clientes";
+
+        if (debug) {
+          payload.localControl.error = localMsg;
+        }
+      }
+
       if (debug) {
         payload.rawInfo = rawInfo;
         payload.rawSp = rawSp;
