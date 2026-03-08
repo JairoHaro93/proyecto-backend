@@ -531,9 +531,9 @@ async function createPon(req, res) {
       });
     }
 
-    // base: F/S/P
-    const frame = Number(olt.olt_frame_default ?? 0);
-    const baseSeg = `${frame}/${v.slot}/${v.pon}`;
+    // base: /S/P
+
+    const baseSeg = `${v.slot}/${v.pon}`;
 
     const mode = String(split_mode || "")
       .toUpperCase()
