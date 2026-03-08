@@ -648,6 +648,118 @@ async function selectNombresByOrdInsBatch(ordInsList) {
 
   return allRows;
 }
+
+async function selectClientesSugerenciasActivosFibra({
+  term,
+  sucursal,
+  limit,
+}) {
+  const request = await getRequest();
+  request.input("term", term + "%");
+  request.input("termLike", "%" + term + "%");
+  request.input("sucursal", sucursal);
+  request.input("limit", sql.Int, limit);
+
+  const q = `
+    SELECT DISTINCT TOP (@limit)
+      c.cli_cedula AS cedula,
+      CONCAT(c.cli_nombres, ' ', c.cli_apellidos) COLLATE Latin1_General_CI_AI AS nombre_completo
+    FROM t_Clientes c
+    JOIN t_Ordenes_Instalaciones o ON o.cli_cedula = c.cli_cedula
+    JOIN t_Sucursales s ON s.suc_id = o.suc_id
+    JOIN t_Planes_Internet p ON p.pla_int_id = o.pla_int_id
+    JOIN t_Tipos_Enlace te ON te.tip_enl_id = p.tip_enl_id
+    WHERE s.suc_nombre = @sucursal
+      AND o.est_ser_int_id <> 10
+      AND te.tip_enl_nombre_1 COLLATE Latin1_General_CI_AI LIKE '%FTTH%'
+      AND (
+        c.cli_nombres COLLATE Latin1_General_CI_AI LIKE @term
+        OR c.cli_apellidos COLLATE Latin1_General_CI_AI LIKE @term
+        OR CONCAT(c.cli_nombres, ' ', c.cli_apellidos) COLLATE Latin1_General_CI_AI LIKE @termLike
+      )
+    ORDER BY nombre_completo;
+  `;
+  const result = await request.query(q);
+  return result.recordset;
+}
+
+async function selectDataArrayActivosFibraByCed(cedulaParam) {
+  try {
+    const request = await getRequest();
+    request.input("cli_cedula", sql.VarChar, cedulaParam);
+
+    const q = `
+      SELECT 
+        ORDEN_CLIENTE.cli_cedula AS cedula,
+        c.cli_nombres + ' ' + c.cli_apellidos AS nombre_completo,
+        ORDEN_CLIENTE.ord_ins_id AS orden_instalacion,
+        ORDEN_CLIENTE.ord_ins_fecha_instalacion AS fecha_instalacion,
+        ORDEN_CLIENTE.ord_ins_direccion AS direccion,
+        ORDEN_CLIENTE.ord_ins_referencia_direccion AS referencia,
+        ORDEN_CLIENTE.ord_ins_ip_equipo_final AS ip,
+        ORDEN_CLIENTE.ord_ins_telefonos AS telefonos,
+        ORDEN_CLIENTE.ord_ins_equipo_onu AS onu,
+        ORDEN_CLIENTE.ord_ins_coordenadas_x + ',' + ORDEN_CLIENTE.ord_ins_coordenadas_y AS coordenadas,
+        IIF(ORDEN_CLIENTE.ord_ins_estado_sin_servicio = 'True', 'SI', 'NO') AS cortado,
+        t_Estado_Ordenes_Instalaciones.est_ord_ins_nombre AS estado_instalacion,
+        t_Estado_Servicio_Internet.est_ser_int_nombre AS servicio,
+        ORDEN_CLIENTE.est_ser_int_id AS estado_servicio_id,
+        t_Servicios_Internet.ser_int_nombre AS tipo_instalacion,
+        t_Forma_Servicio.for_ser_nombre AS tipo,
+        t_Planes_Internet.pla_int_nombre AS plan_nombre,
+        t_Planes_Internet.pla_int_precio AS precio,
+        CASE 
+          WHEN ORDEN_CLIENTE.ord_ins_fecha_pago IS NOT NULL THEN 'PAGADO'
+          ELSE 'PENDIENTE'
+        END AS estado
+      FROM t_Ordenes_Instalaciones AS ORDEN_CLIENTE
+        INNER JOIN t_Planes_Internet ON t_Planes_Internet.pla_int_id = ORDEN_CLIENTE.pla_int_id
+        INNER JOIN t_Tipos_Enlace te ON te.tip_enl_id = t_Planes_Internet.tip_enl_id
+        INNER JOIN t_Forma_Servicio ON t_Forma_Servicio.for_ser_id = ORDEN_CLIENTE.for_ser_id
+        INNER JOIN t_Estado_Ordenes_Instalaciones ON t_Estado_Ordenes_Instalaciones.est_ord_ins_id = ORDEN_CLIENTE.est_ord_id
+        INNER JOIN t_Estado_Servicio_Internet ON t_Estado_Servicio_Internet.est_ser_int_id = ORDEN_CLIENTE.est_ser_int_id
+        INNER JOIN t_Servicios_Internet ON t_Servicios_Internet.ser_int_id = ORDEN_CLIENTE.ser_int_id
+        LEFT JOIN t_Clientes AS c ON c.cli_cedula = ORDEN_CLIENTE.cli_cedula
+      WHERE ORDEN_CLIENTE.est_ser_int_id <> 10
+        AND ORDEN_CLIENTE.cli_cedula = @cli_cedula
+        AND te.tip_enl_nombre_1 COLLATE Latin1_General_CI_AI LIKE '%FTTH%'
+      ORDER BY ORDEN_CLIENTE.ord_ins_fecha_instalacion DESC;
+    `;
+
+    const result = await request.query(q);
+    const rows = result.recordset;
+    if (rows.length === 0) return null;
+
+    const { cedula, nombre_completo } = rows[0];
+    const servicios = rows.map((row) => ({
+      coordenadas: row.coordenadas?.trim() ?? "",
+      ip: row.ip,
+      direccion: row.direccion,
+      referencia: row.referencia,
+      orden_instalacion: row.orden_instalacion,
+      fecha_instalacion: row.fecha_instalacion,
+      telefonos: row.telefonos,
+      onu: row.onu,
+      estado: row.estado,
+      plan_nombre: row.plan_nombre,
+      precio: row.precio,
+      servicio: row.servicio,
+      estado_instalacion: row.estado_instalacion,
+      tipo_instalacion: row.tipo_instalacion,
+      tipo: row.tipo,
+      cortado: row.cortado,
+    }));
+
+    return { cedula, nombre_completo, servicios };
+  } catch (error) {
+    console.error(
+      "❌ Error en selectDataArrayActivosFibraByCed:",
+      error.message,
+    );
+    throw error;
+  }
+}
+
 module.exports = {
   // Sugerencias
   selectClientesSugerencias,
@@ -655,6 +767,9 @@ module.exports = {
   // Detalles por cédula
   selectAllDataArrayByCed,
   selectDataArrayActivosByCed,
+  selectDataArrayActivosFibraByCed,
+  selectClientesSugerenciasActivosFibra,
+
   // Mapa
   selectAllDataMapa,
   // Detalle por ord_ins

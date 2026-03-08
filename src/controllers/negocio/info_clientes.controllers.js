@@ -9,6 +9,8 @@ const {
   selectClientesSugerenciasActivos,
   selectClientesSugerencias,
   fetchClientesByOrdInsBatch,
+  selectDataArrayActivosFibraByCed,
+  selectClientesSugerenciasActivosFibra,
 } = require("../../models/negocio/info_clientes.models");
 
 //CONTROLADOR PARA OBTENER LOS NOMBRES Y CEDULA
@@ -181,11 +183,53 @@ async function getClientesByOrdInsBatch(req, res) {
   }
 }
 
+async function buscarClientesActivosFibra(req, res, next) {
+  try {
+    const q = String(req.query.q || "").trim();
+    const limit = Math.min(Math.max(Number(req.query.limit || 10), 1), 50);
+
+    if (q.length < 2) {
+      return res
+        .status(400)
+        .json({ message: "q debe tener al menos 2 caracteres" });
+    }
+
+    const data = await selectClientesSugerenciasActivosFibra({
+      term: q,
+      sucursal: "LATACUNGA",
+      limit,
+    });
+
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getDataArrayActivosFibra(req, res, next) {
+  try {
+    const { cedula } = req.params;
+    const data = await selectDataArrayActivosFibraByCed(cedula);
+
+    if (!data) {
+      return res
+        .status(404)
+        .json({ message: "Cliente no encontrado o sin servicios de fibra" });
+    }
+
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   buscarClientes,
   buscarClientesActivos,
+  buscarClientesActivosFibra,
   getAllDataArray,
   getDataArrayActivos,
+  getDataArrayActivosFibra,
   getAllDataMapa,
   getServicioByOrdIns,
   getAllInstPend,

@@ -7,6 +7,8 @@ const {
   buscarClientesActivos,
   buscarClientes,
   getClientesByOrdInsBatch,
+  buscarClientesActivosFibra,
+  getDataArrayActivosFibra,
 } = require("../../../controllers/negocio/info_clientes.controllers");
 const { checkToken } = require("../../../utils/middlewares");
 
@@ -38,6 +40,9 @@ router.get(
   checkToken,
   getDataArrayActivos,
 );
+
+router.get("/activos-fibra", checkToken, buscarClientesActivosFibra);
+router.get("/data-act-fibra/:cedula", checkToken, getDataArrayActivosFibra);
 
 //OBTENER INFORMACION DE CLIENTES PARA MAPA
 router.get("/mapas", checkToken, getAllDataMapa);
